@@ -2,7 +2,7 @@ import logging
 from os import environ as env
 
 from github import Auth, Github
-from tracker.settings import get_secret
+from tracker.settings import GH_ISSUES_REPO, GH_ORGANIZATION, get_secret
 
 logger = logging.getLogger(__name__)
 
@@ -43,14 +43,13 @@ def get_gh(per_page: int = 30) -> Github:
 
     return Github(auth=gh_auth, per_page=per_page)
 
-def create_issue(conn: Github, cve: str, pkg: str):
+def create_issue(conn: Github, cve: str):
     """
     Given a Github connection, create an issue for the given CVE and package on
     the repository configured centrally in the security tracker.
     """
 
-    repo =
-    conn.get_repo(f"{Settings.GH_ORGANIZATION}/{Settings.GH_ISSUES_REPO}")
+    repo = conn.get_repo(f"{GH_ORGANIZATION}/{GH_ISSUES_REPO}")
     title = f"Issue for CVE {cve}"
     body = f"Lorem ipsum dolor"
 
