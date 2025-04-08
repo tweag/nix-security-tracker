@@ -42,3 +42,16 @@ def get_gh(per_page: int = 30) -> Github:
             )
 
     return Github(auth=gh_auth, per_page=per_page)
+
+def create_issue(conn: Github, cve: str, pkg: str):
+    """
+    Given a Github connection, create an issue for the given CVE and package on
+    the repository configured centrally in the security tracker.
+    """
+
+    repo =
+    conn.get_repo(f"{Settings.GH_ORGANIZATION}/{Settings.GH_ISSUES_REPO}")
+    title = f"Issue for CVE {cve}"
+    body = f"Lorem ipsum dolor"
+
+    repo.create_issue(title=title, body=body)
