@@ -225,6 +225,13 @@ class NixEvaluation(TimeStampMixin):
         unique_together = ("channel", "commit_sha1")
 
 
+class NixPackage(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class NixDerivation(models.Model):
     """
     This represents a Nix derivation "evaluated",
@@ -234,6 +241,7 @@ class NixDerivation(models.Model):
     - parsing the .drv
     """
 
+    package = models.ForeignKey(NixPackage, on_delete=models.CASCADE, null=True)
     attribute = models.CharField(max_length=255)
     derivation_path = models.CharField(max_length=255)
     name = models.CharField(max_length=255)
