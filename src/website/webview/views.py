@@ -11,7 +11,7 @@ from django.urls import reverse
 from shared.github import create_gh_issue
 from shared.logs import SuggestionActivityLog
 from shared.models.cached import CachedSuggestions
-from website.shared.listeners.cache_suggestions import maintainers_list
+from shared.listeners.cache_suggestions import maintainers_list
 
 if typing.TYPE_CHECKING:
     # prevent typecheck from failing on some historic type
@@ -552,6 +552,9 @@ class SuggestionListView(ListView):
         ):
             return HttpResponseForbidden()
 
+
+        logger.error(f"Posting to SuggestionListView")
+
         # We want to provide graceful fallback for important workflows, when users have JavaScript disabled
         js_enabled: bool = "no-js" not in request.POST
         undo_status_change: bool = "undo-status-change" in request.POST
@@ -620,18 +623,19 @@ class SuggestionListView(ListView):
         # Note that in both cases, if there was a prior edit, we always remove
         # it from the list (1b and 2b).
         if editable and edit_maintainer_id:
+            logger.error(f"Editable and edit_maintainer_id set (to {edit_maintainer_id})")
             with transaction.atomic():
                 edit = suggestion.maintainers_edits.filter(maintainer__github_id=edit_maintainer_id)
                 # case 1b and 2b
                 if edit.exists():
+                    logger.error(f"Edit exists {edit.first()}")
                     edit.delete()
-                    # If we removed an "add" edit, then our actual action is to
-                    # remove a maintainer from the current list, and conversely.
-                    edit_type = MaintainersEdit.EditType.REMOVE if edit.first().edit_type == MaintainersEdit.EditType.ADD else MaintainersEdit.EditType.ADD
                 else:
+                    logger.error(f"Edit doesn't exist")
                     maintainer = get_object_or_404(NixMaintainer, github_id=edit_maintainer_id)
                     was_there = suggestion.maintainers_edits.filter(maintainer__github_id=edit_maintainer_id).exists()
                     edit_type = MaintainersEdit.EditType.REMOVE if was_there else MaintainersEdit.EditType.ADD
+                    logger.error(f"Edit doesn't exist. Edit_type is {edit_type}, was_there is {was_there}, maintainer is {maintainer}")
                     edit = MaintainersEdit(
                             edit_type=edit_type,
                             maintainer=maintainer,
@@ -639,6 +643,7 @@ class SuggestionListView(ListView):
                     )
                     edit.save()
 
+                logger.error(f"Updating the list of maintainers")
                 cached_suggestion.payload["maintainers"] = maintainers_list(cached_suggestion.payload["packages"], suggestion.maintainers_edits.all())
                 cached_suggestion.save()
                 return HttpResponse(status=200)
@@ -748,9 +753,3 @@ class SuggestionListView(ListView):
         else:
             # Just reload the page
             return redirect(f"{request.path}?page={current_page}")
-
-class MaintainersListView(TemplateView):
-    template_name = "maintainers_list.html"
-
-    def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
-        return HttpResponse(status=200)
