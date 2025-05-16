@@ -63,9 +63,13 @@ class Maintainer(TypedDict):
 class MaintainerContext(TypedDict):
     maintainer: Maintainer
 
+class SelectableMaintainerContext(TypedDict):
+    maintainer: Maintainer
+    deleted: bool
 
 class MaintainersListContext(TypedDict):
     maintainers: list[Maintainer]
+    deleted_maintainers: dict[str, bool]
     selectable: bool
 
 
@@ -147,6 +151,7 @@ def suggestion(
         "status_filter": context["status_filter"],
         "page_obj": context["page_obj"],
         "user": context["user"],
+        "deleted_maintainers": context["deleted_maintainers"] or dict(),
     }
 
 
@@ -210,14 +215,23 @@ def suggestion_activity_log(
 def maintainers_list(
     maintainers: list[Maintainer],
 ) -> MaintainersListContext:
-    return {"maintainers": maintainers, "selectable": False}
+    return {
+        "maintainers": maintainers,
+        "deleted_maintainers": dict(),
+        "selectable": False
+    }
 
 
 @register.inclusion_tag("components/maintainers_list.html")
 def selectable_maintainers_list(
     maintainers: list[Maintainer],
+    deleted_maintainers: dict[str, bool] = dict(),
 ) -> MaintainersListContext:
-    return {"maintainers": maintainers, "selectable": True}
+    return {
+        "maintainers": maintainers,
+        "deleted_maintainers": deleted_maintainers,
+        "selectable": True,
+    }
 
 
 @register.inclusion_tag("components/maintainer.html")
@@ -225,3 +239,10 @@ def maintainer(
     maintainer: Maintainer,
 ) -> MaintainerContext:
     return {"maintainer": maintainer}
+
+@register.inclusion_tag("components/selectable_maintainer.html")
+def selectable_maintainer(
+    maintainer: Maintainer,
+    deleted: bool = False,
+) -> SelectableMaintainerContext:
+    return {"maintainer": maintainer, "deleted": deleted}

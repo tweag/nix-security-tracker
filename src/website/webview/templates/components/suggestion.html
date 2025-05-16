@@ -50,7 +50,7 @@
     {% endif %}
 
     {% if status_filter == "accepted" %}
-      {% selectable_maintainers_list cached_suggestion.maintainers %}
+      {% selectable_maintainers_list cached_suggestion.maintainers deleted_maintainers %}
     {% else %}
       {% maintainers_list cached_suggestion.maintainers %}
     {% endif %}

@@ -40,6 +40,7 @@ from django.http import (
     HttpRequest,
     HttpResponse,
     HttpResponseForbidden,
+    HttpResponseNotAllowed,
     HttpResponseRedirect,
 )
 from django.middleware.csrf import get_token
@@ -624,12 +625,16 @@ class SuggestionListView(ListView):
                 edit = suggestion.maintainers_edits.filter(maintainer__github_id=edit_maintainer_id)
                 # case 1b and 2b
                 if edit.exists():
+                    edit_object = edit.first()
+                    maintainer = edit_object.maintainer
+                    deleted = edit_object.edit_type == MaintainersEdit.EditType.ADD
                     edit.delete()
                     suggestion.save()
                 # case 1a and 2a
                 else:
                     maintainer = get_object_or_404(NixMaintainer, github_id=edit_maintainer_id)
                     was_there = any(str(m["github_id"]) == edit_maintainer_id for m in cached_suggestion.payload["maintainers"])
+                    deleted = was_there
                     edit_type = MaintainersEdit.EditType.REMOVE if was_there else MaintainersEdit.EditType.ADD
                     edit = MaintainersEdit(
                             edit_type=edit_type,
@@ -641,7 +646,14 @@ class SuggestionListView(ListView):
                 cached_suggestion.payload["maintainers"] = maintainers_list(cached_suggestion.payload["packages"], suggestion.maintainers_edits.all())
                 cached_suggestion.save()
 
-                return HttpResponse(status=200)
+                snippet = render_to_string(
+                    "components/selectable_maintainer.html",
+                    {
+                        "maintainer": maintainer,
+                        "deleted": deleted,
+                    },
+                )
+                return HttpResponse(snippet)
 
         # We only have to modify derivations when they are editable
         if editable:
@@ -748,3 +760,18 @@ class SuggestionListView(ListView):
         else:
             # Just reload the page
             return redirect(f"{request.path}?page={current_page}")
+
+class SelectableMaintainerView(TemplateView):
+    template_name = "components/selectable_maintainer.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        # Only allow POST requests
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        return super().dispatch(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        context = self.get_context_data(**kwargs)
+        context["some_context"] = "value"
+        return self.render_to_response(context)
+
