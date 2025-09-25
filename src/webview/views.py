@@ -68,6 +68,12 @@ from shared.models.linkage import (
     MaintainersEdit,
     PackageEdit,
 )
+from webview.constants import (
+    HttpStatusCodes,
+    ResponseMessages,
+    SuggestionRoutes,
+    ViewConfig,
+)
 from webview.forms import NixpkgsIssueForm
 from webview.paginators import CustomCountPaginator
 
@@ -82,9 +88,9 @@ class HomeView(TemplateView):
 class TriageView(TemplateView):
     template_name = "triage_view.html"
     # Pagination parameters
-    paginate_by = 10
-    pages_on_each_side = 2
-    pages_on_ends = 1
+    paginate_by = ViewConfig.DEFAULT_PAGINATE_BY
+    pages_on_each_side = ViewConfig.PAGES_ON_EACH_SIDE
+    pages_on_ends = ViewConfig.PAGES_ON_ENDS
 
     def _cve_efficient_filter(self, search_cves: str) -> BaseManager[Container]:
         """
@@ -130,7 +136,7 @@ class TriageView(TemplateView):
             search_query = SearchQuery(search_cves)
             # Check https://www.postgresql.org/docs/current/textsearch-controls.html#TEXTSEARCH-RANKING
             # for the meaning of normalization values.
-            norm_value = Value(1)
+            norm_value = Value(ViewConfig.SEARCH_NORMALIZATION_VALUE)
             cve_qs = (
                 Container.objects.prefetch_related(
                     "descriptions", "affected", "affected__cpes"
@@ -246,7 +252,7 @@ class TriageView(TemplateView):
             search_query = SearchQuery(search_pkgs)
             # Check https://www.postgresql.org/docs/current/textsearch-controls.html#TEXTSEARCH-RANKING
             # for the meaning of normalization values.
-            norm_value = Value(1)
+            norm_value = Value(ViewConfig.SEARCH_NORMALIZATION_VALUE)
             pkg_qs = (
                 NixDerivation.objects.prefetch_related("metadata")
                 .filter(
@@ -424,7 +430,7 @@ class NixpkgsIssueView(DetailView):
 class NixpkgsIssueListView(ListView):
     template_name = "issue_list.html"
     model = NixpkgsIssue
-    paginate_by = 10
+    paginate_by = ViewConfig.DEFAULT_PAGINATE_BY
 
     # TODO Because of how issue codes and cached issues are generated (post save / post insert), it is not trivial to ensure new issues get their code filled up in the cached issue (unless `manage regenerate_cached_issues` is run by hand). Since the view needs the issue code, for now, the cached issue is passed as an additional field instead of being the returned object.
     def get_queryset(self) -> BaseManager[NixpkgsIssue]:
@@ -444,7 +450,7 @@ class NixpkgsIssueListView(ListView):
 class NixderivationPerChannelView(ListView):
     template_name = "affected_list.html"
     context_object_name = "affected_list"
-    paginate_by = 4
+    paginate_by = 4  # Keep this specific value as it's different from default
 
     def _get_ordered_channels(self) -> "ValuesQuerySet[NixChannel, Any]":
         custom_order = Case(
@@ -502,15 +508,10 @@ class NixderivationPerChannelView(ListView):
 class SuggestionListView(ListView):
     template_name = "suggestion_list.html"
     model = CachedSuggestions
-    paginate_by = 10
+    paginate_by = ViewConfig.DEFAULT_PAGINATE_BY
     context_object_name = "objects"
 
-    status_route_dict = {
-        CVEDerivationClusterProposal.Status.PENDING.value: "/suggestions",
-        CVEDerivationClusterProposal.Status.ACCEPTED.value: "/drafts",
-        CVEDerivationClusterProposal.Status.REJECTED.value: "/dismissed",
-        CVEDerivationClusterProposal.Status.PUBLISHED.value: "/issues",
-    }
+    status_route_dict = SuggestionRoutes.STATUS_ROUTES
 
     # Determines how the list is filtered for and some control elements that
     # only are shown depending on the context.
@@ -750,8 +751,8 @@ class SelectableMaintainerView(TemplateView):
             # Unprocessable Entity seems to be the more appropriate status code
             # for missing parameters (the request is well-formed at the protocol
             # level but some semantic precondition failed)
-            logger.error("Missing edit_maintainer_id in request for maintainer edition")
-            return HttpResponse(status=422)
+            logger.error(ResponseMessages.MISSING_EDIT_MAINTAINER_ID)
+            return HttpResponse(status=HttpStatusCodes.UNPROCESSABLE_ENTITY)
 
         # When clicking the button to the left of a maintainer, there are two
         # cases:
@@ -862,12 +863,10 @@ class AddMaintainerView(TemplateView):
             return HttpResponseForbidden()
 
         if not new_maintainer_github_handle:
-            logger.error(
-                "Missing new maintainer github handle in request for maintainer addition"
-            )
+            logger.error(ResponseMessages.MISSING_GITHUB_HANDLE)
             return self.render_to_response(
                 {
-                    "error_msg": "Missing GitHub handle for new maintainer",
+                    "error_msg": ResponseMessages.MISSING_GITHUB_HANDLE,
                 }
             )
 
@@ -878,7 +877,7 @@ class AddMaintainerView(TemplateView):
         ):
             return self.render_to_response(
                 {
-                    "error_msg": "Already a maintainer",
+                    "error_msg": ResponseMessages.ALREADY_MAINTAINER,
                 }
             )
 
@@ -899,7 +898,7 @@ class AddMaintainerView(TemplateView):
             else:
                 return self.render_to_response(
                     {
-                        "error_msg": "Could not fetch maintainer from GitHub",
+                        "error_msg": ResponseMessages.FETCH_MAINTAINER_ERROR,
                     }
                 )
 
@@ -914,7 +913,7 @@ class AddMaintainerView(TemplateView):
                     # The maintainer is already an extra maintainer, we return an error message for the user.
                     return self.render_to_response(
                         {
-                            "error_msg": "Already added as an extra maintainer",
+                            "error_msg": ResponseMessages.ALREADY_EXTRA_MAINTAINER,
                         }
                     )
                 elif edit_object.edit_type == MaintainersEdit.EditType.REMOVE:
@@ -922,8 +921,8 @@ class AddMaintainerView(TemplateView):
                     edit.delete()
                     suggestion.save()
                 else:
-                    logger.error("Unexpected maintainer edit status")
-                    return HttpResponse(status=422)
+                    logger.error(ResponseMessages.UNEXPECTED_MAINTAINER_EDIT)
+                    return HttpResponse(status=HttpStatusCodes.UNPROCESSABLE_ENTITY)
             else:
                 edit = MaintainersEdit(
                     edit_type=MaintainersEdit.EditType.ADD,
