@@ -52,7 +52,6 @@ from django.template.loader import render_to_string
 from django.utils.decorators import method_decorator
 from django.views.generic import DetailView, ListView, TemplateView
 
-from shared.auth import isadmin, ismaintainer
 from shared.models import (
     AffectedProduct,
     Container,
@@ -74,6 +73,7 @@ from webview.constants import (
     SuggestionRoutes,
     ViewConfig,
 )
+from webview.decorators import require_maintainer_or_admin
 from webview.forms import NixpkgsIssueForm
 from webview.paginators import CustomCountPaginator
 
@@ -545,12 +545,8 @@ class SuggestionListView(ListView):
         )
         return queryset
 
+    @require_maintainer_or_admin
     def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
-        if not request.user or not (
-            isadmin(request.user) or ismaintainer(request.user)
-        ):
-            return HttpResponseForbidden()
-
         # We want to provide graceful fallback for important workflows, when users have JavaScript disabled
         js_enabled: bool = "no-js" not in request.POST
         undo_status_change: bool = "undo-status-change" in request.POST
@@ -723,12 +719,8 @@ class SelectableMaintainerView(TemplateView):
             return HttpResponseNotAllowed(["POST"])
         return super().dispatch(request, *args, **kwargs)
 
+    @require_maintainer_or_admin
     def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
-        if not request.user or not (
-            isadmin(request.user) or ismaintainer(request.user)
-        ):
-            return HttpResponseForbidden()
-
         suggestion_id = request.POST.get("suggestion_id")
         suggestion = get_object_or_404(CVEDerivationClusterProposal, id=suggestion_id)
         cached_suggestion = get_object_or_404(
@@ -837,12 +829,8 @@ class AddMaintainerView(TemplateView):
             return HttpResponseNotAllowed(["POST"])
         return super().dispatch(request, *args, **kwargs)
 
+    @require_maintainer_or_admin
     def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
-        if not request.user or not (
-            isadmin(request.user) or ismaintainer(request.user)
-        ):
-            return HttpResponseForbidden()
-
         suggestion_id = request.POST.get("suggestion_id")
         suggestion = get_object_or_404(CVEDerivationClusterProposal, id=suggestion_id)
         cached_suggestion = get_object_or_404(
