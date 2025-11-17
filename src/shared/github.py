@@ -108,12 +108,13 @@ def create_gh_issue(
 
     def additional_comment() -> str:
         if comment:
+            escaped_comment = comment.replace("`", "\\`")
             return f"""
 
 ## Additional comment
 
 ```
-{comment}
+{escaped_comment}
 ```"""
         else:
             return ""
