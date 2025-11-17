@@ -9,22 +9,27 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <link rel="stylesheet" type="text/css" href="/static/style.css" />
+    <link rel="stylesheet" type="text/css" href="/static/font.css" />
+    <link rel="stylesheet" type="text/css" href="/static/reset.css" />
+    <link rel="stylesheet" type="text/css" href="/static/utility.css" />
+    <link rel="stylesheet" type="text/css" href="/static/page-layout.css" />
+    <!-- <link rel="stylesheet" type="text/css" href="/static/style.css" /> -->
     <link rel="stylesheet" type="text/css" href="/static/notifications.css" />
     <link rel="stylesheet" type="text/css" href="/static/subscriptions.css" />
 
+    <!-- TODO Remove that: it's only used for css in affected_list -->
     {% block extra_head %}{% endblock extra_head %}
   </head>
 
   <body>
 
-    <nav class="header">
+    <nav class="header" id="header-bar">
       <h1>
         <a href="{% url 'webview:home' %}">
           Nixpkgs Security Tracker
         </a>
       </h1>
-      <ul>
+      <div>
         {% if user.is_staff %}
         <!-- TODO settings? -->
         {% endif %}
@@ -32,7 +37,7 @@
         {% block auth %}
         {% if user.is_authenticated %}
         {% get_social_accounts user as accounts %}
-        <li class="user-corner">
+        <div id="user-section">
           {% if accounts and "github" in accounts %}
             <a href="https://github.com/{{ accounts.github.0.extra_data.login }}"
                target="_blank">
@@ -50,31 +55,28 @@
           <a href="{% url 'account_logout' %}">
             Logout
           </a>
-        </li>
+        </div>
 
         {% else %}
 
-        <li>
-          <a href="{% provider_login_url 'github' next=request.get_full_path %}">
-            Login with GitHub
-          </a>
-        </li>
+        <a href="{% provider_login_url 'github' next=request.get_full_path %}">
+          Login with GitHub
+        </a>
         {% endif %}
         {% endblock %}
-      </ul>
+      </div>
     </nav>
     {% if debug %}
       <div id="testing-disclaimer">
-        <em>⚠️ You are using a <b>publicly accessible</b> testing environment.
+        <em>⚠️ You are using a <strong>publicly accessible</strong> testing environment.
         Don’t enter secrets into this system, especially not by reusing passwords for your user account.</em>
       </div>
     {% elif show_demo_disclaimer %}
       <div id="testing-disclaimer">
-        <em>⚠️ You are using a production deployment that is <b>still only suitable for demo purposes.</b>
+        <em>⚠️ You are using a production deployment that is <strong>still only suitable for demo purposes.</strong>
         Any work done in this might be wiped later without notice.</em>
       </div>
     {% endif %}
-
 
     <!-- Show Django messages, mostly for non-JS fallback -->
     {% if messages %}
@@ -85,10 +87,19 @@
     </div>
     {% endif %}
 
+    <nav id="menu-bar">
+      <ul>
+        <li><a href="/dismissed">Dismissed suggestions</a></li>
+        <li><a href="/suggestions">Untriaged suggestions</a></li>
+        <li><a href="/drafts">Draft issues</a></li>
+        <li><a href="/issues">Published issues</a></li>
+      </ul>
+    </nav>
+
     {% block layout %}
-      <article>
+      <main id="page-content">
         {% block content %}{% endblock content %}
-      </article>
+      </main>
     {% endblock layout %}
 
     {% if is_paginated %}
