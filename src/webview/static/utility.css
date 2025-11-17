@@ -1,0 +1,16 @@
+/* Utility classes */
+
+/* Prose */
+
+.prose p {
+  margin: 1em 0;
+}
+
+.prose ul {
+  list-style-type: disc;
+  padding-left: 1em;
+}
+
+.prose li {
+  margin: 1em 0;
+}
