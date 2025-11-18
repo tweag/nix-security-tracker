@@ -108,14 +108,28 @@ def create_gh_issue(
 
     def additional_comment() -> str:
         if comment:
-            escaped_comment = comment.replace("`", "\\`")
+            # Find the maximum number of consecutive backticks in the comment
+            max_backticks = 0
+            current_backticks = 0
+
+            for char in comment:
+                if char == "`":
+                    current_backticks += 1
+                    max_backticks = max(max_backticks, current_backticks)
+                else:
+                    current_backticks = 0
+
+            # Use at least 3 backticks, or one more than the maximum found in
+            # order to escape accidents or attempts at escaping the code block
+            fence_backticks = "`" * max(3, max_backticks + 1)
+
             return f"""
 
 ## Additional comment
 
-```
-{escaped_comment}
-```"""
+{fence_backticks}
+{comment}
+{fence_backticks}"""
         else:
             return ""
 
