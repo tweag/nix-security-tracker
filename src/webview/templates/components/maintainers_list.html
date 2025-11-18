@@ -2,11 +2,10 @@
 
 {% if maintainers %}
   <details
-    class="maintainers"
     id="maintainers-list-{{ suggestion_id }}"
     {% if oob_update %}hx-swap-oob="true" open{% endif %}
   >
-    <summary>
+    <summary class="heading dimmed">
       {%if selectable %}
         Notify package maintainers:
       {% else %}
@@ -15,16 +14,18 @@
       {{ maintainers | length }}
     </summary>
 
-    <div class="maintainers-list">
+    <div class="column gap">
+      <ul class="column gap-small">
       {% for maintainer in maintainers %}
-        <div class="maintainer-container">
+        <li class="maintainer-container">
           {% if selectable %}
           {% selectable_maintainer maintainer %}
           {% else %}
           {% maintainer maintainer %}
           {% endif %}
-        </div>
+        </li>
       {% endfor %}
+      </ul>
       {% if selectable %}
       {% add_maintainer %}
       {% endif %}

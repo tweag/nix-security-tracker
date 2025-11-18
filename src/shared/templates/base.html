@@ -11,11 +11,14 @@
 
     <link rel="stylesheet" type="text/css" href="/static/font.css" />
     <link rel="stylesheet" type="text/css" href="/static/reset.css" />
+    <link rel="stylesheet" type="text/css" href="/static/colors.css" />
     <link rel="stylesheet" type="text/css" href="/static/utility.css" />
     <link rel="stylesheet" type="text/css" href="/static/page-layout.css" />
+    <link rel="stylesheet" type="text/css" href="/static/cvss-tags.css" />
+    <link rel="stylesheet" type="text/css" href="/static/icons/style.css" />
     <!-- <link rel="stylesheet" type="text/css" href="/static/style.css" /> -->
-    <link rel="stylesheet" type="text/css" href="/static/notifications.css" />
-    <link rel="stylesheet" type="text/css" href="/static/subscriptions.css" />
+    <!-- <link rel="stylesheet" type="text/css" href="/static/notifications.css" /> -->
+    <!-- <link rel="stylesheet" type="text/css" href="/static/subscriptions.css" /> -->
 
     <!-- TODO Remove that: it's only used for css in affected_list -->
     {% block extra_head %}{% endblock extra_head %}
@@ -23,21 +26,21 @@
 
   <body>
 
-    <nav class="header" id="header-bar">
+    <header class="row gap spread centered wrap" id="header-bar">
       <h1>
         <a href="{% url 'webview:home' %}">
           Nixpkgs Security Tracker
         </a>
       </h1>
-      <div>
+      <div class="row gap centered">
         {% if user.is_staff %}
         <!-- TODO settings? -->
         {% endif %}
 
         {% block auth %}
+
         {% if user.is_authenticated %}
-        {% get_social_accounts user as accounts %}
-        <div id="user-section">
+          {% get_social_accounts user as accounts %}
           {% if accounts and "github" in accounts %}
             <a href="https://github.com/{{ accounts.github.0.extra_data.login }}"
                target="_blank">
@@ -48,24 +51,24 @@
           {% endif %}
           <a
             href="{% url 'webview:subscriptions:center' %}"
-            class="subscriptions-navbar-icon"
+            id="subscriptions-navbar-icon"
           >
           </a>
           {% notifications_badge user.profile.unread_notifications_count %}
           <a href="{% url 'account_logout' %}">
             Logout
           </a>
-        </div>
 
         {% else %}
 
-        <a href="{% provider_login_url 'github' next=request.get_full_path %}">
-          Login with GitHub
-        </a>
+          <a href="{% provider_login_url 'github' next=request.get_full_path %}">
+            Login with GitHub
+          </a>
         {% endif %}
         {% endblock %}
       </div>
-    </nav>
+    </header>
+
     {% if debug %}
       <div id="testing-disclaimer">
         <em>⚠️ You are using a <strong>publicly accessible</strong> testing environment.
@@ -80,19 +83,19 @@
 
     <!-- Show Django messages, mostly for non-JS fallback -->
     {% if messages %}
-    <div id="messages">
+    <div id="messages" class="column gap">
       {% for message in messages %}
-        <div class="message">{{ message }}</div>
+      <div class="{% if message.level == DEFAULT_MESSAGE_LEVELS.ERROR %}error-block{% else %}rounded-box{% endif %}">{{ message }}</div>
       {% endfor %}
     </div>
     {% endif %}
 
     <nav id="menu-bar">
       <ul>
-        <li><a href="/dismissed">Dismissed suggestions</a></li>
-        <li><a href="/suggestions">Untriaged suggestions</a></li>
-        <li><a href="/drafts">Draft issues</a></li>
-        <li><a href="/issues">Published issues</a></li>
+        <li class="row gap-small centered"><i class="icon-bin"></i><a href="/dismissed">Dismissed suggestions</a></li>
+        <li class="row gap-small centered"><i class="icon-inbox"></i><a href="/suggestions">Untriaged suggestions</a></li>
+        <li class="row gap-small centered"><i class="icon-draft"></i><a href="/drafts">Draft issues</a></li>
+        <li class="row gap-small centered"><i class="icon-github"></i><a href="/issues">Published issues</a></li>
       </ul>
     </nav>
 
