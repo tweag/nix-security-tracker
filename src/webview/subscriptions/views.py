@@ -156,16 +156,8 @@ class ToggleAutoSubscribeView(LoginRequiredMixin, TemplateView):
         profile = request.user.profile
 
         if action == "enable":
-            if profile.auto_subscribe_to_maintained_packages:
-                return self._handle_error(
-                    request, "Auto-subscription is already enabled."
-                )
             profile.auto_subscribe_to_maintained_packages = True
         else:  # disable
-            if not profile.auto_subscribe_to_maintained_packages:
-                return self._handle_error(
-                    request, "Auto-subscription is already disabled."
-                )
             profile.auto_subscribe_to_maintained_packages = False
 
         profile.save(update_fields=["auto_subscribe_to_maintained_packages"])
