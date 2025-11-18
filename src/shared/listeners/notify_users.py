@@ -24,13 +24,6 @@ def create_package_subscription_notifications(
     )
     cve_id = suggestion.cve.cve_id
 
-    # Query maintainers' GitHub usernames directly from the derivations' metadata
-    maintainers_github = list(
-        suggestion.derivations.filter(metadata__maintainers__isnull=False)
-        .values_list("metadata__maintainers__github", flat=True)
-        .distinct()
-    )
-
     if not affected_packages:
         logger.debug(f"No packages found for suggestion {suggestion.pk}")
         return
@@ -41,19 +34,23 @@ def create_package_subscription_notifications(
     ).select_related("profile")
     subscribed_users_set = set(subscribed_users_qs)
 
-    # Find maintainers of affected packages from cached suggestion
-    maintainer_users = set()
-    if maintainers_github:
-        maintainer_users = set(
-            User.objects.filter(
-                username__in=maintainers_github,
-                profile__auto_subscribe_to_maintained_packages=True,
-            ).select_related("profile")
+    # Find maintainers of affected packages with auto-subscribe enabled
+    maintainer_users_qs = (
+        User.objects.filter(
+            username__in=suggestion.derivations.filter(
+                metadata__maintainers__isnull=False
+            ).values_list("metadata__maintainers__github", flat=True),
+            profile__auto_subscribe_to_maintained_packages=True,
         )
+        .select_related("profile")
+        .distinct()
+    )
 
-        logger.debug(
-            f"Found {len(maintainer_users)} maintainers with auto-subscribe enabled for suggestion {suggestion.pk}"
-        )
+    maintainer_users = set(maintainer_users_qs)
+
+    logger.debug(
+        f"Found {len(maintainer_users)} maintainers with auto-subscribe enabled for suggestion {suggestion.pk}"
+    )
 
     # Combine both sets of users, avoiding duplicates
     all_users_to_notify = subscribed_users_set | maintainer_users
