@@ -36,9 +36,10 @@ def create_package_subscription_notifications(
         return
 
     # Find users subscribed to ANY of these packages
-    subscribed_users = User.objects.filter(
+    subscribed_users_qs = User.objects.filter(
         profile__package_subscriptions__overlap=affected_packages
     ).select_related("profile")
+    subscribed_users_set = set(subscribed_users_qs)
 
     # Find maintainers of affected packages from cached suggestion
     maintainer_users = set()
@@ -55,14 +56,14 @@ def create_package_subscription_notifications(
         )
 
     # Combine both sets of users, avoiding duplicates
-    all_users_to_notify = set(subscribed_users) | maintainer_users
+    all_users_to_notify = subscribed_users_set | maintainer_users
 
     logger.debug(f"About to notify users about packages: {affected_packages}")
     logger.debug(f"Users to notify: {all_users_to_notify}")
 
     logger.info(
         f"Creating notifications for {len(all_users_to_notify)} users for CVE {cve_id} "
-        f"({len(subscribed_users)} subscribed, {len(maintainer_users)} maintainers)"
+        f"({len(subscribed_users_set)} subscribed, {len(maintainer_users)} maintainers)"
     )
 
     for user in all_users_to_notify:
@@ -71,7 +72,7 @@ def create_package_subscription_notifications(
         notification_reason = []
 
         # Check if user is subscribed to any affected packages
-        if user in subscribed_users:
+        if user in subscribed_users_set:
             user_subscribed_packages = [
                 pkg
                 for pkg in user.profile.package_subscriptions
@@ -88,7 +89,7 @@ def create_package_subscription_notifications(
                 pkg for pkg in affected_packages if pkg not in user_affected_packages
             ]
             user_affected_packages.extend(maintainer_packages)
-            if maintainer_packages or (user not in subscribed_users):
+            if maintainer_packages or (user not in subscribed_users_set):
                 notification_reason.append("maintainer of")
 
         if not user_affected_packages:
