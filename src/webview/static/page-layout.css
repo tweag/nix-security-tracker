@@ -35,7 +35,7 @@
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 1em;
+  gap: 2em;
   padding: 1em;
 }
 
@@ -45,6 +45,7 @@
 
 #page-content {
   flex: 1;
+  width: 100%;
   max-width: 70em;
   margin: 2em auto;
   padding: 1em;

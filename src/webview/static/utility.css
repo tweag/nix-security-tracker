@@ -14,3 +14,129 @@
 .prose li {
   margin: 1em 0;
 }
+
+/* Buttons */
+
+.btn {
+  font-size: 0.8em;
+  border: solid 2px white;
+  border-radius: 0.4em;
+  padding: 0.4em 1em;
+  outline-width: 2px;
+}
+
+.btn:not(:disabled) {
+  cursor: pointer;
+}
+
+.btn:not(:disabled):hover {
+  outline-style: solid;
+}
+
+.btn-green {
+  background-color: var(--green);
+  outline-color: var(--green);
+  color: white;
+}
+
+.btn-gray {
+  background-color: var(--gray);
+  outline-color: var(--gray);
+  color: white;
+}
+
+/* Titles */
+
+.page-title {
+  font-size: 2em;
+  font-weight: bold;
+  margin: .5em 0;
+}
+
+.heading {
+  font-size: 1.2em;
+  font-weight: bold;
+}
+
+/* Text */
+
+.bold {
+  font-weight: bold;
+}
+
+.dimmed {
+  color: var(--gray);
+}
+
+/* Flexboxes */
+
+.row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+}
+
+.contents {
+  display: contents;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.spread {
+  justify-content: space-between;
+}
+
+.gap {
+  gap: 1em;
+}
+
+.gap-small {
+  gap: .5em;
+}
+
+.grow {
+  flex-grow: 1;
+}
+
+/* Containers with dividers */
+
+.dividers > *:not(:first-child) {
+  padding-top: .5em;
+}
+
+.dividers > *:not(:last-child) {
+  padding-bottom: .5em;
+}
+
+.dividers > * {
+  border-bottom: 1px solid var(--gray);
+}
+
+.dividers > *:last-child {
+  border-bottom: none;
+}
+
+/* Size */
+
+.w-20 {
+  width: 20em;
+}
+
+.basis-50 {
+  flex-basis: 50em;
+}
+
+/* Boxes */
+
+.rounded-box {
+  border: 1px solid var(--gray);
+  padding: 1em;
+  border-radius: 0.4em;
+}
