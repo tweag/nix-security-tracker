@@ -1,6 +1,6 @@
 {% load viewutils %}
 
-<article class="suggestion rounded-box column gap" hx-target="this" id="suggestion-{{ cached_suggestion.pk }}">
+<article class="rounded-box column gap" hx-target="this" id="suggestion-{{ cached_suggestion.pk }}">
   <form
     class="contents"
     method="post"
@@ -18,7 +18,7 @@
 
     <div class="row spread">
       <div class="row gap">
-        <a class="cve-id" href="https://nvd.nist.gov/vuln/detail/{{ cached_suggestion.cve_id | urlencode }}">
+        <a href="https://nvd.nist.gov/vuln/detail/{{ cached_suggestion.cve_id | urlencode }}">
           {{ cached_suggestion.cve_id }}
         </a>
         {% if cached_suggestion.metrics %}
@@ -75,7 +75,7 @@
       placeholder="Free comment: context, additional info, dismissal reason, etc."
       rows="3"
     >{{ suggestion.comment|default:"" }}</textarea>
-    <div class="change-issue-state">
+    <div class="row-reverse spread">
       {% if status_filter == "pending" %}
         <button type="submit" name="new_status" value="accepted" class="btn btn-green">
           Create draft
@@ -92,11 +92,11 @@
           Publish issue
         </button>
         {% if cached_suggestion.packages %}
-          <div class="remove-when-js-is-enabled button-with-note">
-          <button type="submit" class="btn btn-gray">
-            Purge deleted packages
-          </button>
-          <span class="note">(cannot be undone)<span>
+          <div class="remove-when-js-is-enabled row gap-small centered">
+            <button type="submit" class="btn btn-gray">
+              Purge deleted packages
+            </button>
+            <span class="dimmed">(cannot be undone)<span>
           </div>
         {% endif %}
         <button type="submit" name="new_status" value="rejected" class="btn btn-gray">
