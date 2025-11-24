@@ -243,6 +243,7 @@ async def evaluation_entrypoint(
                     await NixEvaluation.objects.filter(id=evaluation.pk).aupdate(
                         state=NixEvaluation.EvaluationState.COMPLETED,
                         elapsed=elapsed,
+                        failure_reason=None,
                         updated_at=timezone.now(),
                     )
     except Exception as e:
