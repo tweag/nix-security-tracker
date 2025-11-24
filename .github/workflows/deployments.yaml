@@ -15,7 +15,7 @@ jobs:
       matrix:
         include:
           - environment: staging
-            host: staging-tracker.security.nixos.org
+            host: tracker-staging.security.nixos.org
             branch: main
           - environment: production
             host: tracker.security.nixos.org

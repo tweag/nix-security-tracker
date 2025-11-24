@@ -25,7 +25,7 @@ If in the future we need to create more VMs and do it in a declarative way, we c
 
 ## Deploying the Security Tracker
 
-Deployments happen automatically via GitHub Actions. Whenever a merge happens on the `main` branch, a GitHub Action runs that updates the staging deployment of the tracker (staging-tracker.security.nixos.org).
+Deployments happen automatically via GitHub Actions. Whenever a merge happens on the `main` branch, a GitHub Action runs that updates the staging deployment of the tracker (tracker-staging.security.nixos.org).
 Similarly, merges on the `production` branch get automatically applied to tracker.security.nixos.org.
 
 ## Secrets
