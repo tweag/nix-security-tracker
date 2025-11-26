@@ -45,6 +45,12 @@
   color: white;
 }
 
+.btn-red {
+  background-color: var(--red);
+  outline-color: var(--red);
+  color: white;
+}
+
 /* Titles */
 
 .page-title {
@@ -184,9 +190,23 @@
   overflow: auto;
 }
 
+/* Textarea */
+
+.highlight-nonempty:not(:placeholder-shown) {
+  background-color: var(--light-yellow);
+}
+
 /* Errors */
 
-.inline-error {
+.error-block {
+  padding: 1em;
+  border-radius: 0.4em;
+  background-color: var(--red);
+  color: white;
+  font-weight: bold;
+}
+
+.error-inline {
   color: var(--red);
   font-weight: bold;
 }

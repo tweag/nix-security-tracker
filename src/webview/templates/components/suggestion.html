@@ -69,12 +69,13 @@
 
     {% if user|is_maintainer_or_admin %}
     <textarea 
-      class="suggestion-comment"
+      class="rounded-box monospace highlight-nonempty"
       name="comment" 
       maxlength="1000" 
       placeholder="Free comment: context, additional info, dismissal reason, etc."
       rows="3"
     >{{ suggestion.comment|default:"" }}</textarea>
+
     <div class="row-reverse spread">
       {% if status_filter == "pending" %}
         <button type="submit" name="new_status" value="accepted" class="btn btn-green">
@@ -108,7 +109,7 @@
   </form>
 
   {% if error_message %}
-  <div class="error-message">
+  <div class="error-block">
     {{ error_message }}
   </div>
   {% endif %}

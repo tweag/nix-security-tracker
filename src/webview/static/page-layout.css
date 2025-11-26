@@ -51,6 +51,10 @@
   padding: 1em;
 }
 
+#messages {
+  padding: 1em;
+}
+
 footer {
   display: flex;
   flex-direction: column;

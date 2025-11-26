@@ -82,9 +82,9 @@
 
     <!-- Show Django messages, mostly for non-JS fallback -->
     {% if messages %}
-    <div id="messages">
+    <div id="messages" class="column gap">
       {% for message in messages %}
-        <div class="message">{{ message }}</div>
+      <div class="{% if message.level == DEFAULT_MESSAGE_LEVELS.ERROR %}error-block{% else %}rounded-box{% endif %}">{{ message }}</div>
       {% endfor %}
     </div>
     {% endif %}
