@@ -18,10 +18,10 @@
 /* Buttons */
 
 .btn {
-  font-size: 0.8em;
+  font-size: 1em;
   border: solid 2px white;
   border-radius: 0.4em;
-  padding: 0.4em 1em;
+  padding: 0.3em 0.5em;
   outline-width: 2px;
 }
 
@@ -56,13 +56,13 @@
 .page-title {
   font-size: 2em;
   font-weight: bold;
-  margin-bottom: .5em;
+  margin-bottom: 0.5em;
 }
 
 .heading {
   font-size: 1.2em;
   font-weight: bold;
-  margin-bottom: .5em;
+  margin-bottom: 0.5em;
 }
 
 /* Text */
@@ -77,6 +77,10 @@
 
 .condensed {
   font-family: "IBM Plex Sans Condensed";
+}
+
+.uppercase {
+  text-transform: uppercase;
 }
 
 .dimmed {
@@ -137,7 +141,7 @@
 }
 
 .gap-small {
-  gap: .5em;
+  gap: 0.5em;
 }
 
 .grow {
@@ -151,11 +155,11 @@
 /* Containers with dividers */
 
 .dividers > *:not(:first-child) {
-  padding-top: .5em;
+  padding-top: 0.5em;
 }
 
 .dividers > *:not(:last-child) {
-  padding-bottom: .5em;
+  padding-bottom: 0.5em;
 }
 
 .dividers > * {
@@ -167,7 +171,6 @@
 }
 
 /* Size */
-
 
 .w-10 {
   width: 10em;
@@ -190,10 +193,39 @@
   overflow: auto;
 }
 
-/* Textarea */
+/* Toggle box */
 
-.highlight-nonempty:not(:placeholder-shown) {
-  background-color: var(--light-yellow);
+.toggler {
+  padding: 1em;
+  border-radius: 0.4em;
+  display: flex;
+  gap: 1em;
+  align-items: center;
+}
+
+.toggler::before {
+  font-size: 2.5em;
+  font-weight: bold;
+  text-align: center;
+  width: 1em;
+}
+
+.toggler-on {
+  background-color: var(--light-green);
+}
+
+.toggler-off::before {
+  content: "✕";
+  color: var(--gray);
+}
+
+.toggler-off {
+  background-color: var(--light-gray);
+}
+
+.toggler-on::before {
+  content: "✓";
+  color: var(--green);
 }
 
 /* Errors */
@@ -209,4 +241,26 @@
 .error-inline {
   color: var(--red);
   font-weight: bold;
+}
+
+/* Highlighting */
+
+@keyframes quick-highlight {
+  0% {
+    background: var(--light-yellow);
+  }
+  100% {
+  }
+}
+
+.highlight {
+  background-color: var(--light-yellow);
+}
+
+.highlight-target:target {
+  animation: quick-highlight 3s;
+}
+
+.highlight-nonempty:not(:placeholder-shown) {
+  background-color: var(--light-yellow);
 }

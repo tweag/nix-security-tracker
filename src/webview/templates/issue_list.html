@@ -3,9 +3,9 @@
 
 {% block content %}
 
-<h1>Published issues</h1>
+<h1 class="page-title row gap-small centered"><i class="icon-github"></i>Published issues</h1>
 
-<div id="issue-list" class="page-width">
+<div class="column gap">
     {% for object in object_list %}
       {% issue object True %}
     {% endfor %}
