@@ -119,6 +119,14 @@
   align-items: center;
 }
 
+.baseline {
+  align-items: baseline;
+}
+
+.align-end {
+  align-items: flex-end;
+}
+
 .column {
   display: flex;
   flex-direction: column;
@@ -226,6 +234,20 @@
 .toggler-on::before {
   content: "✓";
   color: var(--green);
+}
+
+/* Accordions (details/summary) */
+
+details > summary > .details-open {
+  display: none;
+}
+
+details[open] > summary > .details-open {
+  display: inline;
+}
+
+details[open] > summary > .details-closed {
+  display: none;
 }
 
 /* Errors */
