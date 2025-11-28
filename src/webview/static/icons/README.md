@@ -1,1 +1,0 @@
-Icons in the project are handpicked and packed in an iconmoon font. If you need to tweak that font (add/change/remove icons), you may load the json file on [icomoon](https://icomoon.io/app/#/projects), apply your changes, then regenerate a font.
