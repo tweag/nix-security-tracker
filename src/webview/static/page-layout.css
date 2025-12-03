@@ -68,6 +68,7 @@ footer {
   background-size: contain;
   background-position: left;
   background-repeat: no-repeat;
+  text-decoration: none;
 }
 
 .notifications-badge-none {
