@@ -68,22 +68,20 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
     if suggestion.derivations.count() > settings.MAX_MATCHES:
         return
 
-    relevant_data = (
-        suggestion.cve.container.prefetch_related("affected", "metrics", "descriptions")
-        .values(
+    relevant_piece = (
+        suggestion.cve.container.values(
             "title",
             # Only used for relevance checking
             "affected__package_name",
             "descriptions__value",
         )
-        .all()
+        .filter(affected__package_name__isnull=False)
+        .first()
     )
 
-    relevant_piece = [x for x in relevant_data if "affected__package_name" in x]
     if not relevant_piece:
         # No package name.
         return
-    relevant_piece = relevant_piece[0]
 
     affected_products = dict()
     all_versions = list()
