@@ -64,6 +64,7 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
         return
 
     # This is not a suggestion we want to show.
+    # FIXME(@fricklerhandwerk): Ideally there wouldn't be any in the database to begin with. [ref:max-drv-matches]
     if suggestion.derivations.count() > settings.MAX_MATCHES:
         return
 
