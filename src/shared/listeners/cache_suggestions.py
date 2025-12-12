@@ -6,6 +6,7 @@ from itertools import chain
 from typing import Any
 
 import pgpubsub
+from django.conf import settings
 from django.db.models import Prefetch
 
 from shared.channels import CVEDerivationClusterProposalCacheChannel
@@ -63,7 +64,7 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
         return
 
     # This is not a suggestion we want to show.
-    if suggestion.derivations.count() > 1_000:
+    if suggestion.derivations.count() > settings.MAX_MATCHES:
         return
 
     relevant_data = (
