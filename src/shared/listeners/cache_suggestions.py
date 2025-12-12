@@ -54,12 +54,12 @@ def to_dict(instance: Any) -> dict[str, Any]:
 
 
 def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
-    # Pre-conditions:
-    # - do we have any package_name attached?
-    if (
-        suggestion.cve.container.filter(affected__package_name__isnull=False).count()
-        == 0
-    ):
+    # Do we have any package_name attached?
+    # FIXME(@fricklerhandwerk): We shouldn't have any of these in the database in the first place.
+    # Clean it up in a migration, and add tests to assert the invariants in the data transformation that leads up to here.
+    if not suggestion.cve.container.filter(
+        affected__package_name__isnull=False
+    ).exists():
         return
 
     relevant_data = (
