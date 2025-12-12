@@ -85,28 +85,29 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
 
     affected_products = dict()
     all_versions = list()
+
     prefetched_affected_products = AffectedProduct.objects.filter(
-        container__cve=suggestion.cve
-    )
+        container__cve=suggestion.cve, package_name__isnull=False
+    ).prefetch_related("versions", "cpes")
+
     for affected_product in prefetched_affected_products:
-        if affected_product.package_name:
-            all_versions.extend(affected_product.versions.all())
-            if affected_product.package_name not in affected_products:
-                affected_products[affected_product.package_name] = {
-                    "version_constraints": set(),
-                    "cpes": set(),
-                }
-            affected_products[affected_product.package_name][
-                "version_constraints"
-            ].update(
-                [
-                    (vc.status, vc.version_constraint_str())
-                    for vc in affected_product.versions.all()
-                ]
-            )
-            affected_products[affected_product.package_name]["cpes"].update(
-                [cpe.name for cpe in affected_product.cpes.all()]
-            )
+        package_name = affected_product.package_name
+        versions = list(affected_product.versions.all())
+        all_versions.extend(versions)
+
+        if package_name not in affected_products:
+            affected_products[package_name] = {
+                "version_constraints": set(),
+                "cpes": set(),
+            }
+
+        affected_products[package_name]["version_constraints"].update(
+            (vc.status, vc.version_constraint_str()) for vc in versions
+        )
+        affected_products[package_name]["cpes"].update(
+            cpe.name for cpe in affected_product.cpes.all()
+        )
+
     for package_name, data in affected_products.items():
         affected_products[package_name]["version_constraints"] = list(
             data["version_constraints"]
