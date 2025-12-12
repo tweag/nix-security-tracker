@@ -135,18 +135,25 @@ def create_gh_issue(
 {comment}
 {fence_backticks}"""
         else:
+            logger.error("####### 6 #######")
             return ""
 
+    logger.error("####### A")
     repo = github.get_repo(f"{settings.GH_ORGANIZATION}/{settings.GH_ISSUES_REPO}")
 
     # NOTE(@fricklerhandwerk): [tag:title-fallback-hack] 3/4 of CVEs have no title, 1/2 have no description, but none has neither.
     # This hack, which we're also using in the template, can -- for now -- be expected to always work.
     # Users can still change the GitHub issue title on GitHub if the truncated description is not informative.
     if cached_suggestion.payload["title"]:
+        logger.error("####### B")
         title = cached_suggestion.payload["title"]
+        logger.error("####### C")
     elif cached_suggestion.payload["description"]:
+        logger.error("####### D")
         title = truncatewords(cached_suggestion.payload["description"], 10)
+        logger.error("####### E")
     else:
+        logger.error("####### F")
         # FIXME(@fricklerhandwerk): Do the input validation at the call site and either show a note to users that the title should be set on GitHub,
         # or offer a UI to override the title.
         title = "Security issue (missing title)"
@@ -155,6 +162,7 @@ def create_gh_issue(
             "CVE container '%s' has no title and no description",
             cached_suggestion.payload["pk"],
         )
+        logger.error("####### F")
 
     body = f"""\
 - [{cached_suggestion.payload["cve_id"]}](https://nvd.nist.gov/vuln/detail/{quote(cached_suggestion.payload["cve_id"])})
@@ -166,6 +174,7 @@ def create_gh_issue(
 {cvss_details()}
 {affected_nix_packages()}{additional_comment()}"""
 
+    logger.error("####### C")
     return repo.create_issue(title=title, body=body, labels=settings.GH_ISSUES_LABELS)
 
 

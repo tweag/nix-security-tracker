@@ -3,49 +3,11 @@
 
 {% block content %}
 
-<header class="column">
-  <!-- Back link based on status -->
-  {% if status_filter == "pending" %}
-    <a href="{% url 'webview:suggestions_view' %}">← Untriaged suggestions</a>
-  {% elif status_filter == "rejected" %}
-    <a href="{% url 'webview:dismissed_view' %}">← Dismissed suggestions</a>
-  {% elif status_filter == "accepted" %}
-    <a href="{% url 'webview:drafts_view' %}">← Drafts</a>
-  {% elif status_filter == "published" %}
-    <a href="{% url 'webview:issue_list' %}">← Issues</a>
-  {% endif %}
-  
-  <h1 class="page-title">
-    Suggestion detail
-
-  </h1>
-
-</header>
+<h1 class="page-title">Suggestion detail</h1>
 
 <div class="column gap">
-  <div class="row gap">
-    <div>
-      Current status:
-    </div>
-    <div class="row gap-small centered bold">
-      {% if status_filter == "pending" %}
-        <i class="icon-inbox"></i>
-        <div>Untriaged</div>
-      {% elif status_filter == "rejected" %}
-        <i class="icon-bin"></i>
-        <div>Dismissed</div>
-      {% elif status_filter == "accepted" %}
-        <i class="icon-draft"></i>
-        <div>Draft</div>
-      {% elif status_filter == "published" %}
-        <i class="icon-github"></i>
-        <div>Published</div>
-      {% endif %}
-    </div>
-  </div>
 
-  <!-- Use the existing suggestion component -->
-  {% suggestion suggestion cached_suggestion activity_log %}
+  {% suggestion_new suggestion activity_log %}
 </div>
 
 {% endblock content %}

@@ -214,8 +214,20 @@ def suggestion(
     return {
         "suggestion": suggestion,
         "activity_log": activity_log,
-        "status_filter": context["status_filter"],
         "page_obj": context["page_obj"],
+        "user": context["user"],
+    }
+
+
+@register.inclusion_tag("suggestions/components/suggestion.html", takes_context=True)
+def suggestion_new(
+    context: Context,
+    suggestion: CVEDerivationClusterProposal,
+    activity_log: list[FoldedEventType],
+) -> dict:
+    return {
+        "suggestion": suggestion,
+        "activity_log": activity_log,
         "user": context["user"],
     }
 

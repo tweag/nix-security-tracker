@@ -1,20 +1,36 @@
 {% load viewutils %}
 
 <article class="rounded-box column gap highlight-target" hx-target="this" id="suggestion-{{ suggestion.cached.payload.pk }}">
+  <div class="row gap-small centered">
+    {% if suggestion.status == "pending" %}
+      <i class="icon-inbox"></i>
+      <div class="bold">Untriaged</div>
+      <div>(<a href="{% url 'webview:suggestions_view' %}">browse all</a>)</div>
+    {% elif suggestion.status == "rejected" %}
+      <i class="icon-bin"></i>
+      <div class="bold">Dismissed</div>
+      <div>(<a href="{% url 'webview:dismissed_view' %}">browse all</a>)</div>
+    {% elif suggestion.status == "accepted" %}
+      <i class="icon-draft"></i>
+      <div class="bold">Draft</div>
+      <div>(<a href="{% url 'webview:drafts_view' %}">browse all</a>)</div>
+    {% elif suggestion.status == "published" %}
+      <i class="icon-github"></i>
+      <div class="bold">Published</div>
+      <div>(<a href="{% url 'webview:issue_list' %}">browse all</a>)</div>
+    {% endif %}
+  </div>
   <form
     class="contents"
     method="post"
-    action=""
+    action="{% url 'webview:suggestion:update_status' suggestion_id=suggestion.pk %}"
     hx-boost="true"
     hx-swap="outerHTML show:none"
     hx-indicator="find .state-change-indicator"
-    hx-params="not no-js"
+    hx-push-url="false"
     autocomplete="off"
   >
-    <input type="hidden" name="no-js">
     {% csrf_token %}
-    <input type="hidden" name="suggestion_id" value="{{ suggestion.cached.payload.pk }}">
-    <input type="hidden" name="page" value="{{ page_obj.number }}">
 
     <div class="row spread gap wrap">
       <div class="row gap wrap">
@@ -127,4 +143,3 @@
   </div>
   {% endif %}
 </article>
-
