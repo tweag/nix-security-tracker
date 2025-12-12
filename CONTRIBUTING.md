@@ -20,6 +20,38 @@ Run the formatter manually with:
 nix-shell --run format
 ```
 
+## Tagged comments
+
+We use these tagged comments inspired by and loosely following [PEP 450](https://peps.python.org/pep-0350/#mnemonics):
+
+- `TODO` - Unfinished change, should not occur in production
+
+  We haven't adopted this pattern from the start, so there are still many `TODO`s that should be `FIXME`s.
+  Please only replace instances when touching the respective code.
+
+  ```
+  # FIXME(@fricklerhandwerk): Remove the above note when the last instance of `TODO` is gone.
+  ```
+
+- `FIXME` - Known bad practice or hack, but too expensive or of questionable value to fix at the moment
+
+  We use this to communicate to readers of the code where careful improvements are welcome, but weren't considered critical at the time of writing and thus won't be tracked as an issue.
+  We only use issues to track desired changes to behavior observable by users.
+
+- `XXX` - Explanation for why unusual code is the way it is
+
+  We use this to ask readers for extra attention to code that may be surprising but shouldn't be changed without particular care.
+
+  We haven't adopted this pattern from the start, so there are still some `NOTE`s that should be `XXX`s.
+  Please only replace instances when touching the respective code.
+
+  ```
+  # FIXME(@fricklerhandwerk): Remove the above note when the last instance of `NOTE` is gone.
+  ```
+
+Always add your GitHub handle in parentheses -- `(@<author>)` -- so it's clear who had an opinion and may still have one during review.
+Code may move around, so [`git blame`](https://git-scm.com/docs/git-blame) won't be useful to track comment authorship.
+
 ## Setting up credentials
 
 The service connects to GitHub on startup, in order to manage permissions according to GitHub team membership in the configured organisation.
