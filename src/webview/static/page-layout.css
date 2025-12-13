@@ -1,3 +1,10 @@
+/* Page layout
+ *
+ * These define one-time use styles for the general page layout and one-time use elements. 
+ * 
+ * Recurring or reusable UI components should be defined as utility classes in utility.css.
+ */
+
 #header-bar {
   background-color: black;
   padding: 0.5em;

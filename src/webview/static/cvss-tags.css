@@ -1,5 +1,9 @@
 /* These styles are to be used only for CVSS Severity tags to match the colors
- * taken from nvd.nist.gov */
+ * taken from nvd.nist.gov
+ *
+ * These are not part of our design language, just there to mirror the official CVSS tags colors, and should not be used elsewhere.
+ *
+ * */
 
 .cvsstag {
   padding: 0 0.3em;

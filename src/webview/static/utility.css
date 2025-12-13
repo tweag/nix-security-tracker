@@ -1,6 +1,15 @@
-/* Utility classes */
+/* Utility classes
+ *
+ * Utility classes for layout, typography, and various reusable UI components.
+ * This should contain all the classes you need to style your html templates.
+ * New classes should only be added there after due consideration, and never to introduce small ad hoc variations.
+ */
 
-/* Prose */
+/* Prose
+ *
+ * .prose - Apply to containers with longer text content.
+ *          Restores expected styling (margins between paragraphs, bullets on item lists) that is removed by reset.css for the rest of the UI.
+ */
 
 .prose p {
   margin: 1em 0;
@@ -15,7 +24,16 @@
   margin: 1em 0;
 }
 
-/* Buttons */
+/* Buttons
+ *
+ * .btn - Base button style to be used on every standard button
+ * .btn-green - Green button variant
+ * .btn-gray - Gray button variant
+ * .btn-red - Red button variant
+ *
+ * Usage: Combine .btn with one of the color variants
+ * Example: <button class="btn btn-green">Publish</button>
+ */
 
 .btn {
   font-size: 1em;
@@ -51,7 +69,11 @@
   color: white;
 }
 
-/* Titles */
+/* Titles
+ *
+ * .page-title - Only for the main title of a page
+ * .heading - Box (for instance .rounded-box) or section title
+ */
 
 .page-title {
   font-size: 2em;
@@ -65,7 +87,16 @@
   margin-bottom: 0.5em;
 }
 
-/* Text */
+/* Text
+ *
+ * Typography and text styling utilities:
+ *
+ * .bold - Bold font weight
+ * .monospace - Apply monospace font
+ * .condensed - Apply condensed font
+ * .uppercase - Force uppercase
+ * .dimmed - Dimmed gray text color
+ */
 
 .bold {
   font-weight: bold;
@@ -87,15 +118,37 @@
   color: var(--gray);
 }
 
-.hl-red {
-  background-color: var(--light-red);
-}
-
-.hl-green {
-  background-color: var(--light-green);
-}
-
-/* Flexboxes */
+/* Layout
+ *
+ * Layout utilities using flexbox. Start with a required container type,
+ * then add optional alignment, spacing, and sizing classes.
+ *
+ * Required container types (choose one):
+ * .row - Display children horizontally in a row
+ * .row-reverse - Same but from right to left
+ * .inline-row - Same but the container will be inlined (e.g. in text)
+ * .column - Display children vertically in a column
+ * .contents - Removes element from the tree, as if its children were direct children of the parent.
+ *             For instance, a .column div containing a .contents form containing form inputs.
+ *
+ * Alignment of the children relative to each other:
+ * By default - At the start of container (top for rows, left for columns)
+ * .centered - Center items together (e.g. vertical centering for row items)
+ * .baseline - Baseline of the first line of text
+ * .align-end - At the end of container (bottom for rows, right for columns)
+ *
+ * Spacing (use one or none):
+ * .gap - Normal gap between items
+ * .gap-small - Small gap between items
+ * .dividers - Display a separation line between items (handles gaps, don't use .gap or .gap-small)
+ *
+ * Sizing:
+ * .full-width - Force to use all available space (width: 100%)
+ * .grow - Make an item grow in a container
+ * .spread - Force items to be spread across available space
+ *           For instance 2 elements on a .row .spread .full-width will be respectively on the far left and far right.
+ * .wrap - Allow items to wrap for responsivity. This is how responsivity is to be implemented rather than through breakpoints.
+ */
 
 .row {
   display: flex;
@@ -160,8 +213,6 @@
   flex-wrap: wrap;
 }
 
-/* Containers with dividers */
-
 .dividers > *:not(:first-child) {
   padding-top: 0.5em;
 }
@@ -178,7 +229,14 @@
   border-bottom: none;
 }
 
-/* Size */
+/* Size
+ *
+ * Fixed sizing utilities:
+ *
+ * .w-10 - Fixed width of 10em
+ * .w-20 - Fixed width of 20em
+ * .basis-20 - Flex basis of 20em
+ */
 
 .w-10 {
   width: 10em;
@@ -192,7 +250,11 @@
   flex-basis: 20em;
 }
 
-/* Boxes */
+/* Boxes
+ *
+ * .rounded-box - Bordered container with padding and rounded corners.
+ *                Includes overflow: auto for locally scrollable content.
+ */
 
 .rounded-box {
   border: 1px solid var(--gray);
@@ -201,7 +263,16 @@
   overflow: auto;
 }
 
-/* Toggle box */
+/* Toggle box
+ *
+ * Big toggler element with visual state indicators:
+ *
+ * .toggler - Base toggler container (padding, border-radius, flex layout)
+ * .toggler-on - Active/on state with green background and checkmark
+ * .toggler-off - Inactive/off state with gray background and X mark
+ *
+ * Usage: <div class="toggler toggler-on">Content</div>
+ */
 
 .toggler {
   padding: 1em;
@@ -236,7 +307,23 @@
   color: var(--green);
 }
 
-/* Accordions (details/summary) */
+/* Accordions (details/summary)
+ *
+ * Utilities for HTML details/summary elements to create expandable content.
+ * These classes should only be used if you want different title for open/closed states.
+ *
+ * .details-open - Content shown when accordion is open (hidden by default)
+ * .details-closed - Content shown when accordion is closed (hidden when open)
+ *
+ * Usage:
+ * <details>
+ *   <summary>
+ *     <span class="details-closed">Show more</span>
+ *     <span class="details-open">Show less</span>
+ *   </summary>
+ *   <div>Expandable content here</div>
+ * </details>
+ */
 
 details > summary > .details-open {
   display: none;
@@ -250,7 +337,13 @@ details[open] > summary > .details-closed {
   display: none;
 }
 
-/* Errors */
+/* Errors
+ *
+ * Error styling utilities:
+ *
+ * .error-block - Red box for error messages
+ * .error-inline - Red text for inline errors
+ */
 
 .error-block {
   padding: 1em;
@@ -265,7 +358,18 @@ details[open] > summary > .details-closed {
   font-weight: bold;
 }
 
-/* Highlighting */
+/* Highlighting
+ *
+ * Text and background highlighting utilities:
+ *
+ * .highlight - Default yellow highlight background
+ * .highlight-target - Animation highlight for anchor targets: brief highlight that fades away over 3 seconds
+ * .highlight-nonempty - Yellow background when input is not empty
+ * .hl-red - Light red background highlight
+ * .hl-green - Light green background highlight
+ *
+ * Note: @keyframes quick-highlight defines the fade animation from yellow to transparent
+ */
 
 @keyframes quick-highlight {
   0% {
@@ -277,6 +381,14 @@ details[open] > summary > .details-closed {
 
 .highlight {
   background-color: var(--light-yellow);
+}
+
+.hl-red {
+  background-color: var(--light-red);
+}
+
+.hl-green {
+  background-color: var(--light-green);
 }
 
 .highlight-target:target {
