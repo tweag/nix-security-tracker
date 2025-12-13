@@ -229,21 +229,14 @@
   border-bottom: none;
 }
 
-/* Size
- *
- * Fixed sizing utilities:
- *
- * .w-10 - Fixed width of 10em
- * .w-20 - Fixed width of 20em
- * .basis-20 - Flex basis of 20em
- */
+/* Size */
 
-.w-10 {
-  width: 10em;
+.w-12 {
+  width: 12em;
 }
 
-.w-20 {
-  width: 20em;
+.w-25 {
+  width: 25em;
 }
 
 .basis-20 {
@@ -312,6 +305,11 @@
  * Utilities for HTML details/summary elements to create expandable content.
  * These classes should only be used if you want different title for open/closed states.
  *
+ * Use on <details>
+ * .details-marker-outside - Move the arrow marker outside the container.
+ *                           This align the accordion content with its title (e.g. for presenting table-like data)
+ *
+ * Use on content in <summary>
  * .details-open - Content shown when accordion is open (hidden by default)
  * .details-closed - Content shown when accordion is closed (hidden when open)
  *
@@ -335,6 +333,14 @@ details[open] > summary > .details-open {
 
 details[open] > summary > .details-closed {
   display: none;
+}
+
+details.details-marker-outside {
+  margin-left: 1em;
+}
+
+details.details-marker-outside > summary {
+  list-style-position: outside;
 }
 
 /* Errors

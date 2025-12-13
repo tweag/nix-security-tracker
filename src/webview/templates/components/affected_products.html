@@ -7,9 +7,10 @@
       <div>
         {{ package_name }}
       </div>
-      <ul class="w-10">
+      <ul class="w-12">
         {% for status, vc_str in ap.version_constraints %}
-          <li
+          <li>
+            <span
             {% if status == 'affected'%}
             class="hl-red"
             title="Affected"
@@ -17,8 +18,7 @@
             class="hl-green"
             title="Unaffected"
             {% endif %}
-          >
-            {{ vc_str }}
+              >{{ vc_str }}</span>
           </li>
         {% endfor %}
       </ul>
