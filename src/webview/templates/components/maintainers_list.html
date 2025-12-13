@@ -1,18 +1,19 @@
 {% load viewutils %}
 
 {% if maintainers %}
-  <details
+  <div
     id="maintainers-list-{{ suggestion_id }}"
+    class="rounded-box column gap"
     {% if oob_update %}hx-swap-oob="true" open{% endif %}
   >
-    <summary class="heading dimmed">
+    <h2 class="heading dimmed">
       {%if selectable %}
         Notify package maintainers:
       {% else %}
         Package maintainers:
       {% endif %}
       {{ maintainers | length }}
-    </summary>
+    </h2>
 
     <div class="column gap">
       <ul class="column gap-small">
@@ -30,5 +31,5 @@
       {% add_maintainer %}
       {% endif %}
     </div>
-  </details>
+  </div>
 {% endif %}

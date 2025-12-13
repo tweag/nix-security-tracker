@@ -58,13 +58,13 @@
       {% else %}
         {% nixpkgs_package_list cached_suggestion.packages %}
       {% endif %}
-
-      {% if status_filter == "pending" or status_filter == "accepted" %}
-        {% selectable_maintainers_list maintainers=cached_suggestion.maintainers suggestion_id=cached_suggestion.pk %}
-      {% else %}
-        {% maintainers_list cached_suggestion.maintainers %}
-      {% endif %}
     </div>
+
+    {% if status_filter == "pending" or status_filter == "accepted" %}
+      {% selectable_maintainers_list maintainers=cached_suggestion.maintainers suggestion_id=cached_suggestion.pk %}
+    {% else %}
+      {% maintainers_list cached_suggestion.maintainers %}
+    {% endif %}
 
 
     {% if user|is_maintainer_or_admin %}
