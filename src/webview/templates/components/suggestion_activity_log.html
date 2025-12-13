@@ -30,30 +30,6 @@
     </li>
     {% for log_entry in activity_log %}
       <li class="row gap-small baseline">
-        {# Icon #}
-        {% if "package." in log_entry.action %}
-          {% if ".add" in log_entry.action %}
-            <i class="icon-folder-plus"></i>
-          {% else %}
-            <i class="icon-folder-minus"></i>
-          {% endif %}
-        {% elif "maintainers." in log_entry.action %}
-          {% if ".add" in log_entry.action %}
-            <i class="icon-user-plus"></i>
-          {% else %}
-            <i class="icon-user-minus"></i>
-          {% endif %}
-        {% else %}
-          {% if "accepted" in log_entry.status_value  %}
-            <i class="icon-draft"></i>
-          {% elif "rejected" in log_entry.status_value %}
-            <i class="icon-bin"></i>
-          {% elif "pending" in log_entry.status_value %}
-            <i class="icon-inbox"></i>
-          {% else %}
-            {{ log_entry.action }}
-          {% endif %}
-        {% endif %}
         <strong>@{{ log_entry.username }}</strong>
         {% if "package." in log_entry.action %}
         {# Package update entries #}
@@ -115,6 +91,30 @@
         >
           {{ log_entry.timestamp|naturaltime }}
         </span>
+        {# Icon #}
+        {% if "package." in log_entry.action %}
+          {% if ".add" in log_entry.action %}
+            <i class="icon-folder-plus"></i>
+          {% else %}
+            <i class="icon-folder-minus"></i>
+          {% endif %}
+        {% elif "maintainers." in log_entry.action %}
+          {% if ".add" in log_entry.action %}
+            <i class="icon-user-plus"></i>
+          {% else %}
+            <i class="icon-user-minus"></i>
+          {% endif %}
+        {% else %}
+          {% if "accepted" in log_entry.status_value  %}
+            <i class="icon-draft"></i>
+          {% elif "rejected" in log_entry.status_value %}
+            <i class="icon-bin"></i>
+          {% elif "pending" in log_entry.status_value %}
+            <i class="icon-inbox"></i>
+          {% else %}
+            {{ log_entry.action }}
+          {% endif %}
+        {% endif %}
       </li>
     {% endfor %}
   </ul>
