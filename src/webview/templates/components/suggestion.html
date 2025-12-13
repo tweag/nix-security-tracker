@@ -78,18 +78,22 @@
 
     <div class="row-reverse spread">
       {% if status_filter == "pending" %}
-        <button type="submit" name="new_status" value="accepted" class="btn btn-green">
+        <button type="submit" name="new_status" value="accepted" class="btn btn-green row gap-small centered">
+          <i class="icon-draft"></i>
           Create draft
         </button>
-        <button type="submit" name="new_status" value="rejected" class="btn btn-gray">
+        <button type="submit" name="new_status" value="rejected" class="btn btn-gray row gap-small centered">
+          <i class="icon-bin"></i>
           Dismiss
         </button>
       {% elif status_filter == "rejected" %}
-        <button type="submit" name="new_status" value="accepted" class="btn btn-green">
+        <button type="submit" name="new_status" value="accepted" class="btn btn-green row gap-small centered">
+          <i class="icon-draft"></i>
           Convert to draft
         </button>
       {% elif status_filter == "accepted" %}
-        <button type="submit" name="new_status" value="published" class="btn btn-green">
+        <button type="submit" name="new_status" value="published" class="btn btn-green row gap-small centered">
+          <i class="icon-github"></i>
           Publish issue
         </button>
         {% if cached_suggestion.packages %}
@@ -100,7 +104,8 @@
             <span class="dimmed">(cannot be undone)<span>
           </div>
         {% endif %}
-        <button type="submit" name="new_status" value="rejected" class="btn btn-gray">
+        <button type="submit" name="new_status" value="rejected" class="btn btn-gray row gap-small centered">
+          <i class="icon-bin"></i>
           Dismiss
         </button>
       {% endif %}

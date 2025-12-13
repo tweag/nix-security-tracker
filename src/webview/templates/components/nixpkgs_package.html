@@ -8,7 +8,7 @@
   <ul class="w-20 column">
     {% for major_channel, major_version in pdata.versions %}
       <li>
-        <details {% if major_version.uniform_versions %}open{% endif %}>
+        <details {% if major_version.uniform_versions %}open{% endif %} class="condensed">
           <summary>
             <div class="inline-row gap-small wrap">
               <span class="w-10">{{ major_channel }}</span>
