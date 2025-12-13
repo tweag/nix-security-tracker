@@ -16,8 +16,8 @@
     <input type="hidden" name="suggestion_id" value="{{ cached_suggestion.pk }}">
     <input type="hidden" name="page" value="{{ page_obj.number }}">
 
-    <div class="row spread">
-      <div class="row gap">
+    <div class="row spread gap wrap">
+      <div class="row gap wrap">
         <a href="https://nvd.nist.gov/vuln/detail/{{ cached_suggestion.cve_id | urlencode }}">
           {{ cached_suggestion.cve_id }}
         </a>
