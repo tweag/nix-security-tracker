@@ -314,3 +314,30 @@ Sentry-like collectors are endpoints where we ship error information from the Py
 Collectors are configured using [a DSN, i.e. a data source name.](https://docs.sentry.io/concepts/key-terms/dsn-explainer/) in Sentry parlance, this is where events are sent to.
 
 You can set `GLITCHTIP_DSN` as a credential secret with a DSN and this will connect to a Sentry-like endpoint via your DSN.
+
+# Styling
+
+This project uses plain CSS with a utility-class approach. Utility classes make it possible to reuse sec-traker's existing UI elements without needing contributors to write any css.
+Rather than styling semantic classes, utility classes refer to UI elements directly.
+E.g. `rounded-box` for a standard container with rounded corners that we reuse across the project.
+Flex containers are use extensively as they are versatile and responsive.
+E.g `row` + `gap` + `center` to organize elements on a row, separated by gaps of the same standard size, and centered vertically.
+
+This design gives us a simple UI language that is easy to deploy and consistent (consistent colors, space sizes, etc).
+
+## Architecture
+
+The CSS is organized into multiple CSS files, in `src/webview/static`, that are loaded in `src/shared/templates/base.html`. Consult each one for role and documentation. `utility.css` should contain all the classes you need for html templates.
+
+## Icons
+
+Icons rely on a custom icomoon webfont and class definitions to be used with the `<i>` tag. Consult [src/webview/static/icons/README.md] for details.
+
+## Adding New Styles
+
+Adding new styles should be a last resort:
+
+1. **Check existing utilities first in utility.css** - Reusing what exists is what guarantees UI consistency and mainainability
+2. **Add to utility.css** - If it's a real new and reusable pattern, add it as a utility class
+3. **Use consistent naming** - Follow the existing naming conventions
+4. **Document new utilities** - Update this guide if adding significant new patterns
