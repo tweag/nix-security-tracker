@@ -69,7 +69,7 @@ rec {
         DJANGO_SETTINGS = builtins.toJSON {
           DEBUG = true;
           PRODUCTION = false;
-          SYNC_GITHUB_STATE_AT_STARTUP = true;
+          SYNC_GITHUB_STATE_AT_STARTUP = false;
           GH_ISSUES_PING_MAINTAINERS = false;
           GH_ORGANIZATION = "Nix-Security-WG";
           GH_ISSUES_REPO = "sectracker-testing";
