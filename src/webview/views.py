@@ -9,7 +9,6 @@ from django.db import transaction
 from django.urls import reverse
 
 from shared.github import create_gh_issue, fetch_user_info
-from shared.listeners.cache_issues import CachedNixpkgsIssuePayload
 from shared.listeners.cache_suggestions import apply_package_edits, maintainers_list
 from shared.logs.batches import batch_events
 from shared.logs.events import remove_canceling_events
@@ -77,7 +76,6 @@ class NixpkgsIssueView(DetailView):
         issue = cast(
             NixpkgsIssue, get_object_or_404(self.model, code=self.kwargs.get("code"))
         )
-        issue.cached_payload = CachedNixpkgsIssuePayload(**issue.cached.payload)  # type: ignore
         return issue
 
 
@@ -89,8 +87,6 @@ class NixpkgsIssueListView(ListView):
     # TODO Because of how issue codes and cached issues are generated (post save / post insert), it is not trivial to ensure new issues get their code filled up in the cached issue (unless `manage regenerate_cached_issues` is run by hand). Since the view needs the issue code, for now, the cached issue is passed as an additional field instead of being the returned object.
     def get_queryset(self) -> BaseManager[NixpkgsIssue]:
         issues = NixpkgsIssue.objects.all().order_by("-created")
-        for issue in issues:
-            issue.cached_payload = CachedNixpkgsIssuePayload(**issue.cached.payload)  # type: ignore
         return issues
 
     def get_context_data(self, **kwargs: Any) -> Any:
@@ -323,7 +319,7 @@ class SuggestionListView(ListView):
         if status_change and new_status == "published":
             try:
                 with transaction.atomic():
-                    tracker_issue = suggestion.create_nixpkgs_issue()
+                    tracker_issue = NixpkgsIssue.create_nixpkgs_issue(suggestion)
                     tracker_issue_link = request.build_absolute_uri(
                         reverse("webview:issue_detail", args=[tracker_issue.code])
                     )
