@@ -1,6 +1,6 @@
 from django.db import migrations, models
 import django.db.models.deletion
-
+import pgtrigger.migrations
 
 def initialize_suggestion_field(apps, schema_editor):
     """Initialize the suggestion field for existing issues by matching CVE IDs."""
@@ -44,29 +44,46 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # First add the field as nullable
         migrations.AddField(
             model_name='nixpkgsissue',
             name='suggestion',
-            field=models.OneToOneField(
-                null=True,
-                blank=True,
-                on_delete=django.db.models.deletion.PROTECT, 
-                to='shared.cvederivationclusterproposal'
-            ),
+            field=models.OneToOneField(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, to='shared.cvederivationclusterproposal'),
         ),
         # Then populate the field with data
         migrations.RunPython(
             initialize_suggestion_field,
             reverse_initialize_suggestion_field,
         ),
-        # Finally make the field non-nullable
         migrations.AlterField(
             model_name='nixpkgsissue',
             name='suggestion',
-            field=models.OneToOneField(
-                on_delete=django.db.models.deletion.PROTECT,
-                to='shared.cvederivationclusterproposal'
-            ),
+            field=models.OneToOneField(on_delete=django.db.models.deletion.PROTECT, to='shared.cvederivationclusterproposal'),
+        ),
+        migrations.RemoveField(
+            model_name='nixpkgsissue',
+            name='comment',
+        ),
+        migrations.RemoveField(
+            model_name='nixpkgsissue',
+            name='cve',
+        ),
+        migrations.RemoveField(
+            model_name='nixpkgsissue',
+            name='description',
+        ),
+        migrations.RemoveField(
+            model_name='cachednixpkgsissue',
+            name='issue',
+        ),
+        pgtrigger.migrations.RemoveTrigger(
+            model_name='nixpkgsissue',
+            name='pgpubsub_caec7',
+        ),
+        migrations.DeleteModel(
+            name='CachedNixpkgsIssue',
+        ),
+        migrations.RemoveField(
+            model_name='nixpkgsissue',
+            name='derivations',
         ),
     ]
