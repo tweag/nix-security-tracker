@@ -30,13 +30,6 @@ def initialize_suggestion_field(apps, schema_editor):
                 issue.suggestion = suggestion
                 issue.save(update_fields=['suggestion'])
 
-
-def reverse_initialize_suggestion_field(apps, schema_editor):
-    """Reverse migration - clear suggestion field."""
-    NixpkgsIssue = apps.get_model('shared', 'NixpkgsIssue')
-    NixpkgsIssue.objects.update(suggestion=None)
-
-
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -50,10 +43,7 @@ class Migration(migrations.Migration):
             field=models.OneToOneField(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, to='shared.cvederivationclusterproposal'),
         ),
         # Then populate the field with data
-        migrations.RunPython(
-            initialize_suggestion_field,
-            reverse_initialize_suggestion_field,
-        ),
+        migrations.RunPython(initialize_suggestion_field),
         migrations.AlterField(
             model_name='nixpkgsissue',
             name='suggestion',
