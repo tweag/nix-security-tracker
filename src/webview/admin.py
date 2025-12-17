@@ -135,5 +135,4 @@ class NixpkgsIssueAdmin(AutocompleteMixin, admin.ModelAdmin):
     readonly_fields = ["code"]
 
 
-# admin.site.register(CVEDerivationClusterProposal)
 admin.site.register(DerivationClusterProposalLink)
