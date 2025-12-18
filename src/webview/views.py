@@ -78,6 +78,18 @@ class NixpkgsIssueView(DetailView):
         )
         return issue
 
+    def get_context_data(self, **kwargs: Any) -> Any:
+        context = super().get_context_data(**kwargs)
+        issue = self.get_object()
+
+        # Fetch activity log
+        raw_events = fetch_suggestion_events(issue.suggestion.pk)
+        context["activity_log"] = batch_events(
+            remove_canceling_events(raw_events, sort=True)
+        )
+
+        return context
+
 
 class NixpkgsIssueListView(ListView):
     template_name = "issue_list.html"
@@ -94,6 +106,13 @@ class NixpkgsIssueListView(ListView):
         context["adjusted_elided_page_range"] = context[
             "paginator"
         ].get_elided_page_range(context["page_obj"].number)
+
+        # Fetch activity logs
+        for issue in context["object_list"]:
+            raw_events = fetch_suggestion_events(issue.suggestion.pk)
+            filtered_events = remove_canceling_events(raw_events, sort=True)
+            issue.activity_log = batch_events(filtered_events)
+
         return context
 
 
@@ -237,7 +256,6 @@ class SuggestionListView(ListView):
             this function.
             """
             return {
-                "cached_suggestion": cached_suggestion.payload,
                 "suggestion": suggestion,
                 "activity_log": activity_log,
                 "status_filter": self.status_filter,
@@ -349,7 +367,6 @@ class SuggestionListView(ListView):
                 snippet = render_to_string(
                     "components/suggestion.html",
                     {
-                        "cached_suggestion": cached_suggestion.payload,
                         "suggestion": suggestion,
                         "activity_log": fresh_activity_log,
                         "status_filter": self.status_filter,
