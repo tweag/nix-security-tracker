@@ -96,7 +96,7 @@ def drv(db: None, evaluation: NixEvaluation) -> NixDerivation:
 def suggestion(cve: Container, drv: NixDerivation) -> CVEDerivationClusterProposal:
     suggestion = CVEDerivationClusterProposal.objects.create(
         status="pending",
-        cve_id=cve.pk,
+        cve=cve.cve,
     )
 
     DerivationClusterProposalLink.objects.create(
