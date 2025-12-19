@@ -27,6 +27,31 @@ from shared.models.nix_evaluation import (
 )
 
 
+def test_dismiss_requires_comment_htmx(
+    db: None,
+    authenticated_client: Client,
+    cached_suggestion: CVEDerivationClusterProposal,
+) -> None:
+    """Test that dismissing a suggestion requires a comment (HTMX case)"""
+    url = reverse("webview:suggestions_view")
+
+    # Try to dismiss without a comment using HTMX
+    response = authenticated_client.post(
+        url,
+        {
+            "suggestion_id": cached_suggestion.pk,
+            "new_status": "rejected",
+            "comment": "",  # Empty comment
+        },
+        HTTP_HX_REQUEST="true",  # Simulate HTMX request
+    )
+
+    # Should return 200 with error_message in context for HTMX
+    assert response.status_code == 200
+    assert "error_message" in response.context
+    assert response.context["error_message"] == "You must provide a dismissal comment"
+
+
 class CommentTests(TestCase):
     def setUp(self) -> None:
         # Create user and log in
@@ -121,28 +146,6 @@ class CommentTests(TestCase):
         # Cache the suggestion
         cache_new_suggestions(self.suggestion)
         self.suggestion.refresh_from_db()
-
-    def test_dismiss_requires_comment_htmx(self) -> None:
-        """Test that dismissing a suggestion requires a comment (HTMX case)"""
-        url = reverse("webview:suggestions_view")
-
-        # Try to dismiss without a comment using HTMX
-        response = self.client.post(
-            url,
-            {
-                "suggestion_id": self.suggestion.pk,
-                "new_status": "rejected",
-                "comment": "",  # Empty comment
-            },
-            HTTP_HX_REQUEST="true",  # Simulate HTMX request
-        )
-
-        # Should return 200 with error_message in context for HTMX
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("error_message", response.context)
-        self.assertEqual(
-            response.context["error_message"], "You must provide a dismissal comment"
-        )
 
     def test_dismiss_requires_comment_no_js(self) -> None:
         """Test that dismissing a suggestion requires a comment (no-JS case)"""
