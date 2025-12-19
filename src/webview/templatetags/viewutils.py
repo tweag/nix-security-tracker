@@ -17,14 +17,9 @@ from webview.models import Notification
 register = template.Library()
 
 
-class VersionInfo(TypedDict):
-    major_version: str | None
-    uniform_versions: bool
-    sub_branches: list[tuple[str, CachedSuggestion.PackageOnBranch]]
-
-
 class Package(TypedDict):
-    items: dict[str, str | list[str] | VersionInfo]
+    description: str
+    channels: dict[str, CachedSuggestion.PackageOnPrimaryChannel]
 
 
 class DerivationFields(TypedDict):

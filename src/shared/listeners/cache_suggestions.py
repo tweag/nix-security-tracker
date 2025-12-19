@@ -44,6 +44,15 @@ class CachedSuggestion(BaseModel):
         status: Version.Status
         src_position: str | None
 
+    class PackageOnPrimaryChannel(BaseModel):
+        # Package version on the primary ("major") channel
+        major_version: str | None
+        status: Version.Status | None
+        # Whether package version is the same for all branches where the package appears
+        uniform_versions: bool | None
+        src_position: str | None
+        sub_branches: dict[str, "CachedSuggestion.PackageOnBranch"]
+
     pk: int
     cve_id: str
     title: str
@@ -265,43 +274,46 @@ def channel_structure(
     """
     packages = dict()
     for derivation in derivations:
-        attribute = derivation.attribute
-        _, version = parse_drv_name(derivation.name)
-        if attribute not in packages:
-            packages[attribute] = {
+        attribute_path = derivation.attribute
+        _, package_version = parse_drv_name(derivation.name)
+        if attribute_path not in packages:
+            packages[attribute_path] = {
                 "versions": {},
                 "derivation_ids": [],
                 "maintainers": [],
             }
             if derivation.metadata:
                 if derivation.metadata.description:
-                    packages[attribute]["description"] = derivation.metadata.description
-                packages[attribute]["maintainers"] = [
+                    packages[attribute_path]["description"] = (
+                        derivation.metadata.description
+                    )
+                packages[attribute_path]["maintainers"] = [
                     to_dict(m) for m in derivation.metadata.prefetched_maintainers
                 ]
-        packages[attribute]["derivation_ids"].append(derivation.pk)
+        packages[attribute_path]["derivation_ids"].append(derivation.pk)
         branch_name = derivation.parent_evaluation.channel.channel_branch
         major_channel = get_major_channel(branch_name)
         # FIXME This quietly drops unfamiliar branch names
         if major_channel:
-            versions = packages[attribute]["versions"]
+            versions = packages[attribute_path]["versions"]
             if major_channel not in versions:
-                versions[major_channel] = {
-                    "major_version": None,
-                    "status": None,
-                    "uniform_versions": None,
-                    "src_position": None,
-                    "sub_branches": dict(),
-                }
+                versions[major_channel] = CachedSuggestion.PackageOnPrimaryChannel(
+                    major_version=None,
+                    status=None,
+                    src_position=None,
+                    # FIXME(@fricklerhandwerk): If this is not replaced in subsequent processing, it will display "???"
+                    uniform_versions=None,
+                    sub_branches=dict(),
+                )
             if branch_name == major_channel:
-                versions[major_channel]["major_version"] = version
-                versions[major_channel]["src_position"] = get_src_position(derivation)
+                versions[major_channel].major_version = package_version
+                versions[major_channel].src_position = get_src_position(derivation)
             else:
-                versions[major_channel]["sub_branches"][branch_name] = (
+                versions[major_channel].sub_branches[branch_name] = (
                     CachedSuggestion.PackageOnBranch(
-                        version=version,
+                        version=package_version,
                         status=is_version_affected(
-                            [v.is_affected(version) for v in version_constraints]
+                            [c.affects(package_version) for c in version_constraints]
                         ),
                         src_position=get_src_position(derivation),
                     )
@@ -310,24 +322,25 @@ def channel_structure(
         versions = packages[package_name]["versions"]
         for mc in versions.keys():
             uniform_versions = True
-            major_version = versions[mc]["major_version"]
-            versions[mc]["status"] = is_version_affected(
-                [v.is_affected(major_version) for v in version_constraints]
+            major_version = versions[mc].major_version
+            versions[mc].status = is_version_affected(
+                [c.affects(major_version) for c in version_constraints]
             )
-            for _branch_name, vdata in versions[mc]["sub_branches"].items():
+            for branch in versions[mc].sub_branches.values():
                 uniform_versions = (
-                    uniform_versions and str(major_version) == vdata["version"]
+                    uniform_versions and str(major_version) == branch.version
                 )
-            versions[mc]["uniform_versions"] = uniform_versions
+            versions[mc].uniform_versions = uniform_versions
             # We just sort branch names by length to get a good-enough order
-            versions[mc]["sub_branches"] = sorted(
-                versions[mc]["sub_branches"].items(),
-                reverse=True,
-                key=lambda item: len(item[0]),
+            versions[mc].sub_branches = dict(
+                sorted(
+                    versions[mc].sub_branches.items(),
+                    reverse=True,
+                )
             )
         # Sorting major channel names happens to work out well for bringing them into historical order
-        packages[package_name]["versions"] = sorted(
-            packages[package_name]["versions"].items()
+        packages[package_name]["versions"] = dict(
+            sorted(packages[package_name]["versions"].items())
         )
     return packages
 
