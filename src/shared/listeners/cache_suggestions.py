@@ -281,8 +281,9 @@ def channel_structure(
         major_channel = get_major_channel(branch_name)
         # FIXME This quietly drops unfamiliar branch names
         if major_channel:
-            if major_channel not in packages[attribute]["versions"]:
-                packages[attribute]["versions"][major_channel] = {
+            versions = packages[attribute]["versions"]
+            if major_channel not in versions:
+                versions[major_channel] = {
                     "major_version": None,
                     "status": None,
                     "uniform_versions": None,
@@ -290,16 +291,10 @@ def channel_structure(
                     "sub_branches": dict(),
                 }
             if branch_name == major_channel:
-                packages[attribute]["versions"][major_channel]["major_version"] = (
-                    version
-                )
-                packages[attribute]["versions"][major_channel]["src_position"] = (
-                    get_src_position(derivation)
-                )
+                versions[major_channel]["major_version"] = version
+                versions[major_channel]["src_position"] = get_src_position(derivation)
             else:
-                packages[attribute]["versions"][major_channel]["sub_branches"][
-                    branch_name
-                ] = {
+                versions[major_channel]["sub_branches"][branch_name] = {
                     "version": version,
                     "status": is_version_affected(
                         [v.is_affected(version) for v in version_constraints]
@@ -307,22 +302,21 @@ def channel_structure(
                     "src_position": get_src_position(derivation),
                 }
     for package_name in packages:
-        for mc in packages[package_name]["versions"].keys():
+        versions = packages[package_name]["versions"]
+        for mc in versions.keys():
             uniform_versions = True
-            major_version = packages[package_name]["versions"][mc]["major_version"]
-            packages[package_name]["versions"][mc]["status"] = is_version_affected(
+            major_version = versions[mc]["major_version"]
+            versions[mc]["status"] = is_version_affected(
                 [v.is_affected(major_version) for v in version_constraints]
             )
-            for _branch_name, vdata in packages[package_name]["versions"][mc][
-                "sub_branches"
-            ].items():
+            for _branch_name, vdata in versions[mc]["sub_branches"].items():
                 uniform_versions = (
                     uniform_versions and str(major_version) == vdata["version"]
                 )
-            packages[package_name]["versions"][mc]["uniform_versions"]
+            versions[mc]["uniform_versions"] = uniform_versions
             # We just sort branch names by length to get a good-enough order
-            packages[package_name]["versions"][mc]["sub_branches"] = sorted(
-                packages[package_name]["versions"][mc]["sub_branches"].items(),
+            versions[mc]["sub_branches"] = sorted(
+                versions[mc]["sub_branches"].items(),
                 reverse=True,
                 key=lambda item: len(item[0]),
             )
