@@ -52,6 +52,43 @@ def test_dismiss_requires_comment_htmx(
     assert response.context["error_message"] == "You must provide a dismissal comment"
 
 
+def test_dismiss_requires_comment_no_js(
+    authenticated_client: Client, cached_suggestion: CVEDerivationClusterProposal
+) -> None:
+    """Test that dismissing a suggestion requires a comment (no-JS case)"""
+    url = reverse("webview:suggestions_view")
+
+    # Try to dismiss without a comment (non-JS behavior)
+    response = authenticated_client.post(
+        url,
+        {
+            "suggestion_id": cached_suggestion.pk,
+            "new_status": "rejected",
+            "comment": "",  # Empty comment
+            "no-js": "",  # Indicate non-JS mode
+        },
+    )
+
+    # Should redirect back to the same page
+    assert response.status_code == 302
+
+    # Follow the redirect and check for Django messages
+    follow_response = authenticated_client.get(url)
+    assert follow_response.status_code == 200
+
+    # Check that the correct error message was added to Django messages
+    messages = list(get_messages(follow_response.wsgi_request))
+    assert len(messages) == 1
+    assert str(messages[0]) == "You must provide a dismissal comment"
+
+    # Verify the suggestion is still in the suggestions view (not dismissed)
+    suggestions = follow_response.context["object_list"]
+    our_suggestion = next(
+        (s for s in suggestions if s.proposal_id == cached_suggestion.pk), None
+    )
+    assert our_suggestion is not None, "Suggestion should still be in pending status"
+
+
 class CommentTests(TestCase):
     def setUp(self) -> None:
         # Create user and log in
@@ -146,42 +183,6 @@ class CommentTests(TestCase):
         # Cache the suggestion
         cache_new_suggestions(self.suggestion)
         self.suggestion.refresh_from_db()
-
-    def test_dismiss_requires_comment_no_js(self) -> None:
-        """Test that dismissing a suggestion requires a comment (no-JS case)"""
-        url = reverse("webview:suggestions_view")
-
-        # Try to dismiss without a comment (non-JS behavior)
-        response = self.client.post(
-            url,
-            {
-                "suggestion_id": self.suggestion.pk,
-                "new_status": "rejected",
-                "comment": "",  # Empty comment
-                "no-js": "",  # Indicate non-JS mode
-            },
-        )
-
-        # Should redirect back to the same page
-        self.assertEqual(response.status_code, 302)
-
-        # Follow the redirect and check for Django messages
-        follow_response = self.client.get(url)
-        self.assertEqual(follow_response.status_code, 200)
-
-        # Check that the correct error message was added to Django messages
-        messages = list(get_messages(follow_response.wsgi_request))
-        self.assertEqual(len(messages), 1)
-        self.assertEqual(str(messages[0]), "You must provide a dismissal comment")
-
-        # Verify the suggestion is still in the suggestions view (not dismissed)
-        suggestions = follow_response.context["object_list"]
-        our_suggestion = next(
-            (s for s in suggestions if s.proposal_id == self.suggestion.pk), None
-        )
-        self.assertIsNotNone(
-            our_suggestion, "Suggestion should still be in pending status"
-        )
 
     def test_dismiss_with_comment_succeeds(self) -> None:
         """Test that dismissing with a comment works and the comment appears in the view context"""
