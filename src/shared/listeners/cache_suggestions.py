@@ -41,7 +41,6 @@ class CachedSuggestion(BaseModel):
 
     pk: int
     cve_id: str
-    package_name: str
     title: str
     description: str | None
     affected_products: dict[str, AffectedProduct]
@@ -162,7 +161,6 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
     only_relevant_data = CachedSuggestion(
         pk=suggestion.pk,
         cve_id=suggestion.cve.cve_id,
-        package_name=relevant_piece["affected__package_name"],
         title=relevant_piece["title"],
         description=relevant_piece["descriptions__value"],
         affected_products=affected_products,
