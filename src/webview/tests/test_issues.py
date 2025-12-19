@@ -75,6 +75,47 @@ def test_publish_gh_issue_empty_title(
     assert suggestion.status == CVEDerivationClusterProposal.Status.PUBLISHED
 
 
+def test_publish_gh_issue_empty_description(
+    db: None,
+    cve: Container,
+    suggestion: CVEDerivationClusterProposal,
+    authenticated_client: Client,
+) -> None:
+    """Test that creating a GitHub issue will succeed and update suggestion status, despite no CVE description"""
+    # [tag:test-github-create_issue-description]
+
+    url = reverse("webview:drafts_view")
+    cve.descriptions.clear()
+    cve.save()
+    suggestion.status = CVEDerivationClusterProposal.Status.ACCEPTED
+    suggestion.save()
+    cache_new_suggestions(suggestion)
+
+    # FIXME(@fricklerhandwerk): Mock Github's `create_issue()` here, not our own procedure! [ref:todo-github-connection]
+    with patch("webview.views.create_gh_issue") as mock:
+        mock.side_effect = lambda *args, **kwargs: create_gh_issue(
+            *args,
+            github=MockGithub(expected_issue_title="Dummy Title"),  # type: ignore
+            **kwargs,
+        )
+        response = authenticated_client.post(
+            url,
+            {
+                "suggestion_id": suggestion.pk,
+                "new_status": "published",
+                "comment": "",  # Empty comment
+            },
+        )
+        mock.assert_called()
+
+    messages = list(get_messages(response.wsgi_request))
+    assert not any(m.level_tag == "error" for m in messages), (
+        "Errors on issue submission"
+    )
+    suggestion.refresh_from_db()
+    assert suggestion.status == CVEDerivationClusterProposal.Status.PUBLISHED
+
+
 class IssueTests(TestCase):
     def setUp(self) -> None:
         # Create user and log in
@@ -169,42 +210,3 @@ class IssueTests(TestCase):
         # Cache the suggestion
         cache_new_suggestions(self.suggestion)
         self.suggestion.refresh_from_db()
-
-    def test_publish_gh_issue_empty_description(self) -> None:
-        """Test that creating a GitHub issue will succeed and update suggestion status, despite no CVE description"""
-        # [tag:test-github-create_issue-description]
-
-        url = reverse("webview:drafts_view")
-        self.cve_container.descriptions.clear()
-        self.cve_container.save()
-        self.suggestion.status = CVEDerivationClusterProposal.Status.ACCEPTED
-        self.suggestion.save()
-        cache_new_suggestions(self.suggestion)
-
-        # FIXME(@fricklerhandwerk): Mock Github's `create_issue()` here, not our own procedure! [ref:todo-github-connection]
-        with patch("webview.views.create_gh_issue") as mock:
-            mock.side_effect = lambda *args, **kwargs: create_gh_issue(
-                *args,
-                github=MockGithub(expected_issue_title="Dummy Title"),  # type: ignore
-                **kwargs,
-            )
-
-            response = self.client.post(
-                url,
-                {
-                    "suggestion_id": self.suggestion.pk,
-                    "new_status": "published",
-                    "comment": "",  # Empty comment
-                },
-            )
-
-        messages = list(get_messages(response.wsgi_request))
-        self.assertFalse(
-            any(m.level_tag == "error" for m in messages),
-            "Errors on issue submission",
-        )
-        self.suggestion.refresh_from_db()
-        self.assertEqual(
-            self.suggestion.status,
-            CVEDerivationClusterProposal.Status.PUBLISHED,
-        )
