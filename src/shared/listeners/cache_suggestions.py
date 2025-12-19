@@ -39,6 +39,11 @@ class CachedSuggestion(BaseModel):
         def from_set(self, value):
             return list(value)
 
+    class PackageOnBranch(BaseModel):
+        version: str
+        status: Version.Status
+        src_position: str | None
+
     pk: int
     cve_id: str
     title: str
@@ -292,13 +297,15 @@ def channel_structure(
                 versions[major_channel]["major_version"] = version
                 versions[major_channel]["src_position"] = get_src_position(derivation)
             else:
-                versions[major_channel]["sub_branches"][branch_name] = {
-                    "version": version,
-                    "status": is_version_affected(
-                        [v.is_affected(version) for v in version_constraints]
-                    ),
-                    "src_position": get_src_position(derivation),
-                }
+                versions[major_channel]["sub_branches"][branch_name] = (
+                    CachedSuggestion.PackageOnBranch(
+                        version=version,
+                        status=is_version_affected(
+                            [v.is_affected(version) for v in version_constraints]
+                        ),
+                        src_position=get_src_position(derivation),
+                    )
+                )
     for package_name in packages:
         versions = packages[package_name]["versions"]
         for mc in versions.keys():

@@ -20,7 +20,7 @@ register = template.Library()
 class VersionInfo(TypedDict):
     major_version: str | None
     uniform_versions: bool
-    sub_branches: list[tuple[str, str]]
+    sub_branches: list[tuple[str, CachedSuggestion.PackageOnBranch]]
 
 
 class Package(TypedDict):
