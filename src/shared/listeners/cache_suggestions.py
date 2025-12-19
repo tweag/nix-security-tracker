@@ -3,12 +3,12 @@ import logging
 import re
 import urllib.parse
 from itertools import chain
-from typing import Any
+from typing import Any, overload
 
 import pgpubsub
 from django.conf import settings
 from django.db.models import Prefetch
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 
 from shared.channels import CVEDerivationClusterProposalCacheChannel
 from shared.models import NixDerivation, NixMaintainer
@@ -25,12 +25,26 @@ logger = logging.getLogger(__name__)
 
 
 class CachedSuggestion(BaseModel):
+    class AffectedProduct(BaseModel):
+        version_constraints: set[tuple[str, str]] = set()
+        cpes: set[str] = set()
+
+        @overload
+        def from_set(self, value: set[str]) -> list[str]: ...
+
+        @overload
+        def from_set(self, value: set[tuple[str, str]]) -> list[tuple[str, str]]: ...
+
+        @field_serializer("version_constraints", "cpes", when_used="json")
+        def from_set(self, value):
+            return list(value)
+
     pk: int
     cve_id: str
     package_name: str
     title: str
     description: str | None
-    affected_products: dict[str, Any]  #  FIXME(@fricklerhandwerk)
+    affected_products: dict[str, AffectedProduct]
     original_packages: dict[str, Any]  #  FIXME(@fricklerhandwerk)
     packages: dict[str, Any]  #  FIXME(@fricklerhandwerk)
     # XXX(@fricklerhandwerk): These are converted with `to_dict()` naively, we're not doing anything interesting to them here.
@@ -98,7 +112,7 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
         # No package name.
         return
 
-    affected_products = dict()
+    affected_products: dict[str, CachedSuggestion.AffectedProduct] = {}
     all_versions = list()
 
     prefetched_affected_products = AffectedProduct.objects.filter(
@@ -107,27 +121,20 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
 
     for affected_product in prefetched_affected_products:
         package_name = affected_product.package_name
+        # XXX(@fricklerhandwerk): Satisfy the static typecheck that doesn't know we already filtered those out...
+        assert package_name is not None
         versions = list(affected_product.versions.all())
         all_versions.extend(versions)
 
         if package_name not in affected_products:
-            affected_products[package_name] = {
-                "version_constraints": set(),
-                "cpes": set(),
-            }
+            affected_products[package_name] = CachedSuggestion.AffectedProduct()
 
-        affected_products[package_name]["version_constraints"].update(
+        affected_products[package_name].version_constraints.update(
             (vc.status, vc.version_constraint_str()) for vc in versions
         )
-        affected_products[package_name]["cpes"].update(
+        affected_products[package_name].cpes.update(
             cpe.name for cpe in affected_product.cpes.all()
         )
-
-    for package_name, data in affected_products.items():
-        affected_products[package_name]["version_constraints"] = list(
-            data["version_constraints"]
-        )
-        affected_products[package_name]["cpes"] = list(data["cpes"])
 
     derivations = list(
         suggestion.derivations.select_related("metadata", "parent_evaluation")
@@ -166,7 +173,8 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
     )
 
     _, created = CachedSuggestions.objects.update_or_create(
-        proposal_id=suggestion.pk, defaults={"payload": only_relevant_data.model_dump()}
+        proposal_id=suggestion.pk,
+        defaults={"payload": only_relevant_data.model_dump(mode="json")},
     )
 
     if created:

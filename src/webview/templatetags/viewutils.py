@@ -5,10 +5,9 @@ from django import template
 from django.template.context import Context
 
 from shared.auth import isadmin, ismaintainer
-from shared.listeners.cache_suggestions import parse_drv_name
+from shared.listeners.cache_suggestions import CachedSuggestion, parse_drv_name
 from shared.logs.batches import FoldedEventType
 from shared.logs.events import Maintainer
-from shared.models.cve import AffectedProduct
 from shared.models.issue import NixpkgsIssue
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
@@ -48,7 +47,7 @@ class PackageListContext(TypedDict):
 
 
 class AffectedContext(TypedDict):
-    affected: list[AffectedProduct]
+    affected: list[CachedSuggestion.AffectedProduct]
 
 
 class SuggestionActivityLog(TypedDict):
@@ -277,7 +276,9 @@ def nixpkgs_package_list(packages: PackageList) -> PackageListContext:
 
 
 @register.inclusion_tag("components/affected_products.html")
-def affected_products(affected: list[AffectedProduct]) -> AffectedContext:
+def affected_products(
+    affected: list[CachedSuggestion.AffectedProduct],
+) -> AffectedContext:
     return {"affected": affected}
 
 
