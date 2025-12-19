@@ -89,6 +89,45 @@ def test_dismiss_requires_comment_no_js(
     assert our_suggestion is not None, "Suggestion should still be in pending status"
 
 
+def test_dismiss_with_comment_succeeds(
+    authenticated_client: Client, cached_suggestion: CVEDerivationClusterProposal
+) -> None:
+    """Test that dismissing with a comment works and the comment appears in the view context"""
+
+    url = reverse("webview:suggestions_view")
+    dismissal_comment = (
+        "This suggestion is not relevant because the package is deprecated."
+    )
+
+    # Dismiss with a comment
+    response = authenticated_client.post(
+        url,
+        {
+            "suggestion_id": cached_suggestion.pk,
+            "new_status": "rejected",
+            "comment": dismissal_comment,
+        },
+    )
+
+    # Should succeed
+    assert response.status_code == 200
+
+    # Verify the suggestion appears in dismissed view with the comment
+    dismissed_response = authenticated_client.get(reverse("webview:dismissed_view"))
+    assert dismissed_response.status_code == 200
+
+    # Find the suggestion in the context
+    suggestions = dismissed_response.context["object_list"]
+    our_suggestion = next(
+        (s for s in suggestions if s.proposal_id == cached_suggestion.pk), None
+    )
+    assert our_suggestion is not None
+
+    # Verify the comment appears in the suggestion context
+    suggestion_in_context = dismissed_response.context["object_list"][0].proposal
+    assert suggestion_in_context.comment == dismissal_comment
+
+
 class CommentTests(TestCase):
     def setUp(self) -> None:
         # Create user and log in
@@ -183,42 +222,6 @@ class CommentTests(TestCase):
         # Cache the suggestion
         cache_new_suggestions(self.suggestion)
         self.suggestion.refresh_from_db()
-
-    def test_dismiss_with_comment_succeeds(self) -> None:
-        """Test that dismissing with a comment works and the comment appears in the view context"""
-
-        url = reverse("webview:suggestions_view")
-        dismissal_comment = (
-            "This suggestion is not relevant because the package is deprecated."
-        )
-
-        # Dismiss with a comment
-        response = self.client.post(
-            url,
-            {
-                "suggestion_id": self.suggestion.pk,
-                "new_status": "rejected",
-                "comment": dismissal_comment,
-            },
-        )
-
-        # Should succeed
-        self.assertEqual(response.status_code, 200)
-
-        # Verify the suggestion appears in dismissed view with the comment
-        dismissed_response = self.client.get(reverse("webview:dismissed_view"))
-        self.assertEqual(dismissed_response.status_code, 200)
-
-        # Find the suggestion in the context
-        suggestions = dismissed_response.context["object_list"]
-        our_suggestion = next(
-            (s for s in suggestions if s.proposal_id == self.suggestion.pk), None
-        )
-        self.assertIsNotNone(our_suggestion)
-
-        # Verify the comment appears in the suggestion context
-        suggestion_in_context = dismissed_response.context["object_list"][0].proposal
-        self.assertEqual(suggestion_in_context.comment, dismissal_comment)
 
     def test_accept_without_comment_succeeds(self) -> None:
         """Test that accepting a suggestion without a comment is allowed"""
