@@ -159,6 +159,35 @@ def test_accept_without_comment_succeeds(
     assert suggestion is not None
 
 
+def test_accept_with_comment_shows_comment_in_context(
+    authenticated_client: Client, cached_suggestion: CVEDerivationClusterProposal
+) -> None:
+    """Test that accepting with a comment shows the comment in the view context"""
+    url = reverse("webview:suggestions_view")
+    acceptance_comment = "This looks good, creating draft issue."
+
+    # Accept with a comment
+    response = authenticated_client.post(
+        url,
+        {
+            "suggestion_id": cached_suggestion.pk,
+            "new_status": "accepted",
+            "comment": acceptance_comment,
+        },
+    )
+
+    # Should succeed
+    assert response.status_code == 200
+
+    # Verify the suggestion appears in drafts view with the comment
+    drafts_response = authenticated_client.get(reverse("webview:drafts_view"))
+    assert drafts_response.status_code == 200
+
+    # Find the suggestion in the context and verify the comment
+    suggestion = drafts_response.context["object_list"][0].proposal
+    assert suggestion.comment == acceptance_comment
+
+
 class CommentTests(TestCase):
     def setUp(self) -> None:
         # Create user and log in
@@ -253,32 +282,6 @@ class CommentTests(TestCase):
         # Cache the suggestion
         cache_new_suggestions(self.suggestion)
         self.suggestion.refresh_from_db()
-
-    def test_accept_with_comment_shows_comment_in_context(self) -> None:
-        """Test that accepting with a comment shows the comment in the view context"""
-        url = reverse("webview:suggestions_view")
-        acceptance_comment = "This looks good, creating draft issue."
-
-        # Accept with a comment
-        response = self.client.post(
-            url,
-            {
-                "suggestion_id": self.suggestion.pk,
-                "new_status": "accepted",
-                "comment": acceptance_comment,
-            },
-        )
-
-        # Should succeed
-        self.assertEqual(response.status_code, 200)
-
-        # Verify the suggestion appears in drafts view with the comment
-        drafts_response = self.client.get(reverse("webview:drafts_view"))
-        self.assertEqual(drafts_response.status_code, 200)
-
-        # Find the suggestion in the context and verify the comment
-        suggestion = drafts_response.context["object_list"][0].proposal
-        self.assertEqual(suggestion.comment, acceptance_comment)
 
     def test_updating_comment_on_existing_suggestion(self) -> None:
         """Test that updating a comment on an existing suggestion works"""
