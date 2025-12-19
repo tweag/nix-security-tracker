@@ -1,4 +1,6 @@
 import pytest
+from django.contrib.auth.models import AbstractBaseUser
+from django.test import Client
 
 from shared.models.cve import (
     AffectedProduct,
@@ -106,3 +108,19 @@ def suggestion(cve: Container, drv: NixDerivation) -> CVEDerivationClusterPropos
     )
 
     return suggestion
+
+
+@pytest.fixture
+def authenticated_client(
+    client: Client, django_user_model: type[AbstractBaseUser]
+) -> Client:
+    user = django_user_model.objects.create_user(
+        username="testuser",
+        is_staff=True,
+    )
+    # https://docs.djangoproject.com/en/6.0/topics/testing/tools/#django.test.Client.force_login
+    client.force_login(
+        user,
+        backend="allauth.account.auth_backends.AuthenticationBackend",
+    )
+    return client
