@@ -8,6 +8,7 @@ from typing import Any
 import pgpubsub
 from django.conf import settings
 from django.db.models import Prefetch
+from pydantic import BaseModel
 
 from shared.channels import CVEDerivationClusterProposalCacheChannel
 from shared.models import NixDerivation, NixMaintainer
@@ -21,6 +22,20 @@ from shared.models.linkage import (
 from shared.models.nix_evaluation import get_major_channel
 
 logger = logging.getLogger(__name__)
+
+
+class CachedSuggestion(BaseModel):
+    pk: int
+    cve_id: str
+    package_name: str
+    title: str
+    description: str | None
+    affected_products: dict[str, Any]  #  FIXME(@fricklerhandwerk)
+    original_packages: dict[str, Any]  #  FIXME(@fricklerhandwerk)
+    packages: dict[str, Any]  #  FIXME(@fricklerhandwerk)
+    # XXX(@fricklerhandwerk): These are converted with `to_dict()` naively, we're not doing anything interesting to them here.
+    metrics: list[dict]
+    maintainers: list[dict]
 
 
 def apply_package_edits(packages: dict, edits: list[PackageEdit]) -> dict:
@@ -137,23 +152,21 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
     packages = apply_package_edits(original_packages, package_edits)
     maintainers = maintainers_list(packages, maintainers_edits)
 
-    only_relevant_data = {
-        "pk": suggestion.pk,
-        "cve_id": suggestion.cve.cve_id,
-        "package_name": relevant_piece["affected__package_name"],
-        "title": relevant_piece["title"],
-        "description": relevant_piece["descriptions__value"],
-        "affected_products": affected_products,
-        "original_packages": packages,
-        "packages": packages,
-        "metrics": [to_dict(m) for m in prefetched_metrics],
-        "maintainers": maintainers,
-    }
-
-    # TODO: add format checking to avoid disasters in the frontend.
+    only_relevant_data = CachedSuggestion(
+        pk=suggestion.pk,
+        cve_id=suggestion.cve.cve_id,
+        package_name=relevant_piece["affected__package_name"],
+        title=relevant_piece["title"],
+        description=relevant_piece["descriptions__value"],
+        affected_products=affected_products,
+        original_packages=packages,
+        packages=packages,
+        metrics=[to_dict(m) for m in prefetched_metrics],
+        maintainers=maintainers,
+    )
 
     _, created = CachedSuggestions.objects.update_or_create(
-        proposal_id=suggestion.pk, defaults={"payload": dict(only_relevant_data)}
+        proposal_id=suggestion.pk, defaults={"payload": only_relevant_data.model_dump()}
     )
 
     if created:

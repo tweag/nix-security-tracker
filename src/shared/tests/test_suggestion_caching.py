@@ -6,7 +6,7 @@ from shared.models.nix_evaluation import NixDerivation
 
 
 # XXX(@fricklerhandwerk): This test isn't doing a lot except run the code once and assert that the result is non-empty.
-# Once we have a Pydantic class for the cached value, we'll have a bit more certainty that the data has the shape we want, but ultimately we probabyly want property tests here.
+# The Pydantic class for the cached value gives us some assurance about the shape of the data, but ultimately we probabyly want property tests here.
 def test_caching(
     cve: Container,
     drv: NixDerivation,
