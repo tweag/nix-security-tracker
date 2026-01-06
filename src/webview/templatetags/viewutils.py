@@ -166,6 +166,8 @@ def severity_badge(metrics: list[dict]) -> dict:
 
 @register.filter
 def iso(date: datetime.datetime) -> str:
+    if isinstance(date, str):
+        date = datetime.datetime.fromisoformat(date)
     return date.replace(microsecond=0).isoformat()
 
 

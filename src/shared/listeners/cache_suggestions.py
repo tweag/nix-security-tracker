@@ -2,6 +2,7 @@ import itertools
 import logging
 import re
 import urllib.parse
+from datetime import datetime
 from itertools import chain
 from typing import Any, overload
 
@@ -43,11 +44,18 @@ class CachedSuggestion(BaseModel):
         version: str
         status: Version.Status
         src_position: str | None
+        # Evaluation timestamps
+        updated: datetime
 
+    # FIXME(@fricklerhandwerk): This currently subsumes PackageOnBranch, duplicates its structure, and conflates two unrelated concerns.
+    # We may instead want to collect all branches that have the same *status* (i.e. rolling, stable, deprecated) and display them as a group.
+    # Then we could collapse the group if all channels have the same version, and display that version in the summary.
     class PackageOnPrimaryChannel(BaseModel):
         # Package version on the primary ("major") channel
         major_version: str | None
         status: Version.Status | None
+        # Evaluation timestamps
+        updated: datetime | None
         # Whether package version is the same for all branches where the package appears
         uniform_versions: bool | None
         src_position: str | None
@@ -160,6 +168,10 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
                 to_attr="prefetched_maintainers",
             ),
         )
+        # Oldest first, primary key is tie breaker.
+        # That way the most recent information will end up being displayed.
+        # Sorting in the database is surely faster than conditional update in Python, since there's a low limit of `settings.MAX_MATCHES`
+        .order_by("parent_evaluation__updated_at", "pk")
         .all()
     )
 
@@ -297,20 +309,29 @@ def channel_structure(
         major_channel = get_major_channel(branch_name)
         # FIXME This quietly drops unfamiliar branch names
         if major_channel:
+            # XXX(@fricklerhandwerk): Here we assign package information to channel names in iteration order, which in the query we have established to be olders-first by evaluation time.
             channels = packages[attribute_path]["channels"]
             if major_channel not in channels:
                 channels[major_channel] = CachedSuggestion.PackageOnPrimaryChannel(
                     major_version=None,
                     status=None,
                     src_position=None,
-                    # FIXME(@fricklerhandwerk): If this is not replaced in subsequent processing, it will display "???"
+                    # XXX(@fricklerhandwerk): If this is not replaced in subsequent processing, it will display "-"
                     uniform_versions=None,
                     sub_branches=dict(),
+                    updated=None,
                 )
-            # FIXME(@fricklerhandwerk): Since we're iterating over all derivations, we may be overwriting an existing entry with one from an older evaluation!
             if branch_name == major_channel:
-                channels[major_channel].major_version = package_version
-                channels[major_channel].src_position = get_src_position(derivation)
+                channels[major_channel] = CachedSuggestion.PackageOnPrimaryChannel(
+                    major_version=package_version,
+                    status=is_version_affected(
+                        [c.affects(package_version) for c in version_constraints]
+                    ),
+                    src_position=get_src_position(derivation),
+                    uniform_versions=channels[major_channel].uniform_versions,
+                    sub_branches=channels[major_channel].sub_branches,
+                    updated=derivation.parent_evaluation.updated_at,
+                )
             else:
                 channels[major_channel].sub_branches[branch_name] = (
                     CachedSuggestion.PackageOnBranch(
@@ -319,6 +340,7 @@ def channel_structure(
                             [c.affects(package_version) for c in version_constraints]
                         ),
                         src_position=get_src_position(derivation),
+                        updated=derivation.parent_evaluation.updated_at,
                     )
                 )
 
@@ -327,9 +349,6 @@ def channel_structure(
         for mc in channels.keys():
             uniform_versions = True
             major_version = channels[mc].major_version
-            channels[mc].status = is_version_affected(
-                [c.affects(major_version) for c in version_constraints]
-            )
             for _, branch in channels[mc].sub_branches.items():
                 uniform_versions = (
                     uniform_versions and str(major_version) == branch.version
