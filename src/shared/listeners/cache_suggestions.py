@@ -178,6 +178,8 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
         title=relevant_piece["title"],
         description=relevant_piece["descriptions__value"],
         affected_products=affected_products,
+        # FIXME(@fricklerhandwerk): It's probably because I don't understand the code involved too well, but it seems wrong that we don't keep the original packages here.
+        # If it must be that way, document why.
         original_packages=packages,
         packages=packages,
         metrics=[to_dict(m) for m in prefetched_metrics],
@@ -264,13 +266,11 @@ def get_src_position(derivation: NixDerivation) -> str | None:
     return None
 
 
-# TODO This is also used when caching issues. This definition may be moved to
-# another module that would be imported by both this and cache_issues.py
 def channel_structure(
     version_constraints: list[Version], derivations: list[NixDerivation]
 ) -> dict:  # TODO Refine the return type
     """
-    For a list of derivations, massage the data so that in can rendered easily in the suggestions view
+    For a list of derivations and a list of version constraints that all belong to the same package, massage the data so that in can rendered easily in the suggestions view
     """
     packages = dict()
     for derivation in derivations:
@@ -278,7 +278,7 @@ def channel_structure(
         _, package_version = parse_drv_name(derivation.name)
         if attribute_path not in packages:
             packages[attribute_path] = {
-                "versions": {},
+                "channels": {},
                 "derivation_ids": [],
                 "maintainers": [],
             }
@@ -291,13 +291,15 @@ def channel_structure(
                     to_dict(m) for m in derivation.metadata.prefetched_maintainers
                 ]
         packages[attribute_path]["derivation_ids"].append(derivation.pk)
+        # Get the branch from which that derivation originates
         branch_name = derivation.parent_evaluation.channel.channel_branch
+        # Get primary ("major") channel to which that branch belongs
         major_channel = get_major_channel(branch_name)
         # FIXME This quietly drops unfamiliar branch names
         if major_channel:
-            versions = packages[attribute_path]["versions"]
-            if major_channel not in versions:
-                versions[major_channel] = CachedSuggestion.PackageOnPrimaryChannel(
+            channels = packages[attribute_path]["channels"]
+            if major_channel not in channels:
+                channels[major_channel] = CachedSuggestion.PackageOnPrimaryChannel(
                     major_version=None,
                     status=None,
                     src_position=None,
@@ -305,11 +307,12 @@ def channel_structure(
                     uniform_versions=None,
                     sub_branches=dict(),
                 )
+            # FIXME(@fricklerhandwerk): Since we're iterating over all derivations, we may be overwriting an existing entry with one from an older evaluation!
             if branch_name == major_channel:
-                versions[major_channel].major_version = package_version
-                versions[major_channel].src_position = get_src_position(derivation)
+                channels[major_channel].major_version = package_version
+                channels[major_channel].src_position = get_src_position(derivation)
             else:
-                versions[major_channel].sub_branches[branch_name] = (
+                channels[major_channel].sub_branches[branch_name] = (
                     CachedSuggestion.PackageOnBranch(
                         version=package_version,
                         status=is_version_affected(
@@ -318,29 +321,30 @@ def channel_structure(
                         src_position=get_src_position(derivation),
                     )
                 )
+
     for package_name in packages:
-        versions = packages[package_name]["versions"]
-        for mc in versions.keys():
+        channels = packages[package_name]["channels"]
+        for mc in channels.keys():
             uniform_versions = True
-            major_version = versions[mc].major_version
-            versions[mc].status = is_version_affected(
+            major_version = channels[mc].major_version
+            channels[mc].status = is_version_affected(
                 [c.affects(major_version) for c in version_constraints]
             )
-            for branch in versions[mc].sub_branches.values():
+            for _, branch in channels[mc].sub_branches.items():
                 uniform_versions = (
                     uniform_versions and str(major_version) == branch.version
                 )
-            versions[mc].uniform_versions = uniform_versions
+            channels[mc].uniform_versions = uniform_versions
             # We just sort branch names by length to get a good-enough order
-            versions[mc].sub_branches = dict(
+            channels[mc].sub_branches = dict(
                 sorted(
-                    versions[mc].sub_branches.items(),
+                    channels[mc].sub_branches.items(),
                     reverse=True,
                 )
             )
         # Sorting major channel names happens to work out well for bringing them into historical order
-        packages[package_name]["versions"] = dict(
-            sorted(packages[package_name]["versions"].items())
+        packages[package_name]["channels"] = dict(
+            sorted(packages[package_name]["channels"].items())
         )
     return packages
 
