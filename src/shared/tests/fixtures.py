@@ -1,3 +1,6 @@
+import secrets
+from collections.abc import Callable
+
 import pytest
 from allauth.socialaccount.models import SocialAccount
 from django.contrib.auth.models import AbstractBaseUser
@@ -19,6 +22,7 @@ from shared.models.linkage import (
     ProvenanceFlags,
 )
 from shared.models.nix_evaluation import (
+    MAJOR_CHANNELS,
     NixChannel,
     NixDerivation,
     NixDerivationMeta,
@@ -49,51 +53,75 @@ def cve(db: None) -> Container:
 
 
 @pytest.fixture
-def evaluation(db: None) -> NixEvaluation:
-    channel = NixChannel.objects.create(
-        staging_branch="release-24.05",
-        channel_branch="release-24.05",
+def channel(db: None) -> NixChannel:
+    # FIXME(@fricklerhandwerk): This will fall apart when we obtain the channel structure dynamically [ref:channel-structure]
+    release = MAJOR_CHANNELS[1]
+    return NixChannel.objects.create(
+        staging_branch=f"nixos-{release}",
+        channel_branch=f"nixos-{release}",
         head_sha1_commit="deadbeef",
         state=NixChannel.ChannelState.STABLE,
-        release_version="24.05",
+        release_version=release,
         repository="https://github.com/NixOS/nixpkgs",
     )
 
-    evaluation = NixEvaluation.objects.create(
-        channel=channel,
-        commit_sha1="deadbeef",
-        state="completed",
-    )
-    return evaluation
+
+@pytest.fixture
+def make_evaluation(channel: NixChannel) -> Callable[[], NixEvaluation]:
+    def wrapped() -> NixEvaluation:
+        return NixEvaluation.objects.create(
+            channel=channel,
+            commit_sha1=secrets.token_hex(16),
+            state="completed",
+        )
+
+    return wrapped
 
 
 @pytest.fixture
-def drv(db: None, evaluation: NixEvaluation) -> NixDerivation:
-    maintainer = NixMaintainer.objects.create(
+def evaluation(make_evaluation: Callable[[], NixEvaluation]) -> NixEvaluation:
+    return make_evaluation()
+
+
+@pytest.fixture
+def maintainer(db: None) -> NixMaintainer:
+    return NixMaintainer.objects.create(
         github_id=123, github="testuser", name="Test User", email="test@example.com"
     )
 
-    meta = NixDerivationMeta.objects.create(
-        description="First dummy derivation",
-        insecure=False,
-        available=True,
-        broken=False,
-        unfree=False,
-        unsupported=False,
-    )
 
-    meta.maintainers.add(maintainer)
+@pytest.fixture
+def make_drv(maintainer: NixMaintainer) -> Callable[[NixEvaluation], NixDerivation]:
+    def wrapped(evaluation: NixEvaluation) -> NixDerivation:
+        meta = NixDerivationMeta.objects.create(
+            description="Dummy derivation",
+            insecure=False,
+            available=True,
+            broken=False,
+            unfree=False,
+            unsupported=False,
+        )
+        meta.maintainers.add(maintainer)
 
-    drv = NixDerivation.objects.create(
-        attribute="foo",
-        derivation_path="/nix/store/<hash>-foo.drv",
-        name="foo-1.0",
-        metadata=meta,
-        system="x86_64-linux",
-        parent_evaluation=evaluation,
-    )
+        return NixDerivation.objects.create(
+            attribute="foo",
+            derivation_path="/nix/store/<hash>-foo.drv",
+            name="foo-1.0",
+            metadata=meta,
+            system="x86_64-linux",
+            parent_evaluation=evaluation,
+        )
 
-    return drv
+    return wrapped
+
+
+@pytest.fixture
+def drv(
+    db: None,
+    make_drv: Callable[[NixEvaluation], NixDerivation],
+    evaluation: NixEvaluation,
+) -> NixDerivation:
+    return make_drv(evaluation)
 
 
 @pytest.fixture
