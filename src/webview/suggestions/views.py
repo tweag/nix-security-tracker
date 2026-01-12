@@ -1,8 +1,10 @@
 import logging
+from abc import ABC
 from typing import Any
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect
@@ -23,7 +25,7 @@ from shared.models.linkage import CVEDerivationClusterProposal
 logger = logging.getLogger(__name__)
 
 
-class SuggestionBaseView(LoginRequiredMixin, TemplateView):
+class SuggestionBaseView(LoginRequiredMixin, TemplateView, ABC):
     """Base view for all suggestion-related views with common functionality."""
 
     def get_suggestion_context(
@@ -70,6 +72,61 @@ class SuggestionDetailView(SuggestionBaseView):
         context = self.get_suggestion_context(suggestion_id)
 
         return context
+
+
+class SuggestionListView(SuggestionBaseView, ABC):
+    """Base list view for suggestions filtered by a specific status."""
+
+    template_name = "suggestions/suggestion_list.html"
+    paginate_by = 20
+    status_filter = None  # To be defined in concrete classes
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        """Get paginated suggestions for the specific status."""
+        context = super().get_context_data(**kwargs)
+
+        # Get suggestions with the specific status
+        suggestions = CVEDerivationClusterProposal.objects.filter(
+            status=self.status_filter
+        ).order_by("-created_at")
+
+        for suggestion in suggestions:
+            raw_events = fetch_suggestion_events(suggestion.pk)
+            suggestion.activity_log = batch_events(
+                remove_canceling_events(raw_events, sort=True)
+            )
+
+        # Pagination
+        paginator = Paginator(suggestions, self.paginate_by)
+        page_number = self.request.GET.get("page", 1)
+        page_obj = paginator.get_page(page_number)
+
+        context.update(
+            {
+                "suggestions": page_obj.object_list,
+                "page_obj": page_obj,
+                "adjusted_elided_page_range": paginator.get_elided_page_range(),
+                "is_paginated": True,
+            }
+        )
+
+        return context
+
+
+class UntriagedSuggestionsView(SuggestionListView):
+    status_filter = CVEDerivationClusterProposal.Status.PENDING
+
+
+class AcceptedSuggestionsView(SuggestionListView):
+    status_filter = CVEDerivationClusterProposal.Status.ACCEPTED
+
+
+class RejectedSuggestionsView(SuggestionListView):
+    status_filter = CVEDerivationClusterProposal.Status.REJECTED
+
+
+class PublishedSuggestionsView(SuggestionListView):
+    status_filter = CVEDerivationClusterProposal.Status.PUBLISHED
 
 
 class UpdateSuggestionStatusView(SuggestionBaseView):
