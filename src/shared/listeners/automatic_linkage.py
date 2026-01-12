@@ -50,10 +50,12 @@ def build_new_links(container: Container) -> bool:
         return False
 
     if CVEDerivationClusterProposal.objects.filter(cve=container.cve).exists():
+        logger.info("Suggestion already exists for '%s', skipping", container.cve)
         return False
 
     drvs = produce_linkage_candidates(container)
     if not drvs:
+        logger.info("No derivations matching '%s', ignoring", container.cve)
         return False
 
     if len(drvs) > settings.MAX_MATCHES:
