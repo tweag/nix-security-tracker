@@ -86,21 +86,21 @@
       <div class="row-reverse spread">
         {% if suggestion.status == "pending" %}
           <button type="submit" name="new_status" value="accepted" class="btn btn-green row gap-small centered">
-            <i class="icon-draft"></i>
+            {% status_icon "accepted" %}
             Create draft
           </button>
           <button type="submit" name="new_status" value="rejected" class="btn btn-gray row gap-small centered">
-            <i class="icon-bin"></i>
+            {% status_icon "rejected" %}
             Dismiss
           </button>
         {% elif suggestion.status == "rejected" %}
           <button type="submit" name="new_status" value="accepted" class="btn btn-green row gap-small centered">
-            <i class="icon-draft"></i>
+            {% status_icon "accepted" %}
             Convert to draft
           </button>
         {% elif suggestion.status == "accepted" %}
           <button type="submit" name="new_status" value="published" class="btn btn-green row gap-small centered">
-            <i class="icon-github"></i>
+            {% status_icon "published" %}
             Publish issue
           </button>
           {% if suggestion.cached.payload.packages %}
@@ -112,7 +112,7 @@
             </div>
           {% endif %}
           <button type="submit" name="new_status" value="rejected" class="btn btn-gray row gap-small centered">
-            <i class="icon-bin"></i>
+            {% status_icon "rejected" %}
             Dismiss
           </button>
         {% endif %}

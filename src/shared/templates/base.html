@@ -95,6 +95,15 @@
         <li class="row gap-small centered"><i class="icon-github"></i><a href="/issues">Published issues</a></li>
       </ul>
     </nav>
+    <nav>
+      <div>New work in progress suggestion overhaul</div>
+      <ul class="row gap">
+        <li class="row gap-small centered"><i class="icon-bin"></i><a href="{% url 'webview:suggestion:dismissed_suggestions' %}">Dismissed suggestions</a></li>
+        <li class="row gap-small centered"><i class="icon-inbox"></i><a href="{% url 'webview:suggestion:untriaged_suggestions' %}">Untriaged suggestions</a></li>
+        <li class="row gap-small centered"><i class="icon-draft"></i><a href="{% url 'webview:suggestion:draft_suggestions' %}">Accepted suggestions</a></li>
+        <li class="row gap-small centered"><i class="icon-github"></i><a href="{% url 'webview:suggestion:published_suggestions' %}">Published suggestions</a></li>
+      </ul>
+    </nav>
 
     {% block layout %}
       <main id="page-content">

@@ -1,6 +1,7 @@
 import logging
 from abc import ABC
 from typing import Any
+from urllib.parse import urlparse
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -8,7 +9,7 @@ from django.core.paginator import Paginator
 from django.db import transaction
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect
-from django.urls import reverse
+from django.urls import resolve, reverse
 from django.views.generic import TemplateView
 
 from shared.auth import can_publish_github_issue
@@ -88,7 +89,7 @@ class SuggestionListView(SuggestionBaseView, ABC):
         # Get suggestions with the specific status
         suggestions = CVEDerivationClusterProposal.objects.filter(
             status=self.status_filter
-        ).order_by("-created_at")
+        ).order_by("-updated_at", "-created_at")
 
         for suggestion in suggestions:
             raw_events = fetch_suggestion_events(suggestion.pk)
@@ -105,6 +106,7 @@ class SuggestionListView(SuggestionBaseView, ABC):
             {
                 "suggestions": page_obj.object_list,
                 "page_obj": page_obj,
+                "status_filter": self.status_filter,
                 "adjusted_elided_page_range": paginator.get_elided_page_range(),
                 "is_paginated": True,
             }
@@ -146,6 +148,9 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
         # Get form data
         new_status = request.POST.get("new_status")
         new_comment = request.POST.get("comment", "").strip()
+        undo_status_change = request.POST.get(
+            "undo_status_change"
+        )  # This is set if the status change comes from clicking "Undo"
 
         # Validate status change
         if not new_status:
@@ -155,8 +160,10 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
             return self._handle_error(request, context, "Cannot change to same status")
 
         # Handle status changes (except publish which needs special handling)
+        old_status = suggestion.status  # Will be used for the undo button
         if new_status == "rejected":
-            if not new_comment:
+            # When undoing a status change, there is no comment form input so we don't expect it
+            if not new_comment and not undo_status_change:
                 return self._handle_error(
                     request, context, "You must provide a dismissal comment"
                 )
@@ -170,28 +177,49 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
                     tracker_issue_link = request.build_absolute_uri(
                         reverse("webview:issue_detail", args=[tracker_issue.code])
                     )
-                    _gh_issue_link = create_gh_issue(
+                    gh_issue_link = create_gh_issue(
                         context["cached_suggestion_raw"],
                         tracker_issue_link,
                         new_comment,
                     ).html_url
                     suggestion.status = CVEDerivationClusterProposal.Status.PUBLISHED
                     suggestion.save()
+                    context["issue_link"] = gh_issue_link
             except Exception:
                 return self._handle_error(
                     request, context, "Unable to publish this suggestion"
                 )
 
-        # Update comment if provided
-        if new_comment:
+        # Update comment if provided, unless this is an "undo" status change in which no new comment is expected
+        if new_comment and not undo_status_change:
             suggestion.comment = new_comment
 
         suggestion.save()
 
-        # Return appropriate response
-        new_context = self.get_suggestion_context(suggestion_id)
+        # Refresh suggestion context
+        context.update(self.get_suggestion_context(suggestion_id))
+
+        # Set target of undo button unless in case of publication
+        if new_status != "published":
+            context["undo_status_target"] = old_status
+
+        if self._is_origin_url_a_list(request):
+            if not undo_status_change:
+                # If we come from a suggestion list, we don't update the component in
+                # place because the list would mix suggestions of different statuses.
+                # Instead, we show only a stub of the suggestion.
+                #
+                # However, if the status change is an "undo", then we want to show the
+                # full suggestion again.
+                context["show_stub_only"] = True
+        else:
+            # If we rerender but we are not in a suggestion list corresponding
+            # to a specific status, we want to display the suggestion status so
+            # the user can keep track
+            context["show_status"] = True
+
         if request.headers.get("HX-Request"):
-            return self.render_to_response(new_context)
+            return self.render_to_response(context)
         else:
             return self._redirect_to_origin(request)
 
@@ -209,11 +237,40 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
 
     def _redirect_to_origin(self, request: HttpRequest) -> HttpResponse:
         # Get the current URL from HTMX header or referer
-        current_url = request.headers.get("HX-Current-URL")
-        if not current_url:
-            current_url = request.META.get("HTTP_REFERER", "")
+        current_url = self._get_origin_url(request)
         if not current_url:
             # Fallback to suggestions list if no origin provided
             logger.error("No origin URL found to redirect to")
             return redirect("webview:suggestions_list")
         return redirect(current_url)
+
+    def _get_origin_url(self, request: HttpRequest) -> str | None:
+        current_url = request.headers.get("HX-Current-URL")
+        if not current_url:
+            current_url = request.META.get("HTTP_REFERER", "")
+        return current_url
+
+    def _is_origin_url_a_list(self, request: HttpRequest) -> bool:
+        """Checks whether we come from one of the suggestion list views. Returns false when in doubt."""
+        origin_url = self._get_origin_url(request)
+        if not origin_url:
+            return False
+
+        # Extract path from URL
+        try:
+            # Resolve the URL to get view name
+            parsed = urlparse(origin_url)
+            resolved = resolve(parsed.path)
+            logger.error(resolved)
+
+            # Check if it's one of our list views
+            list_url_names = [
+                "untriaged_suggestions",
+                "draft_suggestions",
+                "dismissed_suggestions",
+                "published_suggestions",
+            ]
+
+            return resolved.url_name in list_url_names
+        except Exception:
+            return False

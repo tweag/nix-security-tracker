@@ -21,11 +21,19 @@ urlpatterns = [
         name="update_status",
     ),
     path(
-        "untriaged/", UntriagedSuggestionsView.as_view(), name="untriaged_suggestions"
+        "list/untriaged/",
+        UntriagedSuggestionsView.as_view(),
+        name="untriaged_suggestions",
     ),
-    path("drafts/", AcceptedSuggestionsView.as_view(), name="draft_suggestions"),
-    path("dismissed/", RejectedSuggestionsView.as_view(), name="dismissed_suggestions"),
+    path("list/drafts/", AcceptedSuggestionsView.as_view(), name="draft_suggestions"),
     path(
-        "published/", PublishedSuggestionsView.as_view(), name="published_suggestions"
+        "list/dismissed/",
+        RejectedSuggestionsView.as_view(),
+        name="dismissed_suggestions",
+    ),
+    path(
+        "list/published/",
+        PublishedSuggestionsView.as_view(),
+        name="published_suggestions",
     ),
 ]

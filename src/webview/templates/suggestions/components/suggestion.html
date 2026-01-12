@@ -1,39 +1,33 @@
 {% load viewutils %}
 
-<article class="rounded-box column gap highlight-target" hx-target="this" id="suggestion-{{ suggestion.cached.payload.pk }}">
-  <div class="row gap-small centered">
-    {% if suggestion.status == "pending" %}
-      <i class="icon-inbox"></i>
-      <div class="bold">Untriaged</div>
-      <div>(<a href="{% url 'webview:suggestions_view' %}">browse all</a>)</div>
-    {% elif suggestion.status == "rejected" %}
-      <i class="icon-bin"></i>
-      <div class="bold">Dismissed</div>
-      <div>(<a href="{% url 'webview:dismissed_view' %}">browse all</a>)</div>
-    {% elif suggestion.status == "accepted" %}
-      <i class="icon-draft"></i>
-      <div class="bold">Draft</div>
-      <div>(<a href="{% url 'webview:drafts_view' %}">browse all</a>)</div>
-    {% elif suggestion.status == "published" %}
-      <i class="icon-github"></i>
-      <div class="bold">Published</div>
-      <div>(<a href="{% url 'webview:issue_list' %}">browse all</a>)</div>
+{% if show_stub_only %}
+  {% suggestion_stub suggestion=suggestion undo_status_target=undo_status_target issue_link=issue_link %}
+{% else %}
+
+  <article class="rounded-box column gap highlight-target" hx-target="this" id="suggestion-{{ suggestion.cached.payload.pk }}">
+    {% if show_status %}
+      <div class="row gap-small centered">
+        {% status_icon suggestion.status %}
+        {% if suggestion.status == "pending" %}
+          <div class="bold">Untriaged</div>
+          <div>(<a href="{% url 'webview:suggestion:untriaged_suggestions' %}">browse all</a>)</div>
+        {% elif suggestion.status == "rejected" %}
+          <div class="bold">Dismissed</div>
+          <div>(<a href="{% url 'webview:suggestion:dismissed_suggestions' %}">browse all</a>)</div>
+        {% elif suggestion.status == "accepted" %}
+          <div class="bold">Draft</div>
+          <div>(<a href="{% url 'webview:suggestion:draft_suggestions' %}">browse all</a>)</div>
+        {% elif suggestion.status == "published" %}
+          <div class="bold">Published</div>
+          <div>(<a href="{% url 'webview:suggestion:published_suggestions' %}">browse all</a>)</div>
+        {% endif %}
+      </div>
     {% endif %}
-  </div>
-  <form
-    class="contents"
-    method="post"
-    action="{% url 'webview:suggestion:update_status' suggestion_id=suggestion.pk %}"
-    hx-boost="true"
-    hx-swap="outerHTML show:none"
-    hx-indicator="find .state-change-indicator"
-    hx-push-url="false"
-    autocomplete="off"
-  >
-    {% csrf_token %}
+
 
     <div class="row spread gap wrap">
       <div class="row gap wrap">
+        <a href="{% url 'webview:suggestion:detail' suggestion_id=suggestion.pk %}">Permalink</a>
         <a href="https://nvd.nist.gov/vuln/detail/{{ suggestion.cached.payload.cve_id | urlencode }}">
           {{ suggestion.cached.payload.cve_id }}
         </a>
@@ -83,63 +77,73 @@
     {% endif %}
 
 
-    {% if user|is_maintainer_or_admin %}
-    {% if suggestion.status == "published" %}
-      {% if suggestion.comment %}
-        <pre class="rounded-box monospace highlight-nonempty">{{ suggestion.comment|default:"" }}</pre>
-      {% endif %}
-    {% else %}
-      <textarea 
-        class="rounded-box monospace highlight-nonempty"
-        name="comment" 
-        maxlength="1000" 
-        placeholder="Free comment: context, additional info, dismissal reason, etc."
-        rows="3"
-      >{{ suggestion.comment|default:"" }}</textarea>
-    {% endif %}
-
-    {% if suggestion.status != "published" %}
-      <div class="row-reverse spread">
-        {% if suggestion.status == "pending" %}
-          <button type="submit" name="new_status" value="accepted" class="btn btn-green row gap-small centered">
-            <i class="icon-draft"></i>
-            Create draft
-          </button>
-          <button type="submit" name="new_status" value="rejected" class="btn btn-gray row gap-small centered">
-            <i class="icon-bin"></i>
-            Dismiss
-          </button>
-        {% elif suggestion.status == "rejected" %}
-          <button type="submit" name="new_status" value="accepted" class="btn btn-green row gap-small centered">
-            <i class="icon-draft"></i>
-            Convert to draft
-          </button>
-        {% elif suggestion.status == "accepted" %}
-          <button type="submit" name="new_status" value="published" class="btn btn-green row gap-small centered">
-            <i class="icon-github"></i>
-            Publish issue
-          </button>
-          {% if suggestion.cached.payload.packages %}
-            <div class="remove-when-js-is-enabled row gap-small centered">
-              <button type="submit" class="btn btn-gray">
-                Purge deleted packages
-              </button>
-              <span class="dimmed">(cannot be undone)<span>
-            </div>
-          {% endif %}
-          <button type="submit" name="new_status" value="rejected" class="btn btn-gray row gap-small centered">
-            <i class="icon-bin"></i>
-            Dismiss
-          </button>
+    <form
+      class="contents"
+      method="post"
+      action="{% url 'webview:suggestion:update_status' suggestion_id=suggestion.pk %}"
+      hx-boost="true"
+      hx-swap="outerHTML show:none"
+      hx-indicator="find .state-change-indicator"
+      hx-push-url="false"
+      autocomplete="off"
+    >
+      {% csrf_token %}
+      {% if not user|is_maintainer_or_admin or suggestion.status == "published" %}
+        {% if suggestion.comment %}
+          <pre class="rounded-box monospace highlight-nonempty">{{ suggestion.comment|default:"" }}</pre>
         {% endif %}
-      </div>
+      {% else %}
+        <textarea 
+          class="rounded-box monospace highlight-nonempty"
+          name="comment" 
+          maxlength="1000" 
+          placeholder="Free comment: context, additional info, dismissal reason, etc."
+          rows="3"
+        >{{ suggestion.comment|default:"" }}</textarea>
       {% endif %}
-    {% endif %}
-  </form>
 
-  {% if error_message %}
-  <div class="error-block">
-    {{ error_message }}
-  </div>
-  {% endif %}
-</article>
+      {% if user|is_maintainer_or_admin and suggestion.status != "published" %}
+        <div class="row-reverse spread">
+          {% if suggestion.status == "pending" %}
+            <button type="submit" name="new_status" value="accepted" class="btn btn-green row gap-small centered">
+              {% status_icon "accepted" %}
+              Create draft
+            </button>
+            <button type="submit" name="new_status" value="rejected" class="btn btn-gray row gap-small centered">
+              {% status_icon "rejected" %}
+              Dismiss
+            </button>
+          {% elif suggestion.status == "rejected" %}
+            <button type="submit" name="new_status" value="accepted" class="btn btn-green row gap-small centered">
+              {% status_icon "accepted" %}
+              Convert to draft
+            </button>
+          {% elif suggestion.status == "accepted" %}
+            <button type="submit" name="new_status" value="published" class="btn btn-green row gap-small centered">
+              {% status_icon "published" %}
+              Publish issue
+            </button>
+            {% if suggestion.cached.payload.packages %}
+              <div class="remove-when-js-is-enabled row gap-small centered">
+                <button type="submit" class="btn btn-gray">
+                  Purge deleted packages
+                </button>
+                <span class="dimmed">(cannot be undone)<span>
+              </div>
+            {% endif %}
+            <button type="submit" name="new_status" value="rejected" class="btn btn-gray row gap-small centered">
+              {% status_icon "rejected" %}
+              Dismiss
+            </button>
+          {% endif %}
+        </div>
+      {% endif %}
+    </form>
+
+    {% if error_message %}
+    <div class="error-block">
+      {{ error_message }}
+    </div>
+    {% endif %}
+  </article>
+{% endif %}

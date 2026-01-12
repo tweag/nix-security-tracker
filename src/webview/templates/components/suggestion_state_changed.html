@@ -1,12 +1,8 @@
+{% load viewutils %}
+
 <article class="rounded-box row centered spread gap" hx-target="this">
   <div class="row gap-small centered">
-    {% if status == "rejected" %}
-    <i class="icon-bin"></i>
-    {% elif status == "accepted" %}
-    <i class="icon-draft"></i>
-    {% elif status == "published" %}
-    <i class="icon-github"></i>
-    {% endif %}
+    {% status_icon status %}
     <h2>
       {% if title %}
         {{ title }}

@@ -224,10 +224,31 @@ def suggestion_new(
     context: Context,
     suggestion: CVEDerivationClusterProposal,
     activity_log: list[FoldedEventType],
+    show_status: bool = True,
+    show_stub_only: bool = False,
 ) -> dict:
     return {
         "suggestion": suggestion,
         "activity_log": activity_log,
+        "show_status": show_status,
+        "show_stub_only": show_stub_only,
+        "user": context["user"],
+    }
+
+
+@register.inclusion_tag(
+    "suggestions/components/suggestion_stub.html", takes_context=True
+)
+def suggestion_stub(
+    context: Context,
+    issue_link: str | None,
+    undo_status_target: str | None,
+    suggestion: CVEDerivationClusterProposal,
+) -> dict:
+    return {
+        "suggestion": suggestion,
+        "issue_link": issue_link,
+        "undo_status_target": undo_status_target,
         "user": context["user"],
     }
 
@@ -359,3 +380,16 @@ def add_maintainer(
     error_msg: str | None = None,
 ) -> AddMaintainerContext:
     return {"error_msg": error_msg}
+
+
+@register.inclusion_tag("components/status_icon.html")
+def status_icon(status: str) -> dict[str, str]:
+    icon_mapping = {
+        "pending": "icon-inbox",
+        "rejected": "icon-bin",
+        "accepted": "icon-draft",
+        "published": "icon-github",
+    }
+    return {
+        "icon_class": icon_mapping.get(status, "icon-inbox")
+    }  # Default to inbox icon
