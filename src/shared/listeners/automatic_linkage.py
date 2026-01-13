@@ -59,8 +59,6 @@ def build_new_links(container: Container) -> bool:
         return False
 
     if len(drvs) > settings.MAX_MATCHES:
-        # FIXME: [tag:max-drv-matches] Previously we only filtered these out during caching.
-        # So there may still be some in the database; clean that out.
         logger.warning(
             "More than '%d' derivations matching '%s', ignoring",
             settings.MAX_MATCHES,

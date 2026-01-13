@@ -7,7 +7,6 @@ from itertools import chain
 from typing import Any, overload
 
 import pgpubsub
-from django.conf import settings
 from django.db.models import Prefetch
 from pydantic import BaseModel, field_serializer
 
@@ -105,33 +104,21 @@ def to_dict(instance: Any) -> dict[str, Any]:
 
 
 def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
-    # Do we have any package_name attached?
-    # FIXME(@fricklerhandwerk): We shouldn't have any of these in the database in the first place.
-    # Clean it up in a migration, and add tests to assert the invariants in the data transformation that leads up to here.
-    if not suggestion.cve.container.filter(
-        affected__package_name__isnull=False
-    ).exists():
-        return
-
-    # This is not a suggestion we want to show.
-    # FIXME(@fricklerhandwerk): Ideally there wouldn't be any in the database to begin with. [ref:max-drv-matches]
-    if suggestion.derivations.count() > settings.MAX_MATCHES:
-        return
-
+    # FIXME(@fricklerhandwerk): Here we're blindly picking a title and description, which can be arbitrarily bad.
+    # For instance, at the time of writing, most titles in containers are one of
+    # - "CVE Program Container" (>600k)
+    # - "CISA ADP VUlnrichment" (>270k)
     relevant_piece = (
         suggestion.cve.container.values(
             "title",
-            # Only used for relevance checking
-            "affected__package_name",
             "descriptions__value",
         )
         .filter(affected__package_name__isnull=False)
         .first()
     )
 
-    if not relevant_piece:
-        # No package name.
-        return
+    # XXX(@fricklerhandwerk): Satisfy static typecheck. This must hold due to how we construct matches.
+    assert relevant_piece is not None
 
     affected_products: dict[str, CachedSuggestion.AffectedProduct] = {}
     all_versions = list()
