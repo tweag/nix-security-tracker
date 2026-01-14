@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from datetime import timedelta
 
 from shared.listeners.automatic_linkage import build_new_links
 from shared.models.cve import Container
@@ -20,7 +21,7 @@ def test_link_only_latest_eval(
     make_drv: Callable[..., NixDerivation],
 ) -> None:
     """
-    Check that only derivations from complete evaluations of each channel are matched.
+    Check that only derivations from the latest complete evaluation of each channel are matched.
     """
 
     # FIXME(@fricklerhandwerk): This will fall apart when we obtain the channel structure dynamically [ref:channel-structure]
@@ -38,13 +39,20 @@ def test_link_only_latest_eval(
         ]
     ]
 
+    evaluations = []
     # We don't really need to test for `WAITING` since we don't expect derivations to exist for such an evaluation that hasn't started yet.
     # But for simplicity we simply iterate over all states.
-    evaluations = [
-        make_evaluation(channel=channel, state=state)
-        for state in NixEvaluation.EvaluationState.values
-        for channel in channels
-    ]
+    for state in NixEvaluation.EvaluationState.values:
+        for channel in channels:
+            for day in range(3):
+                ev = make_evaluation(channel=channel, state=state)
+                target_time = ev.created_at - timedelta(days=day)
+                # Overwrite the timestamp without triggering the `save()` hook that would write the current time again
+                NixEvaluation.objects.filter(pk=ev.pk).update(
+                    created_at=target_time,
+                    updated_at=target_time,
+                )
+                evaluations.append(ev)
 
     for i, ev in enumerate(evaluations):
         make_drv(

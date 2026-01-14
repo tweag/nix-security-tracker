@@ -2,6 +2,8 @@ import logging
 
 import pgpubsub
 from django.conf import settings
+from django.db.models import F, Window
+from django.db.models.functions import RowNumber
 
 from shared.channels import ContainerChannel
 from shared.models.cve import Container
@@ -17,6 +19,20 @@ logger = logging.getLogger(__name__)
 def produce_linkage_candidates(
     container: Container,
 ) -> dict[NixDerivation, ProvenanceFlags]:
+    latest_complete_channels = (
+        NixEvaluation.objects.filter(
+            state=NixEvaluation.EvaluationState.COMPLETED,
+        )
+        .annotate(
+            row_num=Window(
+                expression=RowNumber(),
+                partition_by=[F("channel")],
+                order_by=F("updated_at").desc(),
+            ),
+        )
+        .filter(row_num=1)
+    )
+
     # Methodology:
     # We start with a large list and we remove things as we sort out that list.
     # Our initialization must be as large as possible.
@@ -28,7 +44,7 @@ def produce_linkage_candidates(
                 # TODO: improve accuracy by using bigrams similarity with a `| Q(...)` query.
                 NixDerivation.objects.filter(
                     name__icontains=affected.package_name,
-                    parent_evaluation__state=NixEvaluation.EvaluationState.COMPLETED,
+                    parent_evaluation__in=list(latest_complete_channels),
                 )
             )
             for d in drvs:
