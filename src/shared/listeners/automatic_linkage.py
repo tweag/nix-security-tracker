@@ -6,7 +6,10 @@ from django.conf import settings
 from shared.channels import ContainerChannel
 from shared.models.cve import Container
 from shared.models.linkage import CVEDerivationClusterProposal, ProvenanceFlags
-from shared.models.nix_evaluation import NixDerivation
+from shared.models.nix_evaluation import (
+    NixDerivation,
+    NixEvaluation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +27,10 @@ def produce_linkage_candidates(
             drvs = set(
                 # TODO: improve accuracy by performing case normalization.
                 # TODO: improve accuracy by using bigrams similarity with a `| Q(...)` query.
-                NixDerivation.objects.filter(name__contains=affected.package_name)
+                NixDerivation.objects.filter(
+                    name__contains=affected.package_name,
+                    parent_evaluation__state=NixEvaluation.EvaluationState.COMPLETED,
+                )
             )
             for d in drvs:
                 if d in candidates:
