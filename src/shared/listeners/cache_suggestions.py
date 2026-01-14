@@ -348,10 +348,6 @@ def channel_structure(
                     reverse=True,
                 )
             )
-        # Sorting major channel names happens to work out well for bringing them into historical order
-        packages[package_name]["channels"] = dict(
-            sorted(packages[package_name]["channels"].items())
-        )
     return packages
 
 
