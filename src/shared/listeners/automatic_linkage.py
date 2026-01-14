@@ -25,10 +25,9 @@ def produce_linkage_candidates(
         # TODO: record what is used to expand the candidate list.
         if affected.package_name is not None:
             drvs = set(
-                # TODO: improve accuracy by performing case normalization.
                 # TODO: improve accuracy by using bigrams similarity with a `| Q(...)` query.
                 NixDerivation.objects.filter(
-                    name__contains=affected.package_name,
+                    name__icontains=affected.package_name,
                     parent_evaluation__state=NixEvaluation.EvaluationState.COMPLETED,
                 )
             )
