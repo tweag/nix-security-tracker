@@ -134,6 +134,7 @@
     <script src="/static/htmx.min.js"></script>
     <script>
       // We didn't find a better way to remove buttons that are only needed for non-JS workflows
+      <!-- FIXME(@florentc): remove this when the migration to the new suggestions is done -->
       document.querySelectorAll(".remove-when-js-is-enabled").forEach(e => e.remove());
     </script>
   </body>

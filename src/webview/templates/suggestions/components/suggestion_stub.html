@@ -2,23 +2,23 @@
 
 <article class="rounded-box row centered spread gap" hx-target="this">
   <div class="row gap-small centered">
-    {% status_icon suggestion.status %}
+    {% status_icon data.suggestion.status %}
     <h2>
-      {% if suggestion.cached.payload.title %}
-        {{ suggestion.cached.payload.title }}
+      {% if data.suggestion.cached.payload.title %}
+        {{ data.suggestion.cached.payload.title }}
       {% else %}
-        {{ suggestion.cached.payload.description|truncatewords:10 }}
+        {{ data.suggestion.cached.payload.description|truncatewords:10 }}
       {% endif %}
     </h2>
   </div>
   <div class="row centered gap">
     <img class="state-change-indicator htmx-indicator" src="/static/spinner.svg">
-    <a href="{% url 'webview:suggestion:detail' suggestion_id=suggestion.pk %}">View</a>
-    {% if undo_status_target %}
+    <a href="{% url 'webview:suggestion:detail' suggestion_id=data.suggestion.pk %}">View</a>
+    {% if data.undo_status_target %}
     <form
       class="contents"
       method="post"
-      action="{% url 'webview:suggestion:update_status' suggestion_id=suggestion.pk %}"
+      action="{% url 'webview:suggestion:update_status' suggestion_id=data.suggestion.pk %}"
       hx-boost="true"
       hx-swap="outerHTML show:none"
       hx-indicator="previous .state-change-indicator"
@@ -27,14 +27,14 @@
     >
       {% csrf_token %}
       <input type="hidden" name="undo_status_change" value="true"></input>
-      <button class="btn btn-gray row gap-small centered" type="submit" name="new_status" value="{{ undo_status_target }}" title="Undo">
-        {% status_icon undo_status_target %}
+      <button class="btn btn-gray row gap-small centered" type="submit" name="new_status" value="{{ data.undo_status_target }}" title="Undo">
+        {% status_icon data.undo_status_target %}
         Undo
       </button>
     </form>
     {% endif %}
-    {% if issue_link %}
-    <div class="inline-row gap-small baseline"><i class="icon-github"></i><a href="{{ issue_link }}">GitHub issue</a></div>
+    {% if data.issue_link %}
+    <div class="inline-row gap-small baseline"><i class="icon-github"></i><a href="{{ data.issue_link }}">GitHub issue</a></div>
     {% endif %}
   </div>
 </article>

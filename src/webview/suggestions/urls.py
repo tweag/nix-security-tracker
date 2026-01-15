@@ -2,8 +2,10 @@ from django.urls import path
 
 from .views import (
     AcceptedSuggestionsView,
+    IgnorePackageView,
     PublishedSuggestionsView,
     RejectedSuggestionsView,
+    RestorePackageView,
     SuggestionDetailView,
     UntriagedSuggestionsView,
     UpdateSuggestionStatusView,
@@ -19,6 +21,17 @@ urlpatterns = [
         "<int:suggestion_id>/status",
         UpdateSuggestionStatusView.as_view(),
         name="update_status",
+    ),
+    # Package operations
+    path(
+        "<int:suggestion_id>/packages/<str:package_attr>/ignore/",
+        IgnorePackageView.as_view(),
+        name="ignore_package",
+    ),
+    path(
+        "<int:suggestion_id>/packages/<str:package_attr>/restore/",
+        RestorePackageView.as_view(),
+        name="restore_package",
     ),
     path(
         "list/untriaged/",

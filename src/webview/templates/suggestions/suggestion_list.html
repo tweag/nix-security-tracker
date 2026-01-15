@@ -34,8 +34,8 @@
 {% endif %}
 
 <div class="column gap">
-  {% for suggestion in suggestions %}
-    {% suggestion_new suggestion suggestion.activity_log show_status=False %}
+  {% for suggestion_context in suggestion_contexts %}
+    {% suggestion_new suggestion_context %}
   {% endfor %}
 </div>
 {% endblock content %}

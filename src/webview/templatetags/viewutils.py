@@ -1,4 +1,5 @@
 import datetime
+import logging
 from collections.abc import ItemsView
 from typing import Any, TypedDict
 
@@ -14,8 +15,15 @@ from shared.models.linkage import (
     CVEDerivationClusterProposal,
 )
 from webview.models import Notification
+from webview.suggestions.context.types import (
+    PackageListContext,
+    SuggestionContext,
+    SuggestionStubContext,
+)
 
 register = template.Library()
+
+logger = logging.getLogger(__name__)
 
 
 @register.filter
@@ -44,7 +52,8 @@ class PackageList(TypedDict):
     items: dict[str, Package]
 
 
-class PackageListContext(TypedDict):
+# FIXME(@florentc): remove eventually when legacy suggstion views are removed
+class PackageListContextLegacy(TypedDict):
     packages: PackageList
     selectable: bool
 
@@ -222,16 +231,10 @@ def suggestion(
 @register.inclusion_tag("suggestions/components/suggestion.html", takes_context=True)
 def suggestion_new(
     context: Context,
-    suggestion: CVEDerivationClusterProposal,
-    activity_log: list[FoldedEventType],
-    show_status: bool = True,
-    show_stub_only: bool = False,
+    data: SuggestionContext,
 ) -> dict:
     return {
-        "suggestion": suggestion,
-        "activity_log": activity_log,
-        "show_status": show_status,
-        "show_stub_only": show_stub_only,
+        "data": data,
         "user": context["user"],
     }
 
@@ -241,14 +244,24 @@ def suggestion_new(
 )
 def suggestion_stub(
     context: Context,
-    issue_link: str | None,
-    undo_status_target: str | None,
-    suggestion: CVEDerivationClusterProposal,
+    data: SuggestionStubContext,
 ) -> dict:
     return {
-        "suggestion": suggestion,
-        "issue_link": issue_link,
-        "undo_status_target": undo_status_target,
+        "data": data,
+        "user": context["user"],
+    }
+
+
+@register.inclusion_tag("suggestions/components/package_list.html", takes_context=True)
+def package_list(
+    context: Context,
+    data: PackageListContext,
+) -> dict[str, Any]:
+    """
+    Renders the nixpkgs package list for suggestions with ignore/restore functionality.
+    """
+    return {
+        "data": data,
         "user": context["user"],
     }
 
@@ -276,7 +289,7 @@ def nixpkgs_package(attribute_name: str, pdata: Package) -> PackageContext:
 
 
 @register.inclusion_tag("components/nixpkgs_package_list.html")
-def selectable_nixpkgs_package_list(packages: PackageList) -> PackageListContext:
+def selectable_nixpkgs_package_list(packages: PackageList) -> PackageListContextLegacy:
     """Renders the nixpkgs package list with additional checkboxes to have packages selectable.
 
     Args:
@@ -295,7 +308,7 @@ def selectable_nixpkgs_package_list(packages: PackageList) -> PackageListContext
 
 
 @register.inclusion_tag("components/nixpkgs_package_list.html")
-def nixpkgs_package_list(packages: PackageList) -> PackageListContext:
+def nixpkgs_package_list(packages: PackageList) -> PackageListContextLegacy:
     """Renders the nixpkgs package list.
 
     Args:

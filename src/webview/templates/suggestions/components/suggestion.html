@@ -1,23 +1,23 @@
 {% load viewutils %}
 
-{% if show_stub_only %}
-  {% suggestion_stub suggestion=suggestion undo_status_target=undo_status_target issue_link=issue_link %}
+{% if data.suggestion_stub_context %}
+  {% suggestion_stub data.suggestion_stub_context %}
 {% else %}
 
-  <article class="rounded-box column gap highlight-target" hx-target="this" id="suggestion-{{ suggestion.cached.payload.pk }}">
+  <article class="rounded-box column gap highlight-target" hx-target="this" id="suggestion-{{ data.suggestion.cached.payload.pk }}">
     {% if show_status %}
       <div class="row gap-small centered">
-        {% status_icon suggestion.status %}
-        {% if suggestion.status == "pending" %}
+        {% status_icon data.suggestion.status %}
+        {% if data.suggestion.status == "pending" %}
           <div class="bold">Untriaged</div>
           <div>(<a href="{% url 'webview:suggestion:untriaged_suggestions' %}">browse all</a>)</div>
-        {% elif suggestion.status == "rejected" %}
+        {% elif data.suggestion.status == "rejected" %}
           <div class="bold">Dismissed</div>
           <div>(<a href="{% url 'webview:suggestion:dismissed_suggestions' %}">browse all</a>)</div>
-        {% elif suggestion.status == "accepted" %}
+        {% elif data.suggestion.status == "accepted" %}
           <div class="bold">Draft</div>
           <div>(<a href="{% url 'webview:suggestion:draft_suggestions' %}">browse all</a>)</div>
-        {% elif suggestion.status == "published" %}
+        {% elif data.suggestion.status == "published" %}
           <div class="bold">Published</div>
           <div>(<a href="{% url 'webview:suggestion:published_suggestions' %}">browse all</a>)</div>
         {% endif %}
@@ -27,60 +27,51 @@
 
     <div class="row spread gap wrap">
       <div class="row gap wrap">
-        <a href="{% url 'webview:suggestion:detail' suggestion_id=suggestion.pk %}">Permalink</a>
-        <a href="https://nvd.nist.gov/vuln/detail/{{ suggestion.cached.payload.cve_id | urlencode }}">
-          {{ suggestion.cached.payload.cve_id }}
+        <a href="{% url 'webview:suggestion:detail' suggestion_id=data.suggestion.pk %}">Permalink</a>
+        <a href="https://nvd.nist.gov/vuln/detail/{{ data.suggestion.cached.payload.cve_id | urlencode }}">
+          {{ data.suggestion.cached.payload.cve_id }}
         </a>
-        {% if suggestion.cached.payload.metrics %}
-          {% severity_badge suggestion.cached.payload.metrics %}
+        {% if data.suggestion.cached.payload.metrics %}
+          {% severity_badge data.suggestion.cached.payload.metrics %}
         {% endif %}
       </div>
       <div class="row gap">
         <img class="state-change-indicator htmx-indicator" src="/static/spinner.svg">
-        {% suggestion_activity_log suggestion activity_log %}
+        {% suggestion_activity_log data.suggestion data.activity_log %}
       </div>
     </div>
 
     <details>
       <summary class="heading">
-        {% if suggestion.cached.payload.title %}
-          {{ suggestion.cached.payload.title }}
+        {% if data.suggestion.cached.payload.title %}
+          {{ data.suggestion.cached.payload.title }}
         {% else %}
-          {{ suggestion.cached.payload.description|truncatewords:10 }}
+          {{ data.suggestion.cached.payload.description|truncatewords:10 }}
         {% endif %}
       </summary>
-      <p>{{ suggestion.cached.payload.description }}</p>
+      <p>{{ data.suggestion.cached.payload.description }}</p>
     </details>
 
     <div class="rounded-box column gap">
       <h2 class="heading dimmed">Affected products</h2>
-      {% affected_products suggestion.cached.payload.affected_products %}
+      {% affected_products data.suggestion.cached.payload.affected_products %}
     </div>
 
     <div class="rounded-box column gap">
-      <h2 class="heading dimmed">Matching in nixpkgs</h2>
-      {% if user|is_maintainer_or_admin %}
-        {% if suggestion.status == "rejected" or suggestion.status == "published" %}
-          {% nixpkgs_package_list suggestion.cached.payload.packages %}
-        {% else %}
-          {% selectable_nixpkgs_package_list suggestion.cached.payload.packages %}
-        {% endif %}
-      {% else %}
-        {% nixpkgs_package_list suggestion.cached.payload.packages %}
-      {% endif %}
+      {% package_list data.package_list_context %}
     </div>
 
-    {% if suggestion.status == "pending" or suggestion.status == "accepted" %}
-      {% selectable_maintainers_list maintainers=suggestion.cached.payload.maintainers suggestion_id=suggestion.cached.payload.pk %}
+    {% if data.packages.editable %}
+      {% selectable_maintainers_list maintainers=data.suggestion.cached.payload.maintainers suggestion_id=data.suggestion.cached.payload.pk %}
     {% else %}
-      {% maintainers_list suggestion.cached.payload.maintainers %}
+      {% maintainers_list data.suggestion.cached.payload.maintainers %}
     {% endif %}
 
 
     <form
       class="contents"
       method="post"
-      action="{% url 'webview:suggestion:update_status' suggestion_id=suggestion.pk %}"
+      action="{% url 'webview:suggestion:update_status' suggestion_id=data.suggestion.pk %}"
       hx-boost="true"
       hx-swap="outerHTML show:none"
       hx-indicator="find .state-change-indicator"
@@ -88,9 +79,9 @@
       autocomplete="off"
     >
       {% csrf_token %}
-      {% if not user|is_maintainer_or_admin or suggestion.status == "published" %}
-        {% if suggestion.comment %}
-          <pre class="rounded-box monospace highlight-nonempty">{{ suggestion.comment|default:"" }}</pre>
+      {% if not user|is_maintainer_or_admin or data.suggestion.status == "published" %}
+        {% if data.suggestion.comment %}
+          <pre class="rounded-box monospace highlight-nonempty">{{ data.suggestion.comment|default:"" }}</pre>
         {% endif %}
       {% else %}
         <textarea 
@@ -99,12 +90,12 @@
           maxlength="1000" 
           placeholder="Free comment: context, additional info, dismissal reason, etc."
           rows="3"
-        >{{ suggestion.comment|default:"" }}</textarea>
+        >{{ data.suggestion.comment|default:"" }}</textarea>
       {% endif %}
 
-      {% if user|is_maintainer_or_admin and suggestion.status != "published" %}
+      {% if user|is_maintainer_or_admin and data.suggestion.status != "published" %}
         <div class="row-reverse spread">
-          {% if suggestion.status == "pending" %}
+          {% if data.suggestion.status == "pending" %}
             <button type="submit" name="new_status" value="accepted" class="btn btn-green row gap-small centered">
               {% status_icon "accepted" %}
               Create draft
@@ -113,24 +104,16 @@
               {% status_icon "rejected" %}
               Dismiss
             </button>
-          {% elif suggestion.status == "rejected" %}
+          {% elif data.suggestion.status == "rejected" %}
             <button type="submit" name="new_status" value="accepted" class="btn btn-green row gap-small centered">
               {% status_icon "accepted" %}
               Convert to draft
             </button>
-          {% elif suggestion.status == "accepted" %}
+          {% elif data.suggestion.status == "accepted" %}
             <button type="submit" name="new_status" value="published" class="btn btn-green row gap-small centered">
               {% status_icon "published" %}
               Publish issue
             </button>
-            {% if suggestion.cached.payload.packages %}
-              <div class="remove-when-js-is-enabled row gap-small centered">
-                <button type="submit" class="btn btn-gray">
-                  Purge deleted packages
-                </button>
-                <span class="dimmed">(cannot be undone)<span>
-              </div>
-            {% endif %}
             <button type="submit" name="new_status" value="rejected" class="btn btn-gray row gap-small centered">
               {% status_icon "rejected" %}
               Dismiss
@@ -140,9 +123,9 @@
       {% endif %}
     </form>
 
-    {% if error_message %}
+    {% if data.error_message %}
     <div class="error-block">
-      {{ error_message }}
+      {{ data.error_message }}
     </div>
     {% endif %}
   </article>

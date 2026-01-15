@@ -1,5 +1,5 @@
 import logging
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Any
 from urllib.parse import urlparse
 
@@ -14,14 +14,19 @@ from django.views.generic import TemplateView
 
 from shared.auth import can_publish_github_issue
 from shared.github import create_gh_issue
-from shared.logs.batches import batch_events
+from shared.listeners.cache_suggestions import apply_package_edits
+from shared.logs.batches import FoldedEventType, batch_events
 from shared.logs.events import remove_canceling_events
 from shared.logs.fetchers import fetch_suggestion_events
 from shared.models import (
     NixpkgsIssue,
 )
-from shared.models.cached import CachedSuggestions
-from shared.models.linkage import CVEDerivationClusterProposal
+from shared.models.linkage import CVEDerivationClusterProposal, PackageEdit
+from webview.suggestions.context.builders import (
+    are_packages_editable,
+    get_package_list_context,
+)
+from webview.suggestions.context.types import SuggestionContext, SuggestionStubContext
 
 logger = logging.getLogger(__name__)
 
@@ -29,36 +34,78 @@ logger = logging.getLogger(__name__)
 class SuggestionBaseView(LoginRequiredMixin, TemplateView, ABC):
     """Base view for all suggestion-related views with common functionality."""
 
+    def fetch_suggestion(self, suggestion_id: int) -> CVEDerivationClusterProposal:
+        return get_object_or_404(CVEDerivationClusterProposal, id=suggestion_id)
+
+    def fetch_activity_log(self, suggestion_id: int) -> list[FoldedEventType]:
+        raw_events = fetch_suggestion_events(suggestion_id)
+        return batch_events(remove_canceling_events(raw_events, sort=True))
+
     def get_suggestion_context(
-        self, suggestion_id_input: str | int | None
-    ) -> dict[str, Any]:
-        """Get common context data for a suggestion."""
-        # Validate provided suggestion id
-        if suggestion_id_input is None:
-            raise Http404("Suggestion ID is required")
+        self, suggestion: CVEDerivationClusterProposal
+    ) -> SuggestionContext:
+        return SuggestionContext(
+            suggestion=suggestion,
+            package_list_context=get_package_list_context(suggestion),
+            activity_log=self.fetch_activity_log(suggestion.pk),
+        )
+
+    def _handle_error(
+        self,
+        request: HttpRequest,
+        suggestion_context: SuggestionContext,
+        error_message: str,
+    ) -> HttpResponse:
+        """Handle error responses for both HTMX and standard requests."""
+        suggestion_context.error_message = error_message
+        if request.headers.get("HX-Request"):
+            return self.render_to_response({"data": suggestion_context})
+        else:
+            # Without javascript, we use Django messages for the errors
+            messages.error(request, error_message)
+            return self._redirect_to_origin(request)
+
+    def _redirect_to_origin(self, request: HttpRequest) -> HttpResponse:
+        """Redirect to the origin URL or fallback to suggestions list."""
+        # Get the current URL from HTMX header or referer
+        current_url = self._get_origin_url(request)
+        if not current_url:
+            # Fallback to suggestions list if no origin provided
+            logger.error("No origin URL found to redirect to")
+            return redirect("webview:suggestion:untriaged_suggestions")
+        return redirect(current_url)
+
+    def _get_origin_url(self, request: HttpRequest) -> str | None:
+        """Get the origin URL from HTMX headers or HTTP referer."""
+        current_url = request.headers.get("HX-Current-URL")
+        if not current_url:
+            current_url = request.META.get("HTTP_REFERER", "")
+        return current_url
+
+    def _is_origin_url_a_list(self, request: HttpRequest) -> bool:
+        """Checks whether we come from one of the suggestion list views. Returns false when in doubt."""
+        origin_url = self._get_origin_url(request)
+        if not origin_url:
+            return False
+
+        # Extract path from URL
         try:
-            suggestion_id_int = int(suggestion_id_input)
-        except (ValueError, TypeError):
-            raise Http404("Invalid suggestion ID")
+            # Resolve the URL to get view name
+            parsed = urlparse(origin_url)
+            resolved = resolve(parsed.path)
+            logger.error(resolved)
 
-        suggestion = get_object_or_404(
-            CVEDerivationClusterProposal, id=suggestion_id_int
-        )
-        cached_suggestion = get_object_or_404(
-            CachedSuggestions, proposal_id=suggestion_id_int
-        )
+            # Check if it's one of our list views
+            list_url_names = [
+                "untriaged_suggestions",
+                "draft_suggestions",
+                "dismissed_suggestions",
+                "published_suggestions",
+            ]
 
-        # Get activity log
-        raw_events = fetch_suggestion_events(suggestion.pk)
-        activity_log = batch_events(remove_canceling_events(raw_events, sort=True))
-
-        return {
-            "suggestion": suggestion,
-            "cached_suggestion": cached_suggestion.payload,
-            # FIXME(@florentc): This is only used in create_gh_issue. We should use payload there too eventually.
-            "cached_suggestion_raw": cached_suggestion,
-            "activity_log": activity_log,
-        }
+            return resolved.url_name in list_url_names
+        except Exception:
+            return False
 
 
 class SuggestionDetailView(SuggestionBaseView):
@@ -67,19 +114,30 @@ class SuggestionDetailView(SuggestionBaseView):
     template_name = "suggestions/suggestion_detail.html"
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
-        suggestion_id = kwargs.get("suggestion_id")  # Could be None if missing
+        context = super().get_context_data(**kwargs)
+        suggestion_id_input = kwargs.get("suggestion_id")  # Could be None if missing
 
-        # Get suggestion context (with proper error handling)
-        context = self.get_suggestion_context(suggestion_id)
-
-        return context
+        # Validate provided suggestion id
+        if suggestion_id_input is None:
+            raise Http404("Suggestion ID is required")
+        try:
+            suggestion_id = int(suggestion_id_input)
+            suggestion = get_object_or_404(
+                CVEDerivationClusterProposal, id=suggestion_id
+            )
+            context.update(
+                {"suggestion_context": self.get_suggestion_context(suggestion)}
+            )
+            return context
+        except (ValueError, TypeError):  # FIXME(@florentc): also catch db error
+            raise Http404("Invalid suggestion ID")
 
 
 class SuggestionListView(SuggestionBaseView, ABC):
     """Base list view for suggestions filtered by a specific status."""
 
     template_name = "suggestions/suggestion_list.html"
-    paginate_by = 20
+    paginate_by = 10
     status_filter = None  # To be defined in concrete classes
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
@@ -91,20 +149,20 @@ class SuggestionListView(SuggestionBaseView, ABC):
             status=self.status_filter
         ).order_by("-updated_at", "-created_at")
 
-        for suggestion in suggestions:
-            raw_events = fetch_suggestion_events(suggestion.pk)
-            suggestion.activity_log = batch_events(
-                remove_canceling_events(raw_events, sort=True)
-            )
-
-        # Pagination
+        # Pagination first
         paginator = Paginator(suggestions, self.paginate_by)
         page_number = self.request.GET.get("page", 1)
         page_obj = paginator.get_page(page_number)
 
+        # Convert suggestions to SuggestionContext objects for the current page
+        suggestion_contexts = []
+        for suggestion in page_obj.object_list:
+            suggestion_context = self.get_suggestion_context(suggestion)
+            suggestion_contexts.append(suggestion_context)
+
         context.update(
             {
-                "suggestions": page_obj.object_list,
+                "suggestion_contexts": suggestion_contexts,
                 "page_obj": page_obj,
                 "status_filter": self.status_filter,
                 "adjusted_elided_page_range": paginator.get_elided_page_range(),
@@ -142,8 +200,8 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
             return HttpResponseForbidden()
 
         # Get suggestion context
-        context = self.get_suggestion_context(suggestion_id)
-        suggestion = context["suggestion"]
+        suggestion = self.fetch_suggestion(suggestion_id)
+        suggestion_context = self.get_suggestion_context(suggestion)
 
         # Get form data
         new_status = request.POST.get("new_status")
@@ -154,41 +212,49 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
 
         # Validate status change
         if not new_status:
-            return self._handle_error(request, context, "Missing new status")
+            return self._handle_error(request, suggestion_context, "Missing new status")
 
         if new_status == suggestion.status:
-            return self._handle_error(request, context, "Cannot change to same status")
+            return self._handle_error(
+                request, suggestion_context, "Cannot change to same status"
+            )
 
         # Handle status changes (except publish which needs special handling)
-        old_status = suggestion.status  # Will be used for the undo button
+        github_issue_link = None  # Will be used if we publish
+        undo_status_target = (
+            suggestion.status
+        )  # We keep track of the previous status to provide an undo action
         if new_status == "rejected":
             # When undoing a status change, there is no comment form input so we don't expect it
             if not new_comment and not undo_status_change:
                 return self._handle_error(
-                    request, context, "You must provide a dismissal comment"
+                    request, suggestion_context, "You must provide a dismissal comment"
                 )
             suggestion.status = CVEDerivationClusterProposal.Status.REJECTED
-        elif new_status == "accepted":
-            suggestion.status = CVEDerivationClusterProposal.Status.ACCEPTED
-        elif new_status == "published":
-            try:
-                with transaction.atomic():
-                    tracker_issue = NixpkgsIssue.create_nixpkgs_issue(suggestion)
-                    tracker_issue_link = request.build_absolute_uri(
-                        reverse("webview:issue_detail", args=[tracker_issue.code])
+        else:
+            if new_status == "accepted":
+                suggestion.status = CVEDerivationClusterProposal.Status.ACCEPTED
+            elif new_status == "published":
+                try:
+                    with transaction.atomic():
+                        tracker_issue = NixpkgsIssue.create_nixpkgs_issue(suggestion)
+                        tracker_issue_link = request.build_absolute_uri(
+                            reverse("webview:issue_detail", args=[tracker_issue.code])
+                        )
+                        github_issue_link = create_gh_issue(
+                            suggestion_context.suggestion.cached,
+                            tracker_issue_link,
+                            new_comment,
+                        ).html_url
+                        suggestion.status = (
+                            CVEDerivationClusterProposal.Status.PUBLISHED
+                        )
+                        suggestion.save()
+                        undo_status_target = None  # We disable the undo button in case we have published. There is no turning back.
+                except Exception:
+                    return self._handle_error(
+                        request, suggestion_context, "Unable to publish this suggestion"
                     )
-                    gh_issue_link = create_gh_issue(
-                        context["cached_suggestion_raw"],
-                        tracker_issue_link,
-                        new_comment,
-                    ).html_url
-                    suggestion.status = CVEDerivationClusterProposal.Status.PUBLISHED
-                    suggestion.save()
-                    context["issue_link"] = gh_issue_link
-            except Exception:
-                return self._handle_error(
-                    request, context, "Unable to publish this suggestion"
-                )
 
         # Update comment if provided, unless this is an "undo" status change in which no new comment is expected
         if new_comment and not undo_status_change:
@@ -196,12 +262,24 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
 
         suggestion.save()
 
-        # Refresh suggestion context
-        context.update(self.get_suggestion_context(suggestion_id))
+        # Refresh activity_log
+        suggestion_context.activity_log = self.fetch_activity_log(suggestion.pk)
 
-        # Set target of undo button unless in case of publication
-        if new_status != "published":
-            context["undo_status_target"] = old_status
+        # Refresh packages edit status
+        suggestion_context.package_list_context.editable = are_packages_editable(
+            suggestion
+        )
+        # FIXME(@florentc): Here we update the "packages" field of the cached
+        # suggestion but in the rest of the new suggestion workflow, we don't
+        # use that cache a lot, we often recompute the active and ignored
+        # packages. We need to decide whether we want to get rid of this cached
+        # list or if we want to use it extensively in the overhauled
+        # suggestions workflows.
+        suggestion.cached.payload["packages"] = apply_package_edits(
+            suggestion.cached.payload["original_packages"],
+            suggestion.package_edits.all(),
+        )
+        suggestion.cached.save()
 
         if self._is_origin_url_a_list(request):
             if not undo_status_change:
@@ -211,66 +289,127 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
                 #
                 # However, if the status change is an "undo", then we want to show the
                 # full suggestion again.
-                context["show_stub_only"] = True
+                suggestion_context.suggestion_stub_context = SuggestionStubContext(
+                    suggestion,
+                    issue_link=github_issue_link,
+                    undo_status_target=undo_status_target,
+                )
         else:
             # If we rerender but we are not in a suggestion list corresponding
             # to a specific status, we want to display the suggestion status so
             # the user can keep track
-            context["show_status"] = True
+            suggestion_context.show_status = True
 
         if request.headers.get("HX-Request"):
-            return self.render_to_response(context)
+            return self.render_to_response({"data": suggestion_context})
         else:
             return self._redirect_to_origin(request)
 
-    def _handle_error(
-        self, request: HttpRequest, context: dict, error_message: str
+
+class PackageOperationBaseView(SuggestionBaseView, ABC):
+    """Base view for package operations (ignore/restore) with common functionality."""
+
+    # TODO(@florentc): We replace the whole component to make it easy to update
+    # the activity log, but it would be more efficient to replace only the
+    # package list and use oob updates of the activity log in the package list
+    # template
+    template_name = "suggestions/components/suggestion.html"
+
+    def post(
+        self, request: HttpRequest, suggestion_id: int, package_attr: str
     ) -> HttpResponse:
-        """Handle error responses for both HTMX and standard requests."""
-        context["error_message"] = error_message
-        if request.headers.get("HX-Request"):
-            return self.render_to_response(context)
-        else:
-            # Without javascript, we use Django messages for the errors
-            messages.error(request, error_message)
-            return redirect(reverse("webview:subscriptions:center"))
+        """Handle package operation requests."""
+        if not request.user or not can_publish_github_issue(request.user):
+            return HttpResponseForbidden()
 
-    def _redirect_to_origin(self, request: HttpRequest) -> HttpResponse:
-        # Get the current URL from HTMX header or referer
-        current_url = self._get_origin_url(request)
-        if not current_url:
-            # Fallback to suggestions list if no origin provided
-            logger.error("No origin URL found to redirect to")
-            return redirect("webview:suggestions_list")
-        return redirect(current_url)
+        # Get suggestion context
+        suggestion = self.fetch_suggestion(suggestion_id)
+        suggestion_context = self.get_suggestion_context(suggestion)
 
-    def _get_origin_url(self, request: HttpRequest) -> str | None:
-        current_url = request.headers.get("HX-Current-URL")
-        if not current_url:
-            current_url = request.META.get("HTTP_REFERER", "")
-        return current_url
+        # Validate that the suggestion status allows package editing
+        if suggestion.status not in [
+            CVEDerivationClusterProposal.Status.PENDING,
+            CVEDerivationClusterProposal.Status.ACCEPTED,
+        ]:
+            return self._handle_error(
+                request,
+                suggestion_context,
+                "Package editing is not allowed for this suggestion status",
+            )
 
-    def _is_origin_url_a_list(self, request: HttpRequest) -> bool:
-        """Checks whether we come from one of the suggestion list views. Returns false when in doubt."""
-        origin_url = self._get_origin_url(request)
-        if not origin_url:
-            return False
+        # Validate that the package exists in the suggestion
+        if package_attr not in suggestion.cached.payload.get("original_packages", {}):
+            return self._handle_error(
+                request, suggestion_context, "Package not found in this suggestion"
+            )
 
-        # Extract path from URL
+        # Perform the specific operation (to be implemented by subclasses)
         try:
-            # Resolve the URL to get view name
-            parsed = urlparse(origin_url)
-            resolved = resolve(parsed.path)
-            logger.error(resolved)
+            with transaction.atomic():
+                self._perform_operation(suggestion, package_attr)
+        except Exception as e:
+            logger.error(f"Failed to perform package operation: {e}")
+            return self._handle_error(
+                request,
+                suggestion_context,
+                f"Unable to {self._get_operation_name()} package",
+            )
 
-            # Check if it's one of our list views
-            list_url_names = [
-                "untriaged_suggestions",
-                "draft_suggestions",
-                "dismissed_suggestions",
-                "published_suggestions",
-            ]
+        # Refresh suggestion context with updated data
+        suggestion = self.fetch_suggestion(suggestion_id)
+        suggestion_context = self.get_suggestion_context(suggestion)
 
-            return resolved.url_name in list_url_names
-        except Exception:
-            return False
+        # Handle response based on request type
+        if request.headers.get("HX-Request"):
+            # For HTMX requests, return the updated component
+            return self.render_to_response({"data": suggestion_context})
+        else:
+            # For non-HTMX requests, redirect to origin
+            return self._redirect_to_origin(request)
+
+    @abstractmethod
+    def _perform_operation(
+        self, suggestion: CVEDerivationClusterProposal, package_attr: str
+    ) -> None:
+        """Perform the specific package operation. To be implemented by subclasses."""
+        pass
+
+    @abstractmethod
+    def _get_operation_name(self) -> str:
+        """Get the operation name for error messages. To be implemented by subclasses."""
+        pass
+
+
+class IgnorePackageView(PackageOperationBaseView):
+    """Handle package ignore operations."""
+
+    def _perform_operation(
+        self, suggestion: CVEDerivationClusterProposal, package_attr: str
+    ) -> None:
+        """Create or update PackageEdit to ignore the package."""
+        edit, created = suggestion.package_edits.get_or_create(
+            package_attribute=package_attr,
+            defaults={"edit_type": PackageEdit.EditType.REMOVE},
+        )
+        if not created and edit.edit_type != PackageEdit.EditType.REMOVE:
+            edit.edit_type = PackageEdit.EditType.REMOVE
+            edit.save()
+
+    def _get_operation_name(self) -> str:
+        return "ignore"
+
+
+class RestorePackageView(PackageOperationBaseView):
+    """Handle package restore operations."""
+
+    def _perform_operation(
+        self, suggestion: CVEDerivationClusterProposal, package_attr: str
+    ) -> None:
+        """Remove PackageEdit entries to restore the package."""
+        suggestion.package_edits.filter(
+            package_attribute=package_attr,
+            edit_type=PackageEdit.EditType.REMOVE,
+        ).delete()
+
+    def _get_operation_name(self) -> str:
+        return "restore"
