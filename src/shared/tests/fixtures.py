@@ -160,7 +160,7 @@ def make_drv(
 
         return NixDerivation.objects.create(
             attribute=attribute,
-            derivation_path="/nix/store/<hash>-{pname}-{version}.drv",
+            derivation_path=f"/nix/store/<hash>-{pname}-{version}.drv",
             name=f"{pname}-{version}",
             metadata=meta,
             system=system,
