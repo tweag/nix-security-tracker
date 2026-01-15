@@ -57,7 +57,7 @@ def test_link_only_latest_eval(
     for i, ev in enumerate(evaluations):
         make_drv(
             evaluation=ev,
-            name="foobar",
+            pname="foobar",
             version=f"1.{i}",
         )
 

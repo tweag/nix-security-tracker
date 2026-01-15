@@ -133,7 +133,8 @@ def make_drv(
     evaluation: NixEvaluation,
 ) -> Callable[..., NixDerivation]:
     def wrapped(
-        name: str = "foo",
+        # Like `pname` in `mkDerivation`
+        pname: str = "foo",
         version: str = "1.0",
         system: str = "x86_64-linux",
         attribute: str | None = None,
@@ -151,12 +152,12 @@ def make_drv(
         meta.maintainers.add(maintainer)
 
         if attribute is None:
-            attribute = name
+            attribute = pname
 
         return NixDerivation.objects.create(
             attribute=attribute,
-            derivation_path="/nix/store/<hash>-{name}-{version}.drv",
-            name=f"{name}-{version}",
+            derivation_path="/nix/store/<hash>-{pname}-{version}.drv",
+            name=f"{pname}-{version}",
             metadata=meta,
             system=system,
             parent_evaluation=evaluation,
