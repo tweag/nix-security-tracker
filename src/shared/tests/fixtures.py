@@ -38,7 +38,8 @@ def make_container(db: None) -> Callable[..., Container]:
         title: str = "Dummy Title",
         description: str = "Test description",
         affected_version: str = "1.0",
-        package_name: str = "foo",
+        package_name: str | None = "foo",
+        product: str | None = "bar",
     ) -> Container:
         org = Organization.objects.create(uuid=1, short_name="test-org")
         cve = CveRecord.objects.create(
@@ -50,7 +51,10 @@ def make_container(db: None) -> Callable[..., Container]:
         version = Version.objects.create(
             status=Version.Status.AFFECTED, version=affected_version
         )
-        affected = AffectedProduct.objects.create(package_name=package_name)
+        affected = AffectedProduct.objects.create(
+            package_name=package_name,
+            product=product,
+        )
         affected.versions.add(version)
 
         container = cve.container.create(provider=org, title=title)

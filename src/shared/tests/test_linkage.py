@@ -1,10 +1,14 @@
 from collections.abc import Callable
 from datetime import timedelta
 
+import pytest
+
 from shared.listeners.automatic_linkage import build_new_links
 from shared.models.cve import Container
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
+    DerivationClusterProposalLink,
+    ProvenanceFlags,
 )
 from shared.models.nix_evaluation import (
     MAJOR_CHANNELS,
@@ -70,3 +74,46 @@ def test_link_only_latest_eval(
     assert set(states) == {NixEvaluation.EvaluationState.COMPLETED}
     assert suggestion.derivations.count() == len(channels)
     assert suggestion.derivations.count() < len(evaluations)
+
+
+@pytest.mark.parametrize(
+    "package_name,product,drv_pname,expected_flags",
+    [
+        ("foo", None, "foo", ProvenanceFlags.PACKAGE_NAME_MATCH),
+        ("foo", None, "bar", None),
+        (None, "bar", "bar", ProvenanceFlags.PRODUCT_MATCH),
+        (None, "bar", "foo", None),
+        ("foo", "bar", "foo", ProvenanceFlags.PACKAGE_NAME_MATCH),
+        ("foo", "bar", "bar", ProvenanceFlags.PRODUCT_MATCH),
+        ("foo", "bar", "baz", None),
+        (
+            "foo",
+            "foo",
+            "foo",
+            ProvenanceFlags.PACKAGE_NAME_MATCH | ProvenanceFlags.PRODUCT_MATCH,
+        ),
+        # This does not seem happen in practice though
+        (None, None, "foo", None),
+    ],
+)
+def test_link_product_or_package_name(
+    make_container: Callable[..., Container],
+    make_channel: Callable[..., NixChannel],
+    make_evaluation: Callable[..., NixEvaluation],
+    make_drv: Callable[..., NixDerivation],
+    package_name: str | None,
+    product: str | None,
+    drv_pname: str,
+    expected_flags: ProvenanceFlags,
+) -> None:
+    container = make_container(package_name=package_name, product=product)
+    drv = make_drv(pname=drv_pname)
+
+    match = build_new_links(container)
+
+    if expected_flags:
+        assert match
+        link = DerivationClusterProposalLink.objects.get(derivation=drv)
+        assert link.provenance_flags == expected_flags
+    else:
+        assert not match

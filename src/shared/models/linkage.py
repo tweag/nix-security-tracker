@@ -1,4 +1,4 @@
-from enum import STRICT, IntFlag, auto
+from enum import STRICT, IntFlag
 from typing import Any
 
 import pghistory
@@ -181,6 +181,7 @@ def track_maintainers_edit_delete(
 
 class ProvenanceFlags(IntFlag, boundary=STRICT):
     PACKAGE_NAME_MATCH = 1
+    PRODUCT_MATCH = 7
     VERSION_CONSTRAINT_INRANGE = 2
     VERSION_CONSTRAINT_OUTOFRANGE = 3
     NO_SOURCE_VERSION_CONSTRAINT = 4
