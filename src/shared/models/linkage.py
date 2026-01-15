@@ -180,13 +180,13 @@ def track_maintainers_edit_delete(
 
 
 class ProvenanceFlags(IntFlag, boundary=STRICT):
-    PACKAGE_NAME_MATCH = auto()
-    VERSION_CONSTRAINT_INRANGE = auto()
-    VERSION_CONSTRAINT_OUTOFRANGE = auto()
-    NO_SOURCE_VERSION_CONSTRAINT = auto()
+    PACKAGE_NAME_MATCH = 1
+    VERSION_CONSTRAINT_INRANGE = 2
+    VERSION_CONSTRAINT_OUTOFRANGE = 3
+    NO_SOURCE_VERSION_CONSTRAINT = 4
     # Whether the hardware constraint is matched for this derivation.
-    HARDWARE_CONSTRAINT_INRANGE = auto()
-    KERNEL_CONSTRAINT_INRANGE = auto()
+    HARDWARE_CONSTRAINT_INRANGE = 5
+    KERNEL_CONSTRAINT_INRANGE = 6
 
 
 # CVEDerivationClusterProposal `derivations` changes have to be tracked via its `through` model.
