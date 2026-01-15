@@ -32,24 +32,40 @@ from shared.models.nix_evaluation import (
 
 
 @pytest.fixture
-def cve(db: None) -> Container:
-    org = Organization.objects.create(uuid=1, short_name="test-org")
-    cve = CveRecord.objects.create(
-        cve_id="CVE-2025-0001",
-        assigner=org,
-    )
-    desc = Description.objects.create(value="Test description")
-    metric = Metric.objects.create(format="cvssV3_1", raw_cvss_json={})
-    version = Version.objects.create(status=Version.Status.AFFECTED, version="1.0")
-    affected = AffectedProduct.objects.create(package_name="dummy-package")
-    affected.versions.add(version)
+def make_container(db: None) -> Callable[..., Container]:
+    def wrapped(
+        cve_id: str = "CVE-2025-0001",
+        title: str = "Dummy Title",
+        description: str = "Test description",
+        affected_version: str = "1.0",
+        package_name: str = "foo",
+    ) -> Container:
+        org = Organization.objects.create(uuid=1, short_name="test-org")
+        cve = CveRecord.objects.create(
+            cve_id=cve_id,
+            assigner=org,
+        )
+        desc = Description.objects.create(value=description)
+        metric = Metric.objects.create(format="cvssV3_1", raw_cvss_json={})
+        version = Version.objects.create(
+            status=Version.Status.AFFECTED, version=affected_version
+        )
+        affected = AffectedProduct.objects.create(package_name=package_name)
+        affected.versions.add(version)
 
-    container = cve.container.create(provider=org, title="Dummy Title")
-    container.affected.add(affected)
-    container.descriptions.add(desc)
-    container.metrics.add(metric)
+        container = cve.container.create(provider=org, title=title)
+        container.affected.add(affected)
+        container.descriptions.add(desc)
+        container.metrics.add(metric)
 
-    return container
+        return container
+
+    return wrapped
+
+
+@pytest.fixture
+def cve(make_container: Callable[..., Container]) -> Container:
+    return make_container()
 
 
 @pytest.fixture
