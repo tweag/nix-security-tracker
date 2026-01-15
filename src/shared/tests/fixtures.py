@@ -53,11 +53,19 @@ def cve(db: None) -> Container:
 
 
 @pytest.fixture
-def make_channel(db: None) -> Callable[[str, NixChannel.ChannelState], NixChannel]:
-    def wrapped(release: str, state: NixChannel.ChannelState) -> NixChannel:
+def make_channel(db: None) -> Callable[..., NixChannel]:
+    # FIXME(@fricklerhandwerk): This will fall apart when we obtain the channel structure dynamically [ref:channel-structure]
+    def wrapped(
+        release: str = MAJOR_CHANNELS[1],
+        state: NixChannel.ChannelState = NixChannel.ChannelState.STABLE,
+        branch: str | None = None,
+    ) -> NixChannel:
+        if branch is None:
+            branch = f"nixos-{release}"
+
         return NixChannel.objects.create(
-            staging_branch=f"nixos-{release}",
-            channel_branch=f"nixos-{release}",
+            staging_branch=branch,
+            channel_branch=branch,
             head_sha1_commit=secrets.token_hex(16),
             state=state,
             release_version=release,
@@ -69,29 +77,31 @@ def make_channel(db: None) -> Callable[[str, NixChannel.ChannelState], NixChanne
 
 @pytest.fixture
 def channel(
-    make_channel: Callable[[str, NixChannel.ChannelState], NixChannel],
+    make_channel: Callable[..., NixChannel],
 ) -> NixChannel:
-    # FIXME(@fricklerhandwerk): This will fall apart when we obtain the channel structure dynamically [ref:channel-structure]
-    return make_channel(MAJOR_CHANNELS[1], NixChannel.ChannelState.STABLE)
+    return make_channel()
 
 
 @pytest.fixture
-def make_evaluation() -> Callable[[NixChannel], NixEvaluation]:
-    def wrapped(channel: NixChannel) -> NixEvaluation:
+def make_evaluation(
+    channel: NixChannel,
+) -> Callable[..., NixEvaluation]:
+    def wrapped(
+        channel: NixChannel = channel,
+        state: NixEvaluation.EvaluationState = NixEvaluation.EvaluationState.COMPLETED,
+    ) -> NixEvaluation:
         return NixEvaluation.objects.create(
             channel=channel,
             commit_sha1=secrets.token_hex(16),
-            state="completed",
+            state=state,
         )
 
     return wrapped
 
 
 @pytest.fixture
-def evaluation(
-    channel: NixChannel, make_evaluation: Callable[[NixChannel], NixEvaluation]
-) -> NixEvaluation:
-    return make_evaluation(channel)
+def evaluation(make_evaluation: Callable[..., NixEvaluation]) -> NixEvaluation:
+    return make_evaluation()
 
 
 @pytest.fixture
@@ -102,8 +112,18 @@ def maintainer(db: None) -> NixMaintainer:
 
 
 @pytest.fixture
-def make_drv(maintainer: NixMaintainer) -> Callable[[NixEvaluation], NixDerivation]:
-    def wrapped(evaluation: NixEvaluation) -> NixDerivation:
+def make_drv(
+    maintainer: NixMaintainer,
+    evaluation: NixEvaluation,
+) -> Callable[..., NixDerivation]:
+    def wrapped(
+        name: str = "foo",
+        version: str = "1.0",
+        system: str = "x86_64-linux",
+        attribute: str | None = None,
+        evaluation: NixEvaluation = evaluation,
+        maintainer: NixMaintainer = maintainer,
+    ) -> NixDerivation:
         meta = NixDerivationMeta.objects.create(
             description="Dummy derivation",
             insecure=False,
@@ -114,12 +134,15 @@ def make_drv(maintainer: NixMaintainer) -> Callable[[NixEvaluation], NixDerivati
         )
         meta.maintainers.add(maintainer)
 
+        if attribute is None:
+            attribute = name
+
         return NixDerivation.objects.create(
-            attribute="foo",
-            derivation_path="/nix/store/<hash>-foo.drv",
-            name="foo-1.0",
+            attribute=attribute,
+            derivation_path="/nix/store/<hash>-{name}-{version}.drv",
+            name=f"{name}-{version}",
             metadata=meta,
-            system="x86_64-linux",
+            system=system,
             parent_evaluation=evaluation,
         )
 
@@ -128,11 +151,9 @@ def make_drv(maintainer: NixMaintainer) -> Callable[[NixEvaluation], NixDerivati
 
 @pytest.fixture
 def drv(
-    db: None,
-    make_drv: Callable[[NixEvaluation], NixDerivation],
-    evaluation: NixEvaluation,
+    make_drv: Callable[..., NixDerivation],
 ) -> NixDerivation:
-    return make_drv(evaluation)
+    return make_drv()
 
 
 @pytest.fixture
