@@ -10,7 +10,7 @@ class PackageListContext:
     ignored: dict
     editable: bool
     suggestion_id: int
-    # TODO(@florentc): Add a state for whether to pre-open the "ignored
+    # FIXME(@florentc): Add a state for whether to pre-open the "ignored
     # packages" list, in case it was already opened before component update
 
 

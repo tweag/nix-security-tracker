@@ -93,7 +93,6 @@ class SuggestionBaseView(LoginRequiredMixin, TemplateView, ABC):
             # Resolve the URL to get view name
             parsed = urlparse(origin_url)
             resolved = resolve(parsed.path)
-            logger.error(resolved)
 
             # Check if it's one of our list views
             list_url_names = [
@@ -269,17 +268,6 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
         suggestion_context.package_list_context.editable = are_packages_editable(
             suggestion
         )
-        # FIXME(@florentc): Here we update the "packages" field of the cached
-        # suggestion but in the rest of the new suggestion workflow, we don't
-        # use that cache a lot, we often recompute the active and ignored
-        # packages. We need to decide whether we want to get rid of this cached
-        # list or if we want to use it extensively in the overhauled
-        # suggestions workflows.
-        suggestion.cached.payload["packages"] = apply_package_edits(
-            suggestion.cached.payload["original_packages"],
-            suggestion.package_edits.all(),
-        )
-        suggestion.cached.save()
 
         if self._is_origin_url_a_list(request):
             if not undo_status_change:
@@ -309,10 +297,10 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
 class PackageOperationBaseView(SuggestionBaseView, ABC):
     """Base view for package operations (ignore/restore) with common functionality."""
 
-    # TODO(@florentc): We replace the whole component to make it easy to update
-    # the activity log, but it would be more efficient to replace only the
-    # package list and use oob updates of the activity log in the package list
-    # template
+    # NOTE(@florentc): We replace the whole component because ultimately we
+    # will want to also update the maintainers.
+    # TODO: When we ignore a package, we'd like to automatically ignore its
+    # maintainers
     template_name = "suggestions/components/suggestion.html"
 
     def post(
@@ -347,17 +335,21 @@ class PackageOperationBaseView(SuggestionBaseView, ABC):
         try:
             with transaction.atomic():
                 self._perform_operation(suggestion, package_attr)
-        except Exception as e:
-            logger.error(f"Failed to perform package operation: {e}")
+                new_active_packages = apply_package_edits(
+                    suggestion.cached.payload["original_packages"],
+                    suggestion.package_edits.all(),
+                )
+                suggestion.cached.payload["packages"] = new_active_packages
+                suggestion.cached.save()
+        except Exception:
             return self._handle_error(
                 request,
                 suggestion_context,
                 f"Unable to {self._get_operation_name()} package",
             )
 
-        # Refresh suggestion context with updated data
-        suggestion = self.fetch_suggestion(suggestion_id)
-        suggestion_context = self.get_suggestion_context(suggestion)
+        # Refresh the package list context
+        suggestion_context.package_list_context = get_package_list_context(suggestion)
 
         # Handle response based on request type
         if request.headers.get("HX-Request"):
