@@ -74,7 +74,7 @@
       action="{% url 'webview:suggestion:update_status' suggestion_id=data.suggestion.pk %}"
       hx-boost="true"
       hx-swap="outerHTML show:none"
-      hx-indicator="find .state-change-indicator"
+      hx-indicator="#suggestion-{{ data.suggestion.cached.payload.pk }} .state-change-indicator"
       hx-push-url="false"
       autocomplete="off"
     >
