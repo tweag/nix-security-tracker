@@ -41,7 +41,7 @@ in
       django-types
       django
       djangorestframework
-      httpretty
+      pytest-socket
       ipython
       psycopg2
       pydantic-settings

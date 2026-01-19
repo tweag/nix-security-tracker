@@ -449,7 +449,7 @@ DB_SECURITY_TEAM = "security_team"
 
 GH_WEBHOOK_SECRET = get_secret("GH_WEBHOOK_SECRET")
 
-TEST_RUNNER = "project.test_runner.CustomTestRunner"
+TEST_RUNNER = "pytest_django.runner.TestRunner"
 
 # Make history log immutable by default
 PGHISTORY_APPEND_ONLY = True
