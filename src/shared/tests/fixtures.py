@@ -1,9 +1,16 @@
 import secrets
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from typing import Any
+from unittest.mock import patch
 
 import pytest
+from allauth.account.utils import get_login_redirect_url
 from allauth.socialaccount.models import SocialAccount
+from allauth.socialaccount.providers.oauth2.views import OAuth2LoginView
+from django.contrib.auth import login
 from django.contrib.auth.models import User
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import redirect
 from django.test import Client
 
 from shared.listeners.cache_suggestions import cache_new_suggestions
@@ -238,6 +245,25 @@ def user(django_user_model: type[User]) -> User:
         extra_data={"login": user.username},
     )
     return user
+
+
+@pytest.fixture
+def mock_oauth_login(
+    db: None,
+    user: User,
+) -> Generator[None]:
+    def mock_dispatch(
+        self: OAuth2LoginView, request: HttpRequest, *args: Any, **kwargs: Any
+    ) -> HttpResponse:
+        login(
+            request,
+            user,
+            backend="allauth.account.auth_backends.AuthenticationBackend",
+        )
+        return redirect(get_login_redirect_url(request))
+
+    with patch.object(OAuth2LoginView, "dispatch", mock_dispatch):
+        yield
 
 
 @pytest.fixture

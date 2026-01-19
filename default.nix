@@ -66,6 +66,7 @@ rec {
         PGDATABASE = "nix-security-tracker";
         PGUSER = "nix-security-tracker";
         CREDENTIALS_DIRECTORY = toString ./.credentials;
+        inherit (package.passthru) PLAYWRIGHT_BROWSERS_PATH;
         DJANGO_SETTINGS = builtins.toJSON {
           DEBUG = true;
           PRODUCTION = false;

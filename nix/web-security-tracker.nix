@@ -54,6 +54,14 @@ let
         sudo='exec /run/wrappers/bin/sudo -u web-security-tracker --preserve-env --preserve-env=PYTHONPATH'
       fi
       export PYTHONPATH=${toString cfg.package.pythonPath}
+      ${
+        ""
+        /*
+          FIXME(@fricklerhandwerk): This deploys all the browsers to production.
+          Move it to the service environment in `tests.nix`.
+          But that requires some refactoring over there, and also `env` -> `settings` (just Django settings), and a proper `env` (for the entire service) option here.
+        */
+      }export PLAYWRIGHT_BROWSERS_PATH=${toString cfg.package.passthru.PLAYWRIGHT_BROWSERS_PATH}
       $sudo ${cfg.package}/bin/manage.py "$@"
     '';
   };
