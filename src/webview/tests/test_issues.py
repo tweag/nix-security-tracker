@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from unittest.mock import patch
 
+import pytest
 from django.contrib.messages import get_messages
 from django.test import Client
 from django.urls import reverse
@@ -9,6 +10,11 @@ from shared.github import create_gh_issue
 from shared.listeners.cache_suggestions import cache_new_suggestions
 from shared.models.cve import (
     Container,
+)
+from shared.models.issue import (
+    EventType,
+    NixpkgsEvent,
+    NixpkgsIssue,
 )
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
@@ -105,3 +111,45 @@ def test_publish_gh_issue_empty_description(
     )
     suggestion.refresh_from_db()
     assert suggestion.status == CVEDerivationClusterProposal.Status.PUBLISHED
+
+
+@pytest.mark.xfail(reason="not implemented")
+def test_store_issue_link(
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+    authenticated_client: Client,
+) -> None:
+    url = reverse("webview:drafts_view")
+    suggestion = make_suggestion(status=CVEDerivationClusterProposal.Status.ACCEPTED)
+    cache_new_suggestions(suggestion)
+    # FIXME(@fricklerhandwerk): Mock Github's `create_issue()` here, not our own procedure! [ref:todo-github-connection]
+    with patch("webview.views.create_gh_issue") as mock:
+        container = suggestion.cve.container.first()
+        assert container
+        mock.side_effect = lambda *args, **kwargs: create_gh_issue(
+            *args,
+            github=MockGithub(expected_issue_title=container.title),  # type: ignore
+            **kwargs,
+        )
+        response = authenticated_client.post(
+            url,
+            {
+                "suggestion_id": suggestion.pk,
+                "new_status": CVEDerivationClusterProposal.Status.PUBLISHED,
+                "comment": "",
+                "attribute": suggestion.cached.payload["packages"].keys(),
+            },
+        )
+        mock.assert_called()
+    messages = list(get_messages(response.wsgi_request))
+    assert not any(m.level_tag == "error" for m in messages), (
+        f"""Errors on issue submission: {"; ".join(str(m) for m in messages if m.level_tag == "error")}"""
+    )
+    issue = NixpkgsIssue.objects.first()
+    assert issue
+    assert issue.suggestion == suggestion
+    result = NixpkgsEvent.objects.filter(issue=issue)
+    assert result.count() == 1
+    event = result.first()
+    assert event
+    assert event.event_type == EventType.OPENED | EventType.ISSUE
+    assert event.url is not None
