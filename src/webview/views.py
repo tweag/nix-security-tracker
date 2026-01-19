@@ -42,9 +42,11 @@ from django.views.generic import DetailView, ListView, TemplateView
 from shared.auth import can_publish_github_issue
 from shared.models import (
     CveRecord,
+    EventType,
     IssueStatus,
     NixChannel,
     NixMaintainer,
+    NixpkgsEvent,
     NixpkgsIssue,
 )
 from shared.models.linkage import (
@@ -344,6 +346,11 @@ class SuggestionListView(ListView):
                     gh_issue_link = create_gh_issue(
                         cached_suggestion, tracker_issue_link, new_comment
                     ).html_url
+                    NixpkgsEvent.objects.create(
+                        issue=tracker_issue,
+                        event_type=EventType.ISSUE | EventType.OPENED,
+                        url=gh_issue_link,
+                    )
                     suggestion.status = CVEDerivationClusterProposal.Status.PUBLISHED
                     suggestion.save()
             except Exception as e:

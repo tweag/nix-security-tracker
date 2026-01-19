@@ -1,7 +1,6 @@
 from collections.abc import Callable
 from unittest.mock import patch
 
-import pytest
 from django.contrib.messages import get_messages
 from django.test import Client
 from django.urls import reverse
@@ -113,7 +112,6 @@ def test_publish_gh_issue_empty_description(
     assert suggestion.status == CVEDerivationClusterProposal.Status.PUBLISHED
 
 
-@pytest.mark.xfail(reason="not implemented")
 def test_store_issue_link(
     make_suggestion: Callable[..., CVEDerivationClusterProposal],
     authenticated_client: Client,
