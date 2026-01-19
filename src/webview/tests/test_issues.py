@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from unittest.mock import patch
 
 from django.contrib.messages import get_messages
@@ -12,13 +13,17 @@ from shared.models.cve import (
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
 )
+from shared.models.nix_evaluation import (
+    NixDerivation,
+)
 from shared.tests.test_github_sync import MockGithub
 
 
 def test_publish_gh_issue_empty_title(
     db: None,
-    cve: Container,
-    suggestion: CVEDerivationClusterProposal,
+    make_container: Callable[..., Container],
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+    drv: NixDerivation,
     authenticated_client: Client,
 ) -> None:
     """Test that creating a GitHub issue will succeed and update the suggestion status, despite empty CVE title"""
@@ -26,10 +31,10 @@ def test_publish_gh_issue_empty_title(
 
     url = reverse("webview:drafts_view")
     # 3/4 of all CVEs in the source data have empty title
-    cve.title = ""
-    cve.save()
-    suggestion.status = CVEDerivationClusterProposal.Status.ACCEPTED
-    suggestion.save()
+    container = make_container(title="", description="Test description")
+    suggestion = make_suggestion(
+        container=container, status=CVEDerivationClusterProposal.Status.ACCEPTED
+    )
     cache_new_suggestions(suggestion)
 
     # FIXME(@fricklerhandwerk): Mock Github's `create_issue()` here, not our own procedure! [ref:todo-github-connection]
@@ -44,8 +49,8 @@ def test_publish_gh_issue_empty_title(
             url,
             {
                 "suggestion_id": suggestion.pk,
-                "new_status": "published",
-                "comment": "",  # Empty comment
+                "new_status": CVEDerivationClusterProposal.Status.PUBLISHED,
+                "comment": "",
                 "attribute": suggestion.cached.payload["packages"].keys(),
             },
         )
@@ -61,18 +66,19 @@ def test_publish_gh_issue_empty_title(
 
 def test_publish_gh_issue_empty_description(
     db: None,
-    cve: Container,
-    suggestion: CVEDerivationClusterProposal,
+    make_container: Callable[..., Container],
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+    drv: NixDerivation,
     authenticated_client: Client,
 ) -> None:
     """Test that creating a GitHub issue will succeed and update suggestion status, despite no CVE description"""
     # [tag:test-github-create_issue-description]
 
     url = reverse("webview:drafts_view")
-    cve.descriptions.clear()
-    cve.save()
-    suggestion.status = CVEDerivationClusterProposal.Status.ACCEPTED
-    suggestion.save()
+    container = make_container(title="Dummy Title", description=None)
+    suggestion = make_suggestion(
+        container=container, status=CVEDerivationClusterProposal.Status.ACCEPTED
+    )
     cache_new_suggestions(suggestion)
 
     # FIXME(@fricklerhandwerk): Mock Github's `create_issue()` here, not our own procedure! [ref:todo-github-connection]
@@ -86,8 +92,8 @@ def test_publish_gh_issue_empty_description(
             url,
             {
                 "suggestion_id": suggestion.pk,
-                "new_status": "published",
-                "comment": "",  # Empty comment
+                "new_status": CVEDerivationClusterProposal.Status.PUBLISHED,
+                "comment": "",
                 "attribute": suggestion.cached.payload["packages"].keys(),
             },
         )
