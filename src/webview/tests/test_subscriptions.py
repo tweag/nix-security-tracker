@@ -1,6 +1,5 @@
 from collections.abc import Callable
 
-import pytest
 from allauth.socialaccount.models import SocialAccount
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
@@ -430,8 +429,8 @@ class SubscriptionTests(TestCase):
 
         notification = notifications[0]
         self.assertEqual(notification.user, self.user)
-        self.assertIn("firefox", notification.title)
-        self.assertIn("CVE-2025-0001", notification.message)
+        self.assertIn("firefox", notification.message)
+        self.assertIn("CVE-2025-0001", notification.title)
         self.assertFalse(notification.is_read)  # Should be unread initially
 
     def test_user_receives_notification_for_maintained_package_suggestion(self) -> None:
@@ -478,8 +477,8 @@ class SubscriptionTests(TestCase):
 
         notification = notifications[0]
         self.assertEqual(notification.user, self.user)
-        self.assertIn("neovim", notification.title)
-        self.assertIn("CVE-2025-0002", notification.message)
+        self.assertIn("neovim", notification.message)
+        self.assertIn("CVE-2025-0002", notification.title)
         self.assertFalse(notification.is_read)  # Should be unread initially
 
     def test_user_does_not_receive_notification_when_auto_subscribe_disabled(
@@ -619,7 +618,6 @@ class SubscriptionTests(TestCase):
         self.assertFalse(response.context["is_subscribed"])
 
 
-@pytest.mark.xfail()
 def test_maintainer_notification_many_packages_in_suggestion(
     make_suggestion: Callable[..., CVEDerivationClusterProposal],
     make_drv: Callable[..., NixDerivation],
