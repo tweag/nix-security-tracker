@@ -59,7 +59,7 @@ def get_maintainer_list_context(
             else MaintainerEditabilityStatus.NON_EDITABLE,
             suggestion_id=suggestion.pk,
         )
-        for maintainer in categorized_maintainers["active_maintainers"]
+        for maintainer in categorized_maintainers["active"]
     ]
 
     ignored_contexts = [
@@ -70,7 +70,7 @@ def get_maintainer_list_context(
             else MaintainerEditabilityStatus.NON_EDITABLE,
             suggestion_id=suggestion.pk,
         )
-        for maintainer in categorized_maintainers["ignored_maintainers"]
+        for maintainer in categorized_maintainers["ignored"]
     ]
 
     additional_contexts = [
@@ -81,7 +81,7 @@ def get_maintainer_list_context(
             else MaintainerEditabilityStatus.NON_EDITABLE,
             suggestion_id=suggestion.pk,
         )
-        for maintainer in categorized_maintainers["added_maintainers"]
+        for maintainer in categorized_maintainers["added"]
     ]
 
     return MaintainerListContext(

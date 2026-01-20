@@ -456,7 +456,6 @@ class MaintainerOperationBaseView(SuggestionBaseView, ABC):
         # Perform the specific operation
         try:
             self._perform_operation(suggestion, github_id_int)
-            # TODO: Update cached suggestions with new maintainer data
         except Exception:
             return self._handle_error(
                 request,
@@ -505,7 +504,7 @@ class IgnoreMaintainerView(MaintainerOperationBaseView):
         """Validate that the maintainer can be ignored."""
         # Check if the maintainer exists in the original maintainers
         categorized_maintainers = suggestion.cached.payload["categorized_maintainers"]
-        original_maintainers = categorized_maintainers["original_maintainers"]
+        original_maintainers = categorized_maintainers["original"]
 
         # Find if this github_id exists in original maintainers
         maintainer_exists = any(
@@ -546,12 +545,12 @@ class IgnoreMaintainerView(MaintainerOperationBaseView):
             categorized_maintainers = suggestion.cached.payload[
                 "categorized_maintainers"
             ]
-            categorized_maintainers["active_maintainers"] = [
+            categorized_maintainers["active"] = [
                 m
-                for m in categorized_maintainers["active_maintainers"]
+                for m in categorized_maintainers["active"]
                 if m["github_id"] != github_id
             ]
-            categorized_maintainers["ignored_maintainers"].append(to_dict(maintainer))
+            categorized_maintainers["ignored"].append(to_dict(maintainer))
 
             # Save the suggestion
             suggestion.cached.save()
@@ -563,10 +562,58 @@ class IgnoreMaintainerView(MaintainerOperationBaseView):
 class RestoreMaintainerView(MaintainerOperationBaseView):
     """Restore a maintainer that was previously ignored."""
 
+    def _validate_operation(
+        self, suggestion: CVEDerivationClusterProposal, github_id: int
+    ) -> str | None:
+        """Validate that the maintainer can be restored."""
+        # Check if the maintainer exists in the ignored maintainers
+        categorized_maintainers = suggestion.cached.payload["categorized_maintainers"]
+        ignored_maintainers = categorized_maintainers["ignored"]
+
+        # Find if this github_id exists in ignored maintainers
+        maintainer_exists = any(
+            maintainer.get("github_id") == github_id
+            for maintainer in ignored_maintainers
+        )
+
+        if not maintainer_exists:
+            return "Maintainer not found in ignored maintainers"
+
+        # Check if there's a REMOVE edit to restore (there should be one)
+        existing_edit = suggestion.maintainers_edits.filter(
+            maintainer__github_id=github_id, edit_type=MaintainersEdit.EditType.REMOVE
+        ).first()
+
+        if not existing_edit:
+            return "No ignore edit found for this maintainer"
+
+        return None
+
     def _perform_operation(
         self, suggestion: CVEDerivationClusterProposal, github_id: int
     ) -> None:
-        pass
+        with transaction.atomic():
+            # Remove the REMOVE edit to restore the maintainer
+            edit_to_remove = suggestion.maintainers_edits.get(
+                maintainer__github_id=github_id,
+                edit_type=MaintainersEdit.EditType.REMOVE,
+            )
+            edit_to_remove.delete()
+            maintainer = edit_to_remove.maintainer
+
+            # Update the cached categorized maintainers
+            categorized_maintainers = suggestion.cached.payload[
+                "categorized_maintainers"
+            ]
+            categorized_maintainers["ignored"] = [
+                m
+                for m in categorized_maintainers["ignored"]
+                if m["github_id"] != github_id
+            ]
+            categorized_maintainers["active"].append(to_dict(maintainer))
+
+            # Save the suggestion
+            suggestion.cached.save()
 
     def _get_operation_name(self) -> str:
         return "restore"
