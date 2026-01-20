@@ -42,7 +42,7 @@ let
     name = "wst-manage";
 
     runtimeInputs = [ pkgs.git ];
-    runtimeEnv = environment;
+    runtimeEnv = cfg.env;
     excludeShellChecks = [
       "SC2089"
       "SC2090"
@@ -54,25 +54,11 @@ let
         sudo='exec /run/wrappers/bin/sudo -u web-security-tracker --preserve-env --preserve-env=PYTHONPATH'
       fi
       export PYTHONPATH=${toString cfg.package.pythonPath}
-      ${
-        ""
-        /*
-          FIXME(@fricklerhandwerk): This deploys all the browsers to production.
-          Move it to the service environment in `tests.nix`.
-          But that requires some refactoring over there, and also `env` -> `settings` (just Django settings), and a proper `env` (for the entire service) option here.
-        */
-      }export PLAYWRIGHT_BROWSERS_PATH=${toString cfg.package.passthru.PLAYWRIGHT_BROWSERS_PATH}
       $sudo ${cfg.package}/bin/manage.py "$@"
     '';
   };
   credentials = mapAttrsToList (name: secretPath: "${name}:${secretPath}") cfg.secrets;
   databaseUrl = "postgres:///web-security-tracker";
-
-  environment = {
-    DATABASE_URL = databaseUrl;
-    USER_SETTINGS_FILE = "${configFile}";
-    DJANGO_SETTINGS = builtins.toJSON cfg.env;
-  };
 
   # This script has access to the credentials, no matter where it is.
   wstExternalManageScript = writeScriptBin "wst-manage" ''
@@ -88,7 +74,7 @@ let
       --property "WorkingDirectory=/var/lib/web-security-tracker" \
       ${concatStringsSep "\n" (map (cred: "--property 'LoadCredential=${cred}' \\") credentials)}
       --property 'Environment=${
-        toString (lib.mapAttrsToList (name: value: "${name}=${value}") environment)
+        toString (lib.mapAttrsToList (name: value: "${name}=${value}") cfg.env)
       }' \
       "${wstManageScript}/bin/wst-manage" "$@"
   '';
@@ -118,6 +104,20 @@ in
     };
     env = mkOption rec {
       description = ''
+        Environment variables for the service
+      '';
+      type = types.attrsOf types.anything;
+      default = {
+        DATABASE_URL = databaseUrl;
+        USER_SETTINGS_FILE = "${configFile}";
+        DJANGO_SETTINGS = builtins.toJSON cfg.settings;
+      };
+      # only override defaults with explicit values
+      apply = lib.recursiveUpdate default;
+    };
+
+    settings = mkOption rec {
+      description = ''
         Django configuration via environment variables, see `settings.py` for options.
       '';
       type = types.attrsOf types.anything;
@@ -132,11 +132,6 @@ in
       };
       # only override defaults with explicit values
       apply = lib.recursiveUpdate default;
-    };
-    # TODO(@fricklerhandwerk): move all configuration over to pydantic-settings and rename `env` to `settings`
-    settings = mkOption {
-      type = types.attrsOf types.anything;
-      default = { };
     };
     extraConfig = mkOption {
       type = types.lines;
@@ -198,7 +193,7 @@ in
         ${cfg.domain} = {
           locations = {
             "/".proxyPass = "http://localhost:${toString cfg.wsgi-port}";
-            "/static/".alias = cfg.env.STATIC_ROOT;
+            "/static/".alias = cfg.settings.STATIC_ROOT;
           };
         }
         // lib.optionalAttrs cfg.production {
@@ -241,7 +236,7 @@ in
             LogsDirectory = "web-security-tracker";
             LoadCredential = credentials;
           };
-          inherit environment;
+          environment = cfg.env;
         };
       in
       mapAttrs (_: recursiveUpdate defaults) {

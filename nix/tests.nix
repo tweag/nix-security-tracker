@@ -4,6 +4,9 @@ let
   application = "web-security-tracker";
   defaults =
     { config, ... }:
+    let
+      cfg = config.services.${application};
+    in
     {
       documentation.enable = lib.mkDefault false;
 
@@ -34,6 +37,9 @@ let
           GH_COMMITTERS_TEAM = "dummy-committers";
           GH_SECURITY_TEAM = "dummy-security";
           GH_ISSUES_LABELS = [ "label with spaces" ];
+        };
+        env = {
+          inherit (cfg.package.passthru) PLAYWRIGHT_BROWSERS_PATH;
         };
         secrets =
           let
