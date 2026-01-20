@@ -2,52 +2,54 @@
 let
   # TODO: specify project/service name globally
   application = "web-security-tracker";
-  defaults = {
-    documentation.enable = lib.mkDefault false;
+  defaults =
+    { config, ... }:
+    {
+      documentation.enable = lib.mkDefault false;
 
-    virtualisation = {
-      memorySize = 2048;
-      cores = 2;
-    };
-
-    services.postgresql.ensureUsers = [
-      {
-        name = application;
-        ensureDBOwnership = true;
-        ensureClauses.createdb = true;
-      }
-    ];
-
-    services.${application} = {
-      enable = true;
-      production = false;
-      restart = "no"; # fail fast
-      domain = "example.org";
-      env = {
-        DEBUG = true;
-        SYNC_GITHUB_STATE_AT_STARTUP = false;
-        GH_ISSUES_PING_MAINTAINERS = true;
-        GH_ORGANIZATION = "dummy";
-        GH_ISSUES_REPO = "dummy";
-        GH_COMMITTERS_TEAM = "dummy-committers";
-        GH_SECURITY_TEAM = "dummy-security";
-        GH_ISSUES_LABELS = [ "label with spaces" ];
+      virtualisation = {
+        memorySize = 2048;
+        cores = 2;
       };
-      secrets =
-        let
-          dummy-str = pkgs.writeText "dummy" "hello";
-          dummy-int = pkgs.writeText "dummy" "123";
-        in
+
+      services.postgresql.ensureUsers = [
         {
-          SECRET_KEY = dummy-str;
-          GH_CLIENT_ID = dummy-str;
-          GH_SECRET = dummy-str;
-          GH_WEBHOOK_SECRET = dummy-str;
-          GH_APP_INSTALLATION_ID = dummy-int;
-          GH_APP_PRIVATE_KEY = dummy-str;
+          name = application;
+          ensureDBOwnership = true;
+          ensureClauses.createdb = true;
+        }
+      ];
+
+      services.${application} = {
+        enable = true;
+        production = false;
+        restart = "no"; # fail fast
+        domain = "example.org";
+        settings = {
+          DEBUG = true;
+          SYNC_GITHUB_STATE_AT_STARTUP = false;
+          GH_ISSUES_PING_MAINTAINERS = true;
+          GH_ORGANIZATION = "dummy";
+          GH_ISSUES_REPO = "dummy";
+          GH_COMMITTERS_TEAM = "dummy-committers";
+          GH_SECURITY_TEAM = "dummy-security";
+          GH_ISSUES_LABELS = [ "label with spaces" ];
         };
+        secrets =
+          let
+            dummy-str = pkgs.writeText "dummy" "hello";
+            dummy-int = pkgs.writeText "dummy" "123";
+          in
+          {
+            SECRET_KEY = dummy-str;
+            GH_CLIENT_ID = dummy-str;
+            GH_SECRET = dummy-str;
+            GH_WEBHOOK_SECRET = dummy-str;
+            GH_APP_INSTALLATION_ID = dummy-int;
+            GH_APP_PRIVATE_KEY = dummy-str;
+          };
+      };
     };
-  };
 in
 lib.mapAttrs (name: test: pkgs.testers.runNixOSTest (test // { inherit name defaults; })) {
   basic = {
