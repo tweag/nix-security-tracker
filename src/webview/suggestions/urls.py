@@ -2,9 +2,13 @@ from django.urls import path
 
 from .views import (
     AcceptedSuggestionsView,
+    AddMaintainerView,
+    DeleteMaintainerView,
+    IgnoreMaintainerView,
     IgnorePackageView,
     PublishedSuggestionsView,
     RejectedSuggestionsView,
+    RestoreMaintainerView,
     RestorePackageView,
     SuggestionDetailView,
     UntriagedSuggestionsView,
@@ -16,7 +20,24 @@ app_name = "suggestion"
 urlpatterns = [
     # Individual suggestion detail page
     path("<int:suggestion_id>/", SuggestionDetailView.as_view(), name="detail"),
-    # Status change endpoint
+    # Lists
+    path(
+        "list/untriaged/",
+        UntriagedSuggestionsView.as_view(),
+        name="untriaged_suggestions",
+    ),
+    path("list/drafts/", AcceptedSuggestionsView.as_view(), name="draft_suggestions"),
+    path(
+        "list/dismissed/",
+        RejectedSuggestionsView.as_view(),
+        name="dismissed_suggestions",
+    ),
+    path(
+        "list/published/",
+        PublishedSuggestionsView.as_view(),
+        name="published_suggestions",
+    ),
+    # Status change operation
     path(
         "<int:suggestion_id>/status",
         UpdateSuggestionStatusView.as_view(),
@@ -33,20 +54,25 @@ urlpatterns = [
         RestorePackageView.as_view(),
         name="restore_package",
     ),
+    # Maintainers operations
     path(
-        "list/untriaged/",
-        UntriagedSuggestionsView.as_view(),
-        name="untriaged_suggestions",
-    ),
-    path("list/drafts/", AcceptedSuggestionsView.as_view(), name="draft_suggestions"),
-    path(
-        "list/dismissed/",
-        RejectedSuggestionsView.as_view(),
-        name="dismissed_suggestions",
+        "<int:suggestion_id>/maintainers/<str:github_id>/ignore/",
+        IgnoreMaintainerView.as_view(),
+        name="ignore_maintainer",
     ),
     path(
-        "list/published/",
-        PublishedSuggestionsView.as_view(),
-        name="published_suggestions",
+        "<int:suggestion_id>/maintainers/<str:github_id>/delete/",
+        DeleteMaintainerView.as_view(),
+        name="delete_maintainer",
+    ),
+    path(
+        "<int:suggestion_id>/maintainers/<str:github_id>/restore/",
+        RestoreMaintainerView.as_view(),
+        name="restore_maintainer",
+    ),
+    path(
+        "<int:suggestion_id>/maintainers/<str:github_id>/add/",
+        AddMaintainerView.as_view(),
+        name="add_maintainer",
     ),
 ]

@@ -64,7 +64,7 @@
     {% if data.packages.editable %}
       {% selectable_maintainers_list maintainers=data.suggestion.cached.payload.maintainers suggestion_id=data.suggestion.cached.payload.pk %}
     {% else %}
-      {% maintainers_list data.suggestion.cached.payload.maintainers %}
+      {% maintainer_list_new data.maintainer_list_context %}
     {% endif %}
 
 

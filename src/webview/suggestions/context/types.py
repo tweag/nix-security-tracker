@@ -1,7 +1,13 @@
 from dataclasses import dataclass
+from enum import Enum
 
 from shared.logs.batches import FoldedEventType
+from shared.logs.events import (
+    Maintainer,  # FIXME(@florent): This is to import it from that module
+)
 from shared.models.linkage import CVEDerivationClusterProposal
+
+# Packages
 
 
 @dataclass
@@ -21,10 +27,46 @@ class SuggestionStubContext:
     undo_status_target: str | None  # FIXME(@florentc): change to the real enum type
 
 
+# Maintainers
+
+
+class MaintainerEditabilityStatus(Enum):
+    NON_EDITABLE = "non-editable"
+    IGNORABLE = "ignorable"
+    RESTORABLE = "restorable"
+    DELETABLE = "deletable"
+
+
+@dataclass
+class MaintainerContext:
+    maintainer: Maintainer
+    editability: MaintainerEditabilityStatus
+    suggestion_id: int
+
+
+@dataclass
+class MaintainerAddContext:
+    error_message: str | None = None
+
+
+@dataclass
+class MaintainerListContext:
+    active: list[MaintainerContext]
+    ignored: list[MaintainerContext]
+    additional: list[MaintainerContext]
+    editable: bool
+    suggestion_id: int
+    maintainer_add_context: MaintainerAddContext
+
+
+# Suggestions
+
+
 @dataclass
 class SuggestionContext:
     suggestion: CVEDerivationClusterProposal
     package_list_context: PackageListContext
+    maintainer_list_context: MaintainerListContext
     activity_log: list[FoldedEventType]
     show_status: bool = True
     suggestion_stub_context: SuggestionStubContext | None = None

@@ -14,17 +14,23 @@ from django.views.generic import TemplateView
 
 from shared.auth import can_publish_github_issue
 from shared.github import create_gh_issue
-from shared.listeners.cache_suggestions import apply_package_edits
+from shared.listeners.cache_suggestions import apply_package_edits, to_dict
 from shared.logs.batches import FoldedEventType, batch_events
 from shared.logs.events import remove_canceling_events
 from shared.logs.fetchers import fetch_suggestion_events
 from shared.models import (
     NixpkgsIssue,
 )
-from shared.models.linkage import CVEDerivationClusterProposal, PackageEdit
+from shared.models.linkage import (
+    CVEDerivationClusterProposal,
+    MaintainersEdit,
+    PackageEdit,
+)
+from shared.models.nix_evaluation import NixMaintainer
 from webview.suggestions.context.builders import (
-    are_packages_editable,
+    get_maintainer_list_context,
     get_package_list_context,
+    is_suggestion_editable,
 )
 from webview.suggestions.context.types import SuggestionContext, SuggestionStubContext
 
@@ -47,6 +53,7 @@ class SuggestionBaseView(LoginRequiredMixin, TemplateView, ABC):
         return SuggestionContext(
             suggestion=suggestion,
             package_list_context=get_package_list_context(suggestion),
+            maintainer_list_context=get_maintainer_list_context(suggestion),
             activity_log=self.fetch_activity_log(suggestion.pk),
         )
 
@@ -265,7 +272,7 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
         suggestion_context.activity_log = self.fetch_activity_log(suggestion.pk)
 
         # Refresh packages edit status
-        suggestion_context.package_list_context.editable = are_packages_editable(
+        suggestion_context.package_list_context.editable = is_suggestion_editable(
             suggestion
         )
 
@@ -348,8 +355,9 @@ class PackageOperationBaseView(SuggestionBaseView, ABC):
                 f"Unable to {self._get_operation_name()} package",
             )
 
-        # Refresh the package list context
+        # Refresh the package list context and activity log
         suggestion_context.package_list_context = get_package_list_context(suggestion)
+        suggestion_context.activity_log = self.fetch_activity_log(suggestion.pk)
 
         # Handle response based on request type
         if request.headers.get("HX-Request"):
@@ -405,3 +413,184 @@ class RestorePackageView(PackageOperationBaseView):
 
     def _get_operation_name(self) -> str:
         return "restore"
+
+
+class MaintainerOperationBaseView(SuggestionBaseView, ABC):
+    template_name = "suggestions/components/suggestion.html"
+
+    def post(
+        self, request: HttpRequest, suggestion_id: int, github_id: str
+    ) -> HttpResponse:
+        """Handle maintainer operation requests."""
+        if not request.user or not can_publish_github_issue(request.user):
+            return HttpResponseForbidden()
+
+        # Get suggestion context
+        suggestion = self.fetch_suggestion(suggestion_id)
+        suggestion_context = self.get_suggestion_context(suggestion)
+
+        # Validate the github_id in input
+        try:
+            github_id_int = int(github_id)
+        except ValueError:
+            return self._handle_error(
+                request, suggestion_context, "Invalid GitHub ID format"
+            )
+
+        # Validate that the suggestion status allows maintainer editing
+        if suggestion.status not in [
+            CVEDerivationClusterProposal.Status.PENDING,
+            CVEDerivationClusterProposal.Status.ACCEPTED,
+        ]:
+            return self._handle_error(
+                request,
+                suggestion_context,
+                "Maintainer editing is not allowed for this suggestion status",
+            )
+
+        # Validate the requested operation
+        validation_error = self._validate_operation(suggestion, github_id_int)
+        if validation_error:
+            return self._handle_error(request, suggestion_context, validation_error)
+
+        # Perform the specific operation
+        try:
+            self._perform_operation(suggestion, github_id_int)
+            # TODO: Update cached suggestions with new maintainer data
+        except Exception:
+            return self._handle_error(
+                request,
+                suggestion_context,
+                f"Unable to {self._get_operation_name()} maintainer",
+            )
+
+        # Refresh the maintainer list context and activity_log
+        suggestion_context.maintainer_list_context = get_maintainer_list_context(
+            suggestion
+        )
+        suggestion_context.activity_log = self.fetch_activity_log(suggestion.pk)
+
+        # Return response
+        if request.headers.get("HX-Request"):
+            return self.render_to_response({"data": suggestion_context})
+        else:
+            return self._redirect_to_origin(request)
+
+    @abstractmethod
+    def _perform_operation(
+        self, suggestion: CVEDerivationClusterProposal, github_id: int
+    ) -> None:
+        """Perform the specific maintainer operation. To be implemented by subclasses."""
+        pass
+
+    @abstractmethod
+    def _validate_operation(
+        self, suggestion: CVEDerivationClusterProposal, github_id: int
+    ) -> str | None:
+        """Validate if the operation can be performed. Return error message or None."""
+        pass
+
+    @abstractmethod
+    def _get_operation_name(self) -> str:
+        """Get the operation name for error messages. To be implemented by subclasses."""
+        pass
+
+
+class IgnoreMaintainerView(MaintainerOperationBaseView):
+    """Ignore a maintainer that was automatically assigned to the suggestion."""
+
+    def _validate_operation(
+        self, suggestion: CVEDerivationClusterProposal, github_id: int
+    ) -> str | None:
+        """Validate that the maintainer can be ignored."""
+        # Check if the maintainer exists in the original maintainers
+        categorized_maintainers = suggestion.cached.payload["categorized_maintainers"]
+        original_maintainers = categorized_maintainers["original_maintainers"]
+
+        # Find if this github_id exists in original maintainers
+        maintainer_exists = any(
+            maintainer.get("github_id") == github_id
+            for maintainer in original_maintainers
+        )
+
+        if not maintainer_exists:
+            return "Maintainer not found in original maintainers"
+
+        # Check if already ignored (has a REMOVE edit)
+        existing_edit = suggestion.maintainers_edits.filter(
+            maintainer__github_id=github_id, edit_type=MaintainersEdit.EditType.REMOVE
+        ).first()
+
+        if existing_edit:
+            return "Maintainer is already ignored"
+
+        return None
+
+    def _perform_operation(
+        self, suggestion: CVEDerivationClusterProposal, github_id: int
+    ) -> None:
+        with transaction.atomic():
+            # Get the maintainer object
+            maintainer = NixMaintainer.objects.get(github_id=github_id)
+
+            # Create the maintainer edit
+            edit, created = suggestion.maintainers_edits.get_or_create(
+                maintainer=maintainer,
+                defaults={"edit_type": MaintainersEdit.EditType.REMOVE},
+            )
+            if not created and edit.edit_type != MaintainersEdit.EditType.REMOVE:
+                edit.edit_type = MaintainersEdit.EditType.REMOVE
+                edit.save()
+
+            # Update the cached categorized maintainers
+            categorized_maintainers = suggestion.cached.payload[
+                "categorized_maintainers"
+            ]
+            categorized_maintainers["active_maintainers"] = [
+                m
+                for m in categorized_maintainers["active_maintainers"]
+                if m["github_id"] != github_id
+            ]
+            categorized_maintainers["ignored_maintainers"].append(to_dict(maintainer))
+
+            # Save the suggestion
+            suggestion.cached.save()
+
+    def _get_operation_name(self) -> str:
+        return "ignore"
+
+
+class RestoreMaintainerView(MaintainerOperationBaseView):
+    """Restore a maintainer that was previously ignored."""
+
+    def _perform_operation(
+        self, suggestion: CVEDerivationClusterProposal, github_id: int
+    ) -> None:
+        pass
+
+    def _get_operation_name(self) -> str:
+        return "restore"
+
+
+class AddMaintainerView(MaintainerOperationBaseView):
+    """Manually add a maintainer that was not originally assigned to the suggestion."""
+
+    def _perform_operation(
+        self, suggestion: CVEDerivationClusterProposal, github_id: int
+    ) -> None:
+        pass
+
+    def _get_operation_name(self) -> str:
+        return "add"
+
+
+class DeleteMaintainerView(MaintainerOperationBaseView):
+    """Detele a maintainer that was manually added."""
+
+    def _perform_operation(
+        self, suggestion: CVEDerivationClusterProposal, github_id: int
+    ) -> None:
+        pass
+
+    def _get_operation_name(self) -> str:
+        return "delete"

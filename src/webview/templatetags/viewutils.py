@@ -16,6 +16,9 @@ from shared.models.linkage import (
 )
 from webview.models import Notification
 from webview.suggestions.context.types import (
+    MaintainerAddContext,
+    MaintainerContext,
+    MaintainerListContext,
     PackageListContext,
     SuggestionContext,
     SuggestionStubContext,
@@ -68,7 +71,8 @@ class SuggestionActivityLog(TypedDict):
     oob_update: bool
 
 
-class MaintainerContext(TypedDict):
+# FIXME(@florentc): remove eventually when legacy suggstion views are removed
+class MaintainerContextLegacy(TypedDict):
     maintainer: Maintainer
 
 
@@ -228,44 +232,6 @@ def suggestion(
     }
 
 
-@register.inclusion_tag("suggestions/components/suggestion.html", takes_context=True)
-def suggestion_new(
-    context: Context,
-    data: SuggestionContext,
-) -> dict:
-    return {
-        "data": data,
-        "user": context["user"],
-    }
-
-
-@register.inclusion_tag(
-    "suggestions/components/suggestion_stub.html", takes_context=True
-)
-def suggestion_stub(
-    context: Context,
-    data: SuggestionStubContext,
-) -> dict:
-    return {
-        "data": data,
-        "user": context["user"],
-    }
-
-
-@register.inclusion_tag("suggestions/components/package_list.html", takes_context=True)
-def package_list(
-    context: Context,
-    data: PackageListContext,
-) -> dict[str, Any]:
-    """
-    Renders the nixpkgs package list for suggestions with ignore/restore functionality.
-    """
-    return {
-        "data": data,
-        "user": context["user"],
-    }
-
-
 @register.inclusion_tag("components/issue.html", takes_context=True)
 def issue(
     context: Context,
@@ -376,7 +342,7 @@ def selectable_maintainers_list(
 @register.inclusion_tag("components/maintainer.html")
 def maintainer(
     maintainer: Maintainer,
-) -> MaintainerContext:
+) -> MaintainerContextLegacy:
     return {"maintainer": maintainer}
 
 
@@ -406,3 +372,62 @@ def status_icon(status: str) -> dict[str, str]:
     return {
         "icon_class": icon_mapping.get(status, "icon-inbox")
     }  # Default to inbox icon
+
+
+@register.inclusion_tag("suggestions/components/suggestion.html", takes_context=True)
+def suggestion_new(
+    context: Context,
+    data: SuggestionContext,
+) -> dict:
+    return {
+        "data": data,
+        "user": context["user"],
+    }
+
+
+@register.inclusion_tag(
+    "suggestions/components/suggestion_stub.html", takes_context=True
+)
+def suggestion_stub(
+    context: Context,
+    data: SuggestionStubContext,
+) -> dict:
+    return {
+        "data": data,
+        "user": context["user"],
+    }
+
+
+@register.inclusion_tag("suggestions/components/package_list.html", takes_context=True)
+def package_list(
+    context: Context,
+    data: PackageListContext,
+) -> dict[str, Any]:
+    """
+    Renders the nixpkgs package list for suggestions with ignore/restore functionality.
+    """
+    return {
+        "data": data,
+        "user": context["user"],
+    }
+
+
+@register.inclusion_tag("suggestions/components/maintainer.html")
+def maintainer_new(
+    data: MaintainerContext,
+) -> dict:
+    return {"data": data}
+
+
+@register.inclusion_tag("suggestions/components/maintainers_list.html")
+def maintainer_list_new(
+    data: MaintainerListContext,
+) -> dict:
+    return {"data": data}
+
+
+@register.inclusion_tag("suggestions/components/maintainer_add.html")
+def maintainer_add_new(
+    data: MaintainerAddContext,
+) -> dict:
+    return {"data": data}
