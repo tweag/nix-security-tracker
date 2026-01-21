@@ -4,6 +4,8 @@ from unittest.mock import patch
 from django.contrib.messages import get_messages
 from django.test import Client
 from django.urls import reverse
+from playwright.sync_api import Page, expect
+from pytest_django.live_server_helper import LiveServer
 
 from shared.github import create_gh_issue
 from shared.listeners.cache_suggestions import cache_new_suggestions
@@ -25,22 +27,26 @@ from shared.tests.test_github_sync import MockGithub
 
 
 def test_publish_gh_issue_empty_title(
-    db: None,
     make_container: Callable[..., Container],
     make_suggestion: Callable[..., CVEDerivationClusterProposal],
     drv: NixDerivation,
-    authenticated_client: Client,
+    live_server: LiveServer,
+    as_staff: Page,
+    no_js: bool,
 ) -> None:
     """Test that creating a GitHub issue will succeed and update the suggestion status, despite empty CVE title"""
     # [tag:test-github-create_issue-title]
 
-    url = reverse("webview:drafts_view")
     # 3/4 of all CVEs in the source data have empty title
     container = make_container(title="", description="Test description")
     suggestion = make_suggestion(
         container=container, status=CVEDerivationClusterProposal.Status.ACCEPTED
     )
     cache_new_suggestions(suggestion)
+
+    as_staff.goto(live_server.url + reverse("webview:drafts_view"))
+    suggestion = as_staff.locator(f"#suggestion-{suggestion.cached.pk}")
+    publish = suggestion.get_by_role("button", name="Publish issue")
 
     # FIXME(@fricklerhandwerk): Mock Github's `create_issue()` here, not our own procedure! [ref:todo-github-connection]
     # Then we can test in-context that the right arguments have been passed, using `mock.assert_called_with()`.
@@ -50,23 +56,26 @@ def test_publish_gh_issue_empty_title(
             github=MockGithub(expected_issue_title="Test description"),  # type: ignore
             **kwargs,
         )
-        response = authenticated_client.post(
-            url,
-            {
-                "suggestion_id": suggestion.pk,
-                "new_status": CVEDerivationClusterProposal.Status.PUBLISHED,
-                "comment": "",
-                "attribute": suggestion.cached.payload["packages"].keys(),
-            },
-        )
+        publish.click()
+        # XXX(@fricklerhandwerk): Checking the mock call too early would run into a deadlock exception.
+        # And only `networkidle` seems to do the trick here.
+        as_staff.wait_for_load_state("networkidle")
         mock.assert_called()
 
-    messages = list(get_messages(response.wsgi_request))
-    assert not any(m.level_tag == "error" for m in messages), (
-        "Errors on issue submission"
-    )
-    suggestion.refresh_from_db()
-    assert suggestion.status == CVEDerivationClusterProposal.Status.PUBLISHED
+    if no_js:
+        error = as_staff.locator("#messages")
+    else:
+        error = suggestion.locator(".error-block")
+
+    expect(error).to_have_count(0)
+
+    if no_js:
+        as_staff.goto(live_server.url + reverse("webview:issue_list"))
+    else:
+        link = as_staff.get_by_role("link", name="View")
+        link.click()
+
+    expect(suggestion).to_be_visible()
 
 
 def test_publish_gh_issue_empty_description(
