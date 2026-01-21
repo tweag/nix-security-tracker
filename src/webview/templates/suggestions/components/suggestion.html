@@ -61,11 +61,7 @@
       {% package_list data.package_list_context %}
     </div>
 
-    {% if data.packages.editable %}
-      {% selectable_maintainers_list maintainers=data.suggestion.cached.payload.maintainers suggestion_id=data.suggestion.cached.payload.pk %}
-    {% else %}
-      {% maintainer_list_new data.maintainer_list_context %}
-    {% endif %}
+    {% maintainer_list data.maintainer_list_context %}
 
 
     <form

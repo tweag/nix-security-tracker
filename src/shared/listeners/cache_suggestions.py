@@ -76,10 +76,6 @@ class CachedSuggestion(BaseModel):
     # XXX(@fricklerhandwerk): These are converted with `to_dict()` naively, we're not doing anything interesting to them here.
     metrics: list[dict]
 
-    # FIXME(@florentc): maintainers is used for legacy suggestion view
-    # To be removed in the end
-    maintainers: list[dict]
-
     # FIXME(@florentc): improve typing here
     # Using lists of actual NixMaintainer model would be great
     # Alternatively use a typed dict like the Maintainer defined in shared.logs.events
@@ -202,9 +198,6 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
     package_edits = list(suggestion.package_edits.all())
     packages = apply_package_edits(original_packages, package_edits)
     # FIXME(@fricklerhandwerk): We should just pass `packages`, but a tangled legacy view is still using this seemingly internal function and wants to pass a dict.
-    maintainers = maintainers_list(
-        {k: v.model_dump() for k, v in packages.items()}, maintainers_edits
-    )
     categorized_maintainers = categorize_maintainers(
         original_packages, maintainers_edits
     )
@@ -220,7 +213,6 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
         original_packages=packages,
         packages=packages,
         metrics=[to_dict(m) for m in prefetched_metrics],
-        maintainers=maintainers,
         categorized_maintainers=categorized_maintainers,
     )
 

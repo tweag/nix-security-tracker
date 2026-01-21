@@ -82,8 +82,8 @@ def create_gh_issue(
         maintainers_list = [
             get_maintainer_username(maintainer, github)
             for maintainer in (
-                cached_suggestion.payload["categorized_maintainers"]["active"] +
-                cached_suggestion.payload["categorized_maintainers"]["added"]
+                cached_suggestion.payload["categorized_maintainers"]["active"]
+                + cached_suggestion.payload["categorized_maintainers"]["added"]
             )
             if "github_id" in maintainer and "github" in maintainer
         ]

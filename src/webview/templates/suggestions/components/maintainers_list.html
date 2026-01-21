@@ -14,7 +14,7 @@
         <ul class="column gap-small">
           {% for maintainer_context in data.active %}
             <li class="maintainer-container">
-              {% maintainer_new maintainer_context %}
+              {% maintainer maintainer_context %}
             </li>
           {% endfor %}
         </ul>
@@ -27,7 +27,7 @@
           <ul class="column gap-small">
             {% for maintainer_context in data.ignored %}
               <li class="maintainer-container">
-                {% maintainer_new maintainer_context %}
+                {% maintainer maintainer_context %}
               </li>
             {% endfor %}
           </ul>
@@ -41,7 +41,7 @@
           <ul class="column gap-small">
             {% for maintainer_context in data.additional %}
               <li class="maintainer-container">
-                {% maintainer_new maintainer_context %}
+                {% maintainer maintainer_context %}
               </li>
             {% endfor %}
           </ul>
@@ -51,7 +51,7 @@
 
       <!-- Add maintainer section (only if editable) -->
       {% if data.editable %}
-      {% maintainer_add_new data.maintainer_add_context %}
+      {% maintainer_add data.maintainer_add_context %}
       {% endif %}
     </div>
   </div>

@@ -9,7 +9,6 @@ from django.template.context import Context
 from shared.auth import isadmin, ismaintainer
 from shared.listeners.cache_suggestions import CachedSuggestion, parse_drv_name
 from shared.logs.batches import FoldedEventType
-from shared.logs.events import Maintainer
 from shared.models.issue import NixpkgsIssue
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
@@ -41,24 +40,9 @@ class Package(TypedDict):
     channels: dict[str, CachedSuggestion.PackageOnPrimaryChannel]
 
 
-class DerivationFields(TypedDict):
-    attribute: str
-    name: str
-
-
 class PackageContext(TypedDict):
     attribute_name: str
     pdata: Package
-
-
-class PackageList(TypedDict):
-    items: dict[str, Package]
-
-
-# FIXME(@florentc): remove eventually when legacy suggstion views are removed
-class PackageListContextLegacy(TypedDict):
-    packages: PackageList
-    selectable: bool
 
 
 class AffectedContext(TypedDict):
@@ -68,32 +52,6 @@ class AffectedContext(TypedDict):
 class SuggestionActivityLog(TypedDict):
     suggestion: CVEDerivationClusterProposal
     activity_log: list[FoldedEventType]
-    oob_update: bool
-
-
-# FIXME(@florentc): remove eventually when legacy suggstion views are removed
-class MaintainerContextLegacy(TypedDict):
-    maintainer: Maintainer
-
-
-class SelectableMaintainerContext(TypedDict):
-    maintainer: Maintainer
-    deleted: bool
-
-
-class AddMaintainerContext(TypedDict):
-    error_msg: str | None
-
-
-class MaintainersListContext(TypedDict):
-    maintainers: list[Maintainer]
-    selectable: bool
-
-
-class EditableMaintainersListContext(TypedDict):
-    maintainers: list[Maintainer]
-    selectable: bool
-    suggestion_id: int
     oob_update: bool
 
 
@@ -218,20 +176,6 @@ def is_maintainer_or_admin(user: Any) -> bool:
     return is_maintainer(user) or is_admin(user)
 
 
-@register.inclusion_tag("components/suggestion.html", takes_context=True)
-def suggestion(
-    context: Context,
-    suggestion: CVEDerivationClusterProposal,
-    activity_log: list[FoldedEventType],
-) -> dict:
-    return {
-        "suggestion": suggestion,
-        "activity_log": activity_log,
-        "page_obj": context["page_obj"],
-        "user": context["user"],
-    }
-
-
 @register.inclusion_tag("components/issue.html", takes_context=True)
 def issue(
     context: Context,
@@ -254,44 +198,6 @@ def nixpkgs_package(attribute_name: str, pdata: Package) -> PackageContext:
     return {"attribute_name": attribute_name, "pdata": pdata}
 
 
-@register.inclusion_tag("components/nixpkgs_package_list.html")
-def selectable_nixpkgs_package_list(packages: PackageList) -> PackageListContextLegacy:
-    """Renders the nixpkgs package list with additional checkboxes to have packages selectable.
-
-    Args:
-        packages: Dictionary of package attributes and their channel versions
-
-    Returns:
-        Context dictionary for the template
-
-    Example:
-        {% selectable_nixpkgs_package_list package_dict %}
-    """
-    return {
-        "packages": packages,
-        "selectable": True,
-    }
-
-
-@register.inclusion_tag("components/nixpkgs_package_list.html")
-def nixpkgs_package_list(packages: PackageList) -> PackageListContextLegacy:
-    """Renders the nixpkgs package list.
-
-    Args:
-        packages: Dictionary of package attributes and their channel versions
-
-    Returns:
-        Context dictionary for the template
-
-    Example:
-        {% nixpkgs_package_list package_dict %}
-    """
-    return {
-        "packages": packages,
-        "selectable": False,
-    }
-
-
 @register.inclusion_tag("components/affected_products.html")
 def affected_products(
     affected: list[CachedSuggestion.AffectedProduct],
@@ -312,55 +218,6 @@ def suggestion_activity_log(
     }
 
 
-@register.inclusion_tag("components/maintainers_list.html")
-def maintainers_list(
-    maintainers: list[Maintainer],
-) -> MaintainersListContext:
-    return {
-        "maintainers": maintainers,
-        "selectable": False,
-    }
-
-
-@register.inclusion_tag("components/maintainers_list.html", takes_context=True)
-def selectable_maintainers_list(
-    context: Context,
-    maintainers: list[Maintainer],
-    suggestion_id: int,
-    oob_update: bool = False,
-) -> EditableMaintainersListContext:
-    user = context.get("user")
-    selectable = is_maintainer_or_admin(user)
-    return {
-        "maintainers": maintainers,
-        "selectable": selectable,
-        "suggestion_id": suggestion_id,
-        "oob_update": oob_update,
-    }
-
-
-@register.inclusion_tag("components/maintainer.html")
-def maintainer(
-    maintainer: Maintainer,
-) -> MaintainerContextLegacy:
-    return {"maintainer": maintainer}
-
-
-@register.inclusion_tag("components/selectable_maintainer.html")
-def selectable_maintainer(
-    maintainer: Maintainer,
-    deleted: bool = False,
-) -> SelectableMaintainerContext:
-    return {"maintainer": maintainer, "deleted": deleted}
-
-
-@register.inclusion_tag("components/add_maintainer.html")
-def add_maintainer(
-    error_msg: str | None = None,
-) -> AddMaintainerContext:
-    return {"error_msg": error_msg}
-
-
 @register.inclusion_tag("components/status_icon.html")
 def status_icon(status: str) -> dict[str, str]:
     icon_mapping = {
@@ -375,7 +232,7 @@ def status_icon(status: str) -> dict[str, str]:
 
 
 @register.inclusion_tag("suggestions/components/suggestion.html", takes_context=True)
-def suggestion_new(
+def suggestion(
     context: Context,
     data: SuggestionContext,
 ) -> dict:
@@ -413,21 +270,21 @@ def package_list(
 
 
 @register.inclusion_tag("suggestions/components/maintainer.html")
-def maintainer_new(
+def maintainer(
     data: MaintainerContext,
 ) -> dict:
     return {"data": data}
 
 
 @register.inclusion_tag("suggestions/components/maintainers_list.html")
-def maintainer_list_new(
+def maintainer_list(
     data: MaintainerListContext,
 ) -> dict:
     return {"data": data}
 
 
 @register.inclusion_tag("suggestions/components/maintainer_add.html")
-def maintainer_add_new(
+def maintainer_add(
     data: MaintainerAddContext,
 ) -> dict:
     return {"data": data}

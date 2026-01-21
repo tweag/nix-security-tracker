@@ -88,20 +88,12 @@
     {% endif %}
 
     <nav id="menu-bar">
-      <ul>
-        <li class="row gap-small centered"><i class="icon-bin"></i><a href="/dismissed">Dismissed suggestions</a></li>
-        <li class="row gap-small centered"><i class="icon-inbox"></i><a href="/suggestions">Untriaged suggestions</a></li>
-        <li class="row gap-small centered"><i class="icon-draft"></i><a href="/drafts">Draft issues</a></li>
-        <li class="row gap-small centered"><i class="icon-github"></i><a href="/issues">Published issues</a></li>
-      </ul>
-    </nav>
-    <nav>
-      <div>New work in progress suggestion overhaul</div>
       <ul class="row gap">
         <li class="row gap-small centered"><i class="icon-bin"></i><a href="{% url 'webview:suggestion:dismissed_suggestions' %}">Dismissed suggestions</a></li>
         <li class="row gap-small centered"><i class="icon-inbox"></i><a href="{% url 'webview:suggestion:untriaged_suggestions' %}">Untriaged suggestions</a></li>
         <li class="row gap-small centered"><i class="icon-draft"></i><a href="{% url 'webview:suggestion:draft_suggestions' %}">Accepted suggestions</a></li>
         <li class="row gap-small centered"><i class="icon-github"></i><a href="{% url 'webview:suggestion:published_suggestions' %}">Published suggestions</a></li>
+        <li class="row gap-small centered"><i class="icon-github"></i><a href="/issues">Published issues</a></li>
       </ul>
     </nav>
 
@@ -132,10 +124,5 @@
       </p>
     </footer>
     <script src="/static/htmx.min.js"></script>
-    <script>
-      // We didn't find a better way to remove buttons that are only needed for non-JS workflows
-      <!-- FIXME(@florentc): remove this when the migration to the new suggestions is done -->
-      document.querySelectorAll(".remove-when-js-is-enabled").forEach(e => e.remove());
-    </script>
   </body>
 </html>
