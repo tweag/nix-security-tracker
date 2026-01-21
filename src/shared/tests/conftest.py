@@ -3,7 +3,9 @@ from collections.abc import Callable
 
 import pytest
 from allauth.socialaccount.models import SocialAccount
-from django.contrib.auth.models import User
+from allauth.socialaccount.providers.github.provider import GitHubProvider
+from django.conf import settings
+from django.contrib.auth.models import Group, User
 
 from shared.listeners.cache_suggestions import cache_new_suggestions
 from shared.models.cve import (
@@ -225,15 +227,49 @@ def cached_suggestion(
 
 
 @pytest.fixture
-def user(django_user_model: type[User]) -> User:
-    user = django_user_model.objects.create_user(
-        username="testuser",
-        is_staff=True,
-    )
-    SocialAccount.objects.get_or_create(
-        user=user,
-        provider="github",
-        uid="123456",
-        extra_data={"login": user.username},
-    )
-    return user
+def make_user(
+    django_user_model: type[User],
+) -> Callable[..., User]:
+    def wrapped(
+        is_staff: bool = True,
+        is_committer: bool = True,
+        username: str = "testuser",
+        provider: str = GitHubProvider.id,
+        uid: str = "123456",
+    ) -> User:
+        user = django_user_model.objects.create_user(
+            username=username,
+        )
+        if is_staff:
+            group, _ = Group.objects.get_or_create(name=settings.DB_SECURITY_TEAM)
+            user.groups.add(group)
+        if is_committer:
+            group, _ = Group.objects.get_or_create(name=settings.DB_COMMITTERS_TEAM)
+            user.groups.add(group)
+
+        SocialAccount.objects.get_or_create(
+            user=user,
+            provider=provider,
+            uid=uid,
+            extra_data={"login": user.username},
+        )
+        return user
+
+    return wrapped
+
+
+@pytest.fixture
+def user(make_user: Callable[..., User]) -> User:
+    # FIXME(@fricklerhandwerk): Currently tests assume users to be staff.
+    # For less confusing naming, rework the tests to be specific about privileges, let `user` here have none.
+    return make_user()
+
+
+@pytest.fixture
+def committer(make_user: Callable[..., User]) -> User:
+    return make_user(is_committer=True)
+
+
+@pytest.fixture
+def staff(make_user: Callable[..., User]) -> User:
+    return make_user(is_staff=True)
