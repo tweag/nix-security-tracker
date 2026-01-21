@@ -31,7 +31,7 @@ rec {
     '';
   };
 
-  # shell environment for continuous integration runs
+  # commands for CI actions
   ci =
     let
       deploy = pkgs.writeShellApplication {
@@ -40,15 +40,17 @@ rec {
         runtimeInputs = with pkgs; [
           nixos-rebuild
           coreutils
+          nix
         ];
         # TODO: satisfy shellcheck
         checkPhase = "";
       };
     in
-    pkgs.mkShellNoCC {
-      packages = [
-        pkgs.npins
+    pkgs.symlinkJoin {
+      name = "ci";
+      paths = [
         deploy
+        pkgs.npins
       ];
     };
 
