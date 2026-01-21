@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from unittest.mock import patch
 
+import pytest
 from django.contrib.messages import get_messages
 from django.test import Client
 from django.urls import reverse
@@ -26,6 +27,16 @@ from shared.models.nix_evaluation import (
 from shared.tests.test_github_sync import MockGithub
 
 
+@pytest.mark.parametrize(
+    "title,description,expected_issue_title",
+    [
+        # 3/4 of all CVEs in the source data have empty title
+        ("", "Test description", "Test description"),
+        ("Dummy Title", None, "Dummy Title"),
+        # Does not occur in practice
+        ("", "", "Security issue (missing title)"),
+    ],
+)
 def test_publish_gh_issue_empty_title(
     make_container: Callable[..., Container],
     make_suggestion: Callable[..., CVEDerivationClusterProposal],
@@ -33,12 +44,14 @@ def test_publish_gh_issue_empty_title(
     live_server: LiveServer,
     as_staff: Page,
     no_js: bool,
+    title: str,
+    description: str | None,
+    expected_issue_title: str,
 ) -> None:
-    """Test that creating a GitHub issue will succeed and update the suggestion status, despite empty CVE title"""
+    """Test that creating a GitHub issue will succeed and update the suggestion status, despite empty CVE title or description"""
     # [tag:test-github-create_issue-title]
 
-    # 3/4 of all CVEs in the source data have empty title
-    container = make_container(title="", description="Test description")
+    container = make_container(title=title, description=description)
     suggestion = make_suggestion(
         container=container, status=CVEDerivationClusterProposal.Status.ACCEPTED
     )
@@ -53,7 +66,7 @@ def test_publish_gh_issue_empty_title(
     with patch("webview.views.create_gh_issue") as mock:
         mock.side_effect = lambda *args, **kwargs: create_gh_issue(
             *args,
-            github=MockGithub(expected_issue_title="Test description"),  # type: ignore
+            github=MockGithub(expected_issue_title=expected_issue_title),  # type: ignore
             **kwargs,
         )
         publish.click()
@@ -76,49 +89,6 @@ def test_publish_gh_issue_empty_title(
         link.click()
 
     expect(suggestion).to_be_visible()
-
-
-def test_publish_gh_issue_empty_description(
-    db: None,
-    make_container: Callable[..., Container],
-    make_suggestion: Callable[..., CVEDerivationClusterProposal],
-    drv: NixDerivation,
-    authenticated_client: Client,
-) -> None:
-    """Test that creating a GitHub issue will succeed and update suggestion status, despite no CVE description"""
-    # [tag:test-github-create_issue-description]
-
-    url = reverse("webview:drafts_view")
-    container = make_container(title="Dummy Title", description=None)
-    suggestion = make_suggestion(
-        container=container, status=CVEDerivationClusterProposal.Status.ACCEPTED
-    )
-    cache_new_suggestions(suggestion)
-
-    # FIXME(@fricklerhandwerk): Mock Github's `create_issue()` here, not our own procedure! [ref:todo-github-connection]
-    with patch("webview.views.create_gh_issue") as mock:
-        mock.side_effect = lambda *args, **kwargs: create_gh_issue(
-            *args,
-            github=MockGithub(expected_issue_title="Dummy Title"),  # type: ignore
-            **kwargs,
-        )
-        response = authenticated_client.post(
-            url,
-            {
-                "suggestion_id": suggestion.pk,
-                "new_status": CVEDerivationClusterProposal.Status.PUBLISHED,
-                "comment": "",
-                "attribute": suggestion.cached.payload["packages"].keys(),
-            },
-        )
-        mock.assert_called()
-
-    messages = list(get_messages(response.wsgi_request))
-    assert not any(m.level_tag == "error" for m in messages), (
-        "Errors on issue submission"
-    )
-    suggestion.refresh_from_db()
-    assert suggestion.status == CVEDerivationClusterProposal.Status.PUBLISHED
 
 
 def test_store_issue_link(
