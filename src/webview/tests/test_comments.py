@@ -54,34 +54,22 @@ def test_dismiss_with_comment_succeeds(
 
 
 def test_accept_without_comment_succeeds(
-    authenticated_client: Client, cached_suggestion: CVEDerivationClusterProposal
+    live_server: LiveServer,
+    as_staff: Page,
+    cached_suggestion: CVEDerivationClusterProposal,
+    no_js: bool,
 ) -> None:
     """Test that accepting a suggestion without a comment is allowed"""
-    url = reverse("webview:suggestions_view")
-
-    # Accept without a comment
-    response = authenticated_client.post(
-        url,
-        {
-            "suggestion_id": cached_suggestion.pk,
-            "new_status": "accepted",
-            "comment": "",  # Empty comment
-        },
-    )
-
-    # Should succeed
-    assert response.status_code == 200
-
-    # Verify the suggestion appears in drafts view
-    drafts_response = authenticated_client.get(reverse("webview:drafts_view"))
-    assert drafts_response.status_code == 200
-
-    # Find our suggestion in the context
-    suggestions = drafts_response.context["object_list"]
-    suggestion = next(
-        (s for s in suggestions if s.proposal_id == cached_suggestion.pk), None
-    )
-    assert suggestion is not None
+    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
+    accept = suggestion.get_by_role("button", name="Create draft")
+    accept.click()
+    if no_js:
+        as_staff.goto(live_server.url + reverse("webview:drafts_view"))
+    else:
+        link = as_staff.get_by_role("link", name="View")
+        link.click()
+    expect(suggestion).to_be_visible()
 
 
 def test_accept_with_comment_shows_comment_in_context(
