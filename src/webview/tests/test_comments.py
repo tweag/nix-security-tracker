@@ -1,33 +1,27 @@
 from django.contrib.messages import get_messages
 from django.test import Client
 from django.urls import reverse
+from playwright.sync_api import Page, expect
+from pytest_django.live_server_helper import LiveServer
 
 from shared.models.linkage import CVEDerivationClusterProposal
 
 
 def test_dismiss_requires_comment_htmx(
-    db: None,
-    authenticated_client: Client,
+    live_server: LiveServer,
+    as_staff: Page,
     cached_suggestion: CVEDerivationClusterProposal,
 ) -> None:
     """Test that dismissing a suggestion requires a comment (HTMX case)"""
-    url = reverse("webview:suggestions_view")
-
-    # Try to dismiss without a comment using HTMX
-    response = authenticated_client.post(
-        url,
-        {
-            "suggestion_id": cached_suggestion.pk,
-            "new_status": "rejected",
-            "comment": "",  # Empty comment
-        },
-        HTTP_HX_REQUEST="true",  # Simulate HTMX request
+    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
+    dismiss = suggestion.get_by_role("button", name="Dismiss")
+    dismiss.click()
+    error = suggestion.locator(
+        ".error-block",
+        has_text="You must provide a dismissal comment",
     )
-
-    # Should return 200 with error_message in context for HTMX
-    assert response.status_code == 200
-    assert "error_message" in response.context
-    assert response.context["error_message"] == "You must provide a dismissal comment"
+    expect(error).to_be_visible()
 
 
 def test_dismiss_requires_comment_no_js(
