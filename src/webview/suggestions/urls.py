@@ -56,22 +56,22 @@ urlpatterns = [
     ),
     # Maintainers operations
     path(
-        "<int:suggestion_id>/maintainers/<str:github_id>/ignore/",
+        "<int:suggestion_id>/maintainers/<int:github_id>/ignore/",
         IgnoreMaintainerView.as_view(),
         name="ignore_maintainer",
     ),
     path(
-        "<int:suggestion_id>/maintainers/<str:github_id>/delete/",
+        "<int:suggestion_id>/maintainers/<int:github_id>/delete/",
         DeleteMaintainerView.as_view(),
         name="delete_maintainer",
     ),
     path(
-        "<int:suggestion_id>/maintainers/<str:github_id>/restore/",
+        "<int:suggestion_id>/maintainers/<int:github_id>/restore/",
         RestoreMaintainerView.as_view(),
         name="restore_maintainer",
     ),
     path(
-        "<int:suggestion_id>/maintainers/<str:github_id>/add/",
+        "<int:suggestion_id>/maintainers/add/",
         AddMaintainerView.as_view(),
         name="add_maintainer",
     ),

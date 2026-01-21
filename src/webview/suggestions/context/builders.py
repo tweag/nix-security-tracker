@@ -90,5 +90,7 @@ def get_maintainer_list_context(
         additional=additional_contexts,
         editable=maintainers_editable,
         suggestion_id=suggestion.pk,
-        maintainer_add_context=MaintainerAddContext(maintainer_add_error_message),
+        maintainer_add_context=MaintainerAddContext(
+            suggestion.pk, maintainer_add_error_message
+        ),
     )

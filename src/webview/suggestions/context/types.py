@@ -46,6 +46,7 @@ class MaintainerContext:
 
 @dataclass
 class MaintainerAddContext:
+    suggestion_id: int
     error_message: str | None = None
 
 

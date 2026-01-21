@@ -13,7 +13,7 @@ from django.urls import resolve, reverse
 from django.views.generic import TemplateView
 
 from shared.auth import can_publish_github_issue
-from shared.github import create_gh_issue
+from shared.github import create_gh_issue, fetch_user_info
 from shared.listeners.cache_suggestions import apply_package_edits, to_dict
 from shared.logs.batches import FoldedEventType, batch_events
 from shared.logs.events import remove_canceling_events
@@ -301,21 +301,22 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
             return self._redirect_to_origin(request)
 
 
-class PackageOperationBaseView(SuggestionBaseView, ABC):
-    """Base view for package operations (ignore/restore) with common functionality."""
+class SuggestionContentEditBaseView(SuggestionBaseView, ABC):
+    """Base view for package and maintainers operations."""
 
-    # NOTE(@florentc): We replace the whole component because ultimately we
-    # will want to also update the maintainers.
-    # TODO: When we ignore a package, we'd like to automatically ignore its
-    # maintainers
     template_name = "suggestions/components/suggestion.html"
 
-    def post(
-        self, request: HttpRequest, suggestion_id: int, package_attr: str
-    ) -> HttpResponse:
-        """Handle package operation requests."""
+    class ForbiddenOperationError(Exception):
+        """Raised when access is denied for content editing."""
+
+        def __init__(self, response: HttpResponse) -> None:
+            self.error = response
+
+    def _check_access_rights_and_get_suggestion(
+        self, request: HttpRequest, suggestion_id: int
+    ) -> tuple[CVEDerivationClusterProposal, SuggestionContext]:
         if not request.user or not can_publish_github_issue(request.user):
-            return HttpResponseForbidden()
+            raise self.ForbiddenOperationError(HttpResponseForbidden())
 
         # Get suggestion context
         suggestion = self.fetch_suggestion(suggestion_id)
@@ -326,11 +327,31 @@ class PackageOperationBaseView(SuggestionBaseView, ABC):
             CVEDerivationClusterProposal.Status.PENDING,
             CVEDerivationClusterProposal.Status.ACCEPTED,
         ]:
-            return self._handle_error(
-                request,
-                suggestion_context,
-                "Package editing is not allowed for this suggestion status",
+            raise self.ForbiddenOperationError(
+                self._handle_error(
+                    request,
+                    suggestion_context,
+                    "Content editing is not allowed for this suggestion status",
+                )
             )
+
+        return (suggestion, suggestion_context)
+
+
+class PackageOperationBaseView(SuggestionContentEditBaseView, ABC):
+    """Base view for package operations (ignore/restore) with common functionality."""
+
+    def post(
+        self, request: HttpRequest, suggestion_id: int, package_attr: str
+    ) -> HttpResponse:
+        """Handle package operation requests."""
+        # Check edition is allowed and get suggestion
+        try:
+            suggestion, suggestion_context = (
+                self._check_access_rights_and_get_suggestion(request, suggestion_id)
+            )
+        except self.AccessDeniedError as e:
+            return e.response
 
         # Validate that the package exists in the suggestion
         if package_attr not in suggestion.cached.payload.get("original_packages", {}):
@@ -383,6 +404,9 @@ class PackageOperationBaseView(SuggestionBaseView, ABC):
 class IgnorePackageView(PackageOperationBaseView):
     """Handle package ignore operations."""
 
+    # TODO(@florentc): When we ignore a package, we'd like to automatically ignore its
+    # maintainers
+
     def _perform_operation(
         self, suggestion: CVEDerivationClusterProposal, package_attr: str
     ) -> None:
@@ -415,47 +439,27 @@ class RestorePackageView(PackageOperationBaseView):
         return "restore"
 
 
-class MaintainerOperationBaseView(SuggestionBaseView, ABC):
-    template_name = "suggestions/components/suggestion.html"
-
+class MaintainerOperationBaseView(SuggestionContentEditBaseView, ABC):
     def post(
-        self, request: HttpRequest, suggestion_id: int, github_id: str
+        self, request: HttpRequest, suggestion_id: int, github_id: int
     ) -> HttpResponse:
         """Handle maintainer operation requests."""
-        if not request.user or not can_publish_github_issue(request.user):
-            return HttpResponseForbidden()
-
-        # Get suggestion context
-        suggestion = self.fetch_suggestion(suggestion_id)
-        suggestion_context = self.get_suggestion_context(suggestion)
-
-        # Validate the github_id in input
+        # Check edition is allowed and get suggestion
         try:
-            github_id_int = int(github_id)
-        except ValueError:
-            return self._handle_error(
-                request, suggestion_context, "Invalid GitHub ID format"
+            suggestion, suggestion_context = (
+                self._check_access_rights_and_get_suggestion(request, suggestion_id)
             )
-
-        # Validate that the suggestion status allows maintainer editing
-        if suggestion.status not in [
-            CVEDerivationClusterProposal.Status.PENDING,
-            CVEDerivationClusterProposal.Status.ACCEPTED,
-        ]:
-            return self._handle_error(
-                request,
-                suggestion_context,
-                "Maintainer editing is not allowed for this suggestion status",
-            )
+        except self.AccessDeniedError as e:
+            return e.response
 
         # Validate the requested operation
-        validation_error = self._validate_operation(suggestion, github_id_int)
+        validation_error = self._validate_operation(suggestion, github_id)
         if validation_error:
             return self._handle_error(request, suggestion_context, validation_error)
 
         # Perform the specific operation
         try:
-            self._perform_operation(suggestion, github_id_int)
+            self._perform_operation(suggestion, github_id)
         except Exception:
             return self._handle_error(
                 request,
@@ -619,18 +623,6 @@ class RestoreMaintainerView(MaintainerOperationBaseView):
         return "restore"
 
 
-class AddMaintainerView(MaintainerOperationBaseView):
-    """Manually add a maintainer that was not originally assigned to the suggestion."""
-
-    def _perform_operation(
-        self, suggestion: CVEDerivationClusterProposal, github_id: int
-    ) -> None:
-        pass
-
-    def _get_operation_name(self) -> str:
-        return "add"
-
-
 class DeleteMaintainerView(MaintainerOperationBaseView):
     """Detele a maintainer that was manually added."""
 
@@ -641,3 +633,109 @@ class DeleteMaintainerView(MaintainerOperationBaseView):
 
     def _get_operation_name(self) -> str:
         return "delete"
+
+
+class AddMaintainerView(SuggestionContentEditBaseView):
+    """Manually add a maintainer that was not originally assigned to the suggestion."""
+
+    # NOTE(@florentc): We override the regular handle error here so that we
+    # display error messages related to adding new maintainers next to the text
+    # field instead of the suggestion itself.
+    def _handle_error(
+        self,
+        request: HttpRequest,
+        suggestion_context: SuggestionContext,
+        error_message: str,
+    ) -> HttpResponse:
+        """Handle error responses for both HTMX and standard requests."""
+        suggestion_context.maintainer_list_context.maintainer_add_context.error_message = error_message
+        if request.headers.get("HX-Request"):
+            return self.render_to_response({"data": suggestion_context})
+        else:
+            # Without javascript, we use Django messages for the errors
+            messages.error(request, error_message)
+            return self._redirect_to_origin(request)
+
+    def post(self, request: HttpRequest, suggestion_id: int) -> HttpResponse:
+        # Check edition is allowed and get suggestion
+        try:
+            suggestion, suggestion_context = (
+                self._check_access_rights_and_get_suggestion(request, suggestion_id)
+            )
+        except self.AccessDeniedError as e:
+            return e.response
+
+        # Validate the provided handle
+        new_maintainer_github_handle = request.POST.get("new_maintainer_github_handle")
+        if not new_maintainer_github_handle:
+            return self._handle_error(
+                request, suggestion_context, "No GitHub handle was provided"
+            )
+        if any(
+            str(m["github"]) == new_maintainer_github_handle
+            for m in suggestion.cached.payload["categorized_maintainers"]["original"]
+        ):
+            return self._handle_error(
+                request, suggestion_context, "Already a maintainer"
+            )
+
+        # Try to fetch the maintainer from our db
+        maintainer = NixMaintainer.objects.filter(
+            github=new_maintainer_github_handle
+        ).first()
+
+        # Try to fetch maintainer info from GitHub API and create if found
+        if not maintainer:
+            gh_user = fetch_user_info(new_maintainer_github_handle)
+            if gh_user:
+                maintainer = NixMaintainer.objects.update_or_create(
+                    github_id=gh_user["id"],
+                    defaults={
+                        "github": gh_user["login"],
+                        "name": gh_user.get("name"),
+                        "email": gh_user.get("email"),
+                    },
+                )
+            else:
+                return self._handle_error(
+                    request,
+                    suggestion_context,
+                    "Could not fetch maintainer from GitHub",
+                )
+
+        # Perform the operation
+        with transaction.atomic():
+            # Add the maintainer edit
+            edit, created = suggestion.maintainers_edits.get_or_create(
+                maintainer=maintainer,
+                defaults={"edit_type": MaintainersEdit.EditType.ADD},
+            )
+            if not created and edit.edit_type != MaintainersEdit.EditType.ADD:
+                edit.edit_type = MaintainersEdit.EditType.ADD
+                edit.save()
+
+            # Update the cached categorized maintainers
+            categorized_maintainers = suggestion.cached.payload[
+                "categorized_maintainers"
+            ]
+            # Add to active maintainers if not already there
+            if not any(
+                m["github_id"] == maintainer.github_id
+                for m in categorized_maintainers["added"]
+            ):
+                categorized_maintainers["added"].append(to_dict(maintainer))
+
+            # Save the suggestion
+            suggestion.cached.save()
+
+        # Refresh the maintainer list context and activity_log
+        suggestion_context.maintainer_list_context = get_maintainer_list_context(
+            suggestion
+        )
+        suggestion_context.activity_log = self.fetch_activity_log(suggestion.pk)
+
+        # Return response
+        if request.headers.get("HX-Request"):
+            return self.render_to_response({"data": suggestion_context})
+        else:
+            return self._redirect_to_origin(request)
