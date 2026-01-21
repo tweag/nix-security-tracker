@@ -1,4 +1,3 @@
-from django.test import Client
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 from pytest_django.live_server_helper import LiveServer
@@ -96,41 +95,32 @@ def test_accept_with_comment_shows_comment_in_context(
 
 
 def test_updating_comment_on_existing_suggestion(
-    authenticated_client: Client, cached_suggestion: CVEDerivationClusterProposal
+    live_server: LiveServer,
+    as_staff: Page,
+    cached_suggestion: CVEDerivationClusterProposal,
+    no_js: bool,
 ) -> None:
     """Test that updating a comment on an existing suggestion works"""
-    # First accept with initial comment
+    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
     initial_comment = "Initial comment"
-    url = reverse("webview:suggestions_view")
-
-    authenticated_client.post(
-        url,
-        {
-            "suggestion_id": cached_suggestion.pk,
-            "new_status": "accepted",
-            "comment": initial_comment,
-        },
-    )
-
-    # Now update just the comment (no status change)
+    suggestion.locator("textarea").fill(initial_comment)
+    dismiss = suggestion.get_by_role("button", name="Dismiss")
+    dismiss.click()
+    if no_js:
+        as_staff.goto(live_server.url + reverse("webview:dismissed_view"))
+    else:
+        link = as_staff.get_by_role("link", name="View")
+        link.click()
     updated_comment = "Updated comment with more details"
-    drafts_url = reverse("webview:drafts_view")
-
-    response = authenticated_client.post(
-        drafts_url,
-        {
-            "suggestion_id": cached_suggestion.pk,
-            "comment": updated_comment,
-            # No new_status means just updating comment
-        },
-    )
-
-    # Should succeed
-    assert response.status_code == 200
-
-    # Verify the updated comment appears in the context
-    drafts_response = authenticated_client.get(drafts_url)
-    assert drafts_response.status_code == 200
-
-    suggestion = drafts_response.context["object_list"][0].proposal
-    assert suggestion.comment == updated_comment
+    suggestion.locator("textarea").fill(updated_comment)
+    to_draft = suggestion.get_by_role("button", name="Convert to draft")
+    to_draft.click()
+    if no_js:
+        as_staff.goto(live_server.url + reverse("webview:drafts_view"))
+    else:
+        link = as_staff.get_by_role("link", name="View")
+        link.click()
+    expect(suggestion).to_be_visible()
+    comment = suggestion.locator("textarea")
+    expect(comment).to_have_value(updated_comment)
