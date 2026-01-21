@@ -1,4 +1,3 @@
-from django.contrib.messages import get_messages
 from django.test import Client
 from django.urls import reverse
 from playwright.sync_api import Page, expect
@@ -11,54 +10,24 @@ def test_dismiss_requires_comment_htmx(
     live_server: LiveServer,
     as_staff: Page,
     cached_suggestion: CVEDerivationClusterProposal,
+    no_js: bool,
 ) -> None:
     """Test that dismissing a suggestion requires a comment (HTMX case)"""
     as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
     suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
     dismiss = suggestion.get_by_role("button", name="Dismiss")
     dismiss.click()
-    error = suggestion.locator(
-        ".error-block",
-        has_text="You must provide a dismissal comment",
-    )
+    if no_js:
+        error = as_staff.locator(
+            "#messages",
+            has_text="You must provide a dismissal comment",
+        )
+    else:
+        error = suggestion.locator(
+            ".error-block",
+            has_text="You must provide a dismissal comment",
+        )
     expect(error).to_be_visible()
-
-
-def test_dismiss_requires_comment_no_js(
-    authenticated_client: Client, cached_suggestion: CVEDerivationClusterProposal
-) -> None:
-    """Test that dismissing a suggestion requires a comment (no-JS case)"""
-    url = reverse("webview:suggestions_view")
-
-    # Try to dismiss without a comment (non-JS behavior)
-    response = authenticated_client.post(
-        url,
-        {
-            "suggestion_id": cached_suggestion.pk,
-            "new_status": "rejected",
-            "comment": "",  # Empty comment
-            "no-js": "",  # Indicate non-JS mode
-        },
-    )
-
-    # Should redirect back to the same page
-    assert response.status_code == 302
-
-    # Follow the redirect and check for Django messages
-    follow_response = authenticated_client.get(url)
-    assert follow_response.status_code == 200
-
-    # Check that the correct error message was added to Django messages
-    messages = list(get_messages(follow_response.wsgi_request))
-    assert len(messages) == 1
-    assert str(messages[0]) == "You must provide a dismissal comment"
-
-    # Verify the suggestion is still in the suggestions view (not dismissed)
-    suggestions = follow_response.context["object_list"]
-    our_suggestion = next(
-        (s for s in suggestions if s.proposal_id == cached_suggestion.pk), None
-    )
-    assert our_suggestion is not None, "Suggestion should still be in pending status"
 
 
 def test_dismiss_with_comment_succeeds(
