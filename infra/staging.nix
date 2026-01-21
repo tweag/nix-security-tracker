@@ -97,6 +97,7 @@ in
       GH_ISSUES_REPO = "sectracker-testing";
       GH_SECURITY_TEAM = "sectracker-testing-security";
       GH_COMMITTERS_TEAM = "sectracker-testing-committers";
+      EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend";
     };
 
     secrets = {
