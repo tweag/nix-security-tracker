@@ -16,7 +16,7 @@ from webview.suggestions.context.builders import (
 )
 from webview.suggestions.context.types import SuggestionContext
 
-from .base import SuggestionContentEditBaseView
+from .base import SuggestionContentEditBaseView, fetch_activity_log
 
 
 class MaintainerOperationBaseView(SuggestionContentEditBaseView, ABC):
@@ -51,7 +51,7 @@ class MaintainerOperationBaseView(SuggestionContentEditBaseView, ABC):
         suggestion_context.maintainer_list_context = get_maintainer_list_context(
             suggestion
         )
-        suggestion_context.activity_log = self.fetch_activity_log(suggestion.pk)
+        suggestion_context.activity_log = fetch_activity_log(suggestion.pk)
 
         # Return response
         if request.headers.get("HX-Request"):
@@ -357,7 +357,7 @@ class AddMaintainerView(SuggestionContentEditBaseView):
         suggestion_context.maintainer_list_context = get_maintainer_list_context(
             suggestion
         )
-        suggestion_context.activity_log = self.fetch_activity_log(suggestion.pk)
+        suggestion_context.activity_log = fetch_activity_log(suggestion.pk)
 
         # Return response
         if request.headers.get("HX-Request"):

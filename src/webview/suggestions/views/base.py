@@ -22,25 +22,28 @@ from webview.suggestions.context.builders import (
 from webview.suggestions.context.types import SuggestionContext
 
 
+def fetch_suggestion(suggestion_id: int) -> CVEDerivationClusterProposal:
+    return get_object_or_404(CVEDerivationClusterProposal, id=suggestion_id)
+
+
+def fetch_activity_log(suggestion_id: int) -> list[FoldedEventType]:
+    raw_events = fetch_suggestion_events(suggestion_id)
+    return batch_events(remove_canceling_events(raw_events, sort=True))
+
+
+def get_suggestion_context(
+    suggestion: CVEDerivationClusterProposal,
+) -> SuggestionContext:
+    return SuggestionContext(
+        suggestion=suggestion,
+        package_list_context=get_package_list_context(suggestion),
+        maintainer_list_context=get_maintainer_list_context(suggestion),
+        activity_log=fetch_activity_log(suggestion.pk),
+    )
+
+
 class SuggestionBaseView(LoginRequiredMixin, TemplateView, ABC):
     """Base view for all suggestion-related views with common functionality."""
-
-    def fetch_suggestion(self, suggestion_id: int) -> CVEDerivationClusterProposal:
-        return get_object_or_404(CVEDerivationClusterProposal, id=suggestion_id)
-
-    def fetch_activity_log(self, suggestion_id: int) -> list[FoldedEventType]:
-        raw_events = fetch_suggestion_events(suggestion_id)
-        return batch_events(remove_canceling_events(raw_events, sort=True))
-
-    def get_suggestion_context(
-        self, suggestion: CVEDerivationClusterProposal
-    ) -> SuggestionContext:
-        return SuggestionContext(
-            suggestion=suggestion,
-            package_list_context=get_package_list_context(suggestion),
-            maintainer_list_context=get_maintainer_list_context(suggestion),
-            activity_log=self.fetch_activity_log(suggestion.pk),
-        )
 
     def _handle_error(
         self,
@@ -116,8 +119,8 @@ class SuggestionContentEditBaseView(SuggestionBaseView, ABC):
             raise self.ForbiddenOperationError(HttpResponseForbidden())
 
         # Get suggestion context
-        suggestion = self.fetch_suggestion(suggestion_id)
-        suggestion_context = self.get_suggestion_context(suggestion)
+        suggestion = fetch_suggestion(suggestion_id)
+        suggestion_context = get_suggestion_context(suggestion)
 
         # Validate that the suggestion status allows package editing
         if suggestion.status not in [

@@ -12,7 +12,7 @@ from webview.suggestions.context.builders import (
     get_package_list_context,
 )
 
-from .base import SuggestionContentEditBaseView
+from .base import SuggestionContentEditBaseView, fetch_activity_log
 
 
 class PackageOperationBaseView(SuggestionContentEditBaseView, ABC):
@@ -55,7 +55,7 @@ class PackageOperationBaseView(SuggestionContentEditBaseView, ABC):
 
         # Refresh the package list context and activity log
         suggestion_context.package_list_context = get_package_list_context(suggestion)
-        suggestion_context.activity_log = self.fetch_activity_log(suggestion.pk)
+        suggestion_context.activity_log = fetch_activity_log(suggestion.pk)
 
         # Handle response based on request type
         if request.headers.get("HX-Request"):

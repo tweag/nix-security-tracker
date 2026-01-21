@@ -15,7 +15,12 @@ from webview.suggestions.context.builders import (
 )
 from webview.suggestions.context.types import SuggestionStubContext
 
-from .base import SuggestionBaseView
+from .base import (
+    SuggestionBaseView,
+    fetch_activity_log,
+    fetch_suggestion,
+    get_suggestion_context,
+)
 
 
 class UpdateSuggestionStatusView(SuggestionBaseView):
@@ -29,8 +34,8 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
             return HttpResponseForbidden()
 
         # Get suggestion context
-        suggestion = self.fetch_suggestion(suggestion_id)
-        suggestion_context = self.get_suggestion_context(suggestion)
+        suggestion = fetch_suggestion(suggestion_id)
+        suggestion_context = get_suggestion_context(suggestion)
 
         # Get form data
         new_status = request.POST.get("new_status")
@@ -92,7 +97,7 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
         suggestion.save()
 
         # Refresh activity_log
-        suggestion_context.activity_log = self.fetch_activity_log(suggestion.pk)
+        suggestion_context.activity_log = fetch_activity_log(suggestion.pk)
 
         # Refresh packages edit status
         suggestion_context.package_list_context.editable = is_suggestion_editable(

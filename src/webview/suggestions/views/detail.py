@@ -7,7 +7,7 @@ from shared.models.linkage import (
     CVEDerivationClusterProposal,
 )
 
-from .base import SuggestionBaseView
+from .base import SuggestionBaseView, get_suggestion_context
 
 
 class SuggestionDetailView(SuggestionBaseView):
@@ -27,9 +27,7 @@ class SuggestionDetailView(SuggestionBaseView):
             suggestion = get_object_or_404(
                 CVEDerivationClusterProposal, id=suggestion_id
             )
-            context.update(
-                {"suggestion_context": self.get_suggestion_context(suggestion)}
-            )
+            context.update({"suggestion_context": get_suggestion_context(suggestion)})
             return context
         except (ValueError, TypeError):  # FIXME(@florentc): also catch db error
             raise Http404("Invalid suggestion ID")

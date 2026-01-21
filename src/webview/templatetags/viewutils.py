@@ -180,13 +180,13 @@ def is_maintainer_or_admin(user: Any) -> bool:
 def issue(
     context: Context,
     issue: NixpkgsIssue,
-    activity_log: list[FoldedEventType],
+    suggestion_context: SuggestionContext,
     show_permalink: bool = False,
 ) -> dict:
     return {
         "issue": issue,
         "show_permalink": show_permalink,
-        "activity_log": activity_log,
+        "suggestion_context": suggestion_context,
         "page_obj": context.get("page_obj", None),
         "status_filter": "published",  # Needed in context for the suggestion component
         "user": context["user"],

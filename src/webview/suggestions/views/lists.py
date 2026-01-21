@@ -7,7 +7,7 @@ from shared.models.linkage import (
     CVEDerivationClusterProposal,
 )
 
-from .base import SuggestionBaseView
+from .base import SuggestionBaseView, get_suggestion_context
 
 
 class SuggestionListView(SuggestionBaseView, ABC):
@@ -34,7 +34,7 @@ class SuggestionListView(SuggestionBaseView, ABC):
         # Convert suggestions to SuggestionContext objects for the current page
         suggestion_contexts = []
         for suggestion in page_obj.object_list:
-            suggestion_context = self.get_suggestion_context(suggestion)
+            suggestion_context = get_suggestion_context(suggestion)
             suggestion_contexts.append(suggestion_context)
 
         context.update(

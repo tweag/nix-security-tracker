@@ -5,9 +5,7 @@ from typing import Any, cast
 
 from django.core.validators import RegexValidator
 
-from shared.logs.batches import batch_events
-from shared.logs.events import remove_canceling_events
-from shared.logs.fetchers import fetch_suggestion_events
+from webview.suggestions.views.base import get_suggestion_context
 
 if typing.TYPE_CHECKING:
     # prevent typecheck from failing on some historic type
@@ -61,11 +59,10 @@ class NixpkgsIssueView(DetailView):
         context = super().get_context_data(**kwargs)
         issue = self.get_object()
 
-        # Fetch activity log
-        raw_events = fetch_suggestion_events(issue.suggestion.pk)
-        context["activity_log"] = batch_events(
-            remove_canceling_events(raw_events, sort=True)
-        )
+        # Fetch suggestion_context
+        context["suggestion_context"] = get_suggestion_context(issue.suggestion)
+        logger.error("********")
+        logger.error(context["suggestion_context"])
 
         return context
 
@@ -88,9 +85,7 @@ class NixpkgsIssueListView(ListView):
 
         # Fetch activity logs
         for issue in context["object_list"]:
-            raw_events = fetch_suggestion_events(issue.suggestion.pk)
-            filtered_events = remove_canceling_events(raw_events, sort=True)
-            issue.activity_log = batch_events(filtered_events)
+            issue.suggestion_context = get_suggestion_context(issue.suggestion)
 
         return context
 
