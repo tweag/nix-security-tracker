@@ -31,42 +31,26 @@ def test_dismiss_requires_comment_htmx(
 
 
 def test_dismiss_with_comment_succeeds(
-    authenticated_client: Client, cached_suggestion: CVEDerivationClusterProposal
+    live_server: LiveServer,
+    as_staff: Page,
+    cached_suggestion: CVEDerivationClusterProposal,
+    no_js: bool,
 ) -> None:
     """Test that dismissing with a comment works and the comment appears in the view context"""
-
-    url = reverse("webview:suggestions_view")
-    dismissal_comment = (
-        "This suggestion is not relevant because the package is deprecated."
-    )
-
-    # Dismiss with a comment
-    response = authenticated_client.post(
-        url,
-        {
-            "suggestion_id": cached_suggestion.pk,
-            "new_status": "rejected",
-            "comment": dismissal_comment,
-        },
-    )
-
-    # Should succeed
-    assert response.status_code == 200
-
-    # Verify the suggestion appears in dismissed view with the comment
-    dismissed_response = authenticated_client.get(reverse("webview:dismissed_view"))
-    assert dismissed_response.status_code == 200
-
-    # Find the suggestion in the context
-    suggestions = dismissed_response.context["object_list"]
-    our_suggestion = next(
-        (s for s in suggestions if s.proposal_id == cached_suggestion.pk), None
-    )
-    assert our_suggestion is not None
-
-    # Verify the comment appears in the suggestion context
-    suggestion_in_context = dismissed_response.context["object_list"][0].proposal
-    assert suggestion_in_context.comment == dismissal_comment
+    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
+    comment_text = "This suggestion is not relevant because the package is deprecated."
+    suggestion.locator("textarea").fill(comment_text)
+    dismiss = suggestion.get_by_role("button", name="Dismiss")
+    dismiss.click()
+    if no_js:
+        as_staff.goto(live_server.url + reverse("webview:dismissed_view"))
+    else:
+        link = as_staff.get_by_role("link", name="View")
+        link.click()
+    expect(suggestion).to_be_visible()
+    comment = suggestion.locator("textarea")
+    expect(comment).to_have_value(comment_text)
 
 
 def test_accept_without_comment_succeeds(
