@@ -73,32 +73,26 @@ def test_accept_without_comment_succeeds(
 
 
 def test_accept_with_comment_shows_comment_in_context(
-    authenticated_client: Client, cached_suggestion: CVEDerivationClusterProposal
+    live_server: LiveServer,
+    as_staff: Page,
+    cached_suggestion: CVEDerivationClusterProposal,
+    no_js: bool,
 ) -> None:
     """Test that accepting with a comment shows the comment in the view context"""
-    url = reverse("webview:suggestions_view")
-    acceptance_comment = "This looks good, creating draft issue."
-
-    # Accept with a comment
-    response = authenticated_client.post(
-        url,
-        {
-            "suggestion_id": cached_suggestion.pk,
-            "new_status": "accepted",
-            "comment": acceptance_comment,
-        },
-    )
-
-    # Should succeed
-    assert response.status_code == 200
-
-    # Verify the suggestion appears in drafts view with the comment
-    drafts_response = authenticated_client.get(reverse("webview:drafts_view"))
-    assert drafts_response.status_code == 200
-
-    # Find the suggestion in the context and verify the comment
-    suggestion = drafts_response.context["object_list"][0].proposal
-    assert suggestion.comment == acceptance_comment
+    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
+    comment_text = "This looks good, creating draft issue."
+    suggestion.locator("textarea").fill(comment_text)
+    accept = suggestion.get_by_role("button", name="Create draft")
+    accept.click()
+    if no_js:
+        as_staff.goto(live_server.url + reverse("webview:drafts_view"))
+    else:
+        link = as_staff.get_by_role("link", name="View")
+        link.click()
+    expect(suggestion).to_be_visible()
+    comment = suggestion.locator("textarea")
+    expect(comment).to_have_value(comment_text)
 
 
 def test_updating_comment_on_existing_suggestion(
