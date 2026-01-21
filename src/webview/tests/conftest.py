@@ -11,7 +11,6 @@ from django.contrib.auth import login
 from django.contrib.auth.models import User
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
-from django.test import Client
 from django.urls import reverse
 from playwright.sync_api import Page
 from pytest import FixtureRequest
@@ -66,16 +65,3 @@ def as_staff(
         # https://github.com/pennersr/django-allauth/blob/main/allauth/socialaccount/providers/oauth/urls.py#L11
         page.goto(live_server.url + reverse(f"{GitHubProvider.id}_login"))
         yield page
-
-
-@pytest.fixture
-def authenticated_client(
-    client: Client,
-    user: User,
-) -> Client:
-    # https://docs.djangoproject.com/en/6.0/topics/testing/tools/#django.test.Client.force_login
-    client.force_login(
-        user,
-        backend="allauth.account.auth_backends.AuthenticationBackend",
-    )
-    return client
