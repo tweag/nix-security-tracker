@@ -1,19 +1,20 @@
 from django.urls import path
 
-from .views import (
+from .views.detail import SuggestionDetailView
+from .views.lists import (
     AcceptedSuggestionsView,
+    PublishedSuggestionsView,
+    RejectedSuggestionsView,
+    UntriagedSuggestionsView,
+)
+from .views.maintainers import (
     AddMaintainerView,
     DeleteMaintainerView,
     IgnoreMaintainerView,
-    IgnorePackageView,
-    PublishedSuggestionsView,
-    RejectedSuggestionsView,
     RestoreMaintainerView,
-    RestorePackageView,
-    SuggestionDetailView,
-    UntriagedSuggestionsView,
-    UpdateSuggestionStatusView,
 )
+from .views.packages import IgnorePackageView, RestorePackageView
+from .views.status import UpdateSuggestionStatusView
 
 app_name = "suggestion"
 
