@@ -15,7 +15,7 @@
           <div class="bold">Dismissed</div>
           <div>(<a href="{% url 'webview:suggestion:dismissed_suggestions' %}">browse all</a>)</div>
         {% elif data.suggestion.status == "accepted" %}
-          <div class="bold">Draft</div>
+          <div class="bold">Accepted</div>
           <div>(<a href="{% url 'webview:suggestion:draft_suggestions' %}">browse all</a>)</div>
         {% elif data.suggestion.status == "published" %}
           <div class="bold">Published</div>
@@ -94,7 +94,7 @@
           {% if data.suggestion.status == "pending" %}
             <button type="submit" name="new_status" value="accepted" class="btn btn-green row gap-small centered">
               {% status_icon "accepted" %}
-              Create draft
+              Accept suggestion
             </button>
             <button type="submit" name="new_status" value="rejected" class="btn btn-gray row gap-small centered">
               {% status_icon "rejected" %}
@@ -103,7 +103,7 @@
           {% elif data.suggestion.status == "rejected" %}
             <button type="submit" name="new_status" value="accepted" class="btn btn-green row gap-small centered">
               {% status_icon "accepted" %}
-              Convert to draft
+              Accept suggestion
             </button>
           {% elif data.suggestion.status == "accepted" %}
             <button type="submit" name="new_status" value="published" class="btn btn-green row gap-small centered">
