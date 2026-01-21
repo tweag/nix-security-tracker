@@ -624,12 +624,57 @@ class RestoreMaintainerView(MaintainerOperationBaseView):
 
 
 class DeleteMaintainerView(MaintainerOperationBaseView):
-    """Detele a maintainer that was manually added."""
+    """Delete a maintainer that was manually added."""
+
+    def _validate_operation(
+        self, suggestion: CVEDerivationClusterProposal, github_id: int
+    ) -> str | None:
+        """Validate that the maintainer can be deleted (only manually added maintainers)."""
+        # Check if the maintainer exists in the added maintainers
+        categorized_maintainers = suggestion.cached.payload["categorized_maintainers"]
+        added_maintainers = categorized_maintainers["added"]
+
+        # Find if this github_id exists in added maintainers
+        maintainer_exists = any(
+            maintainer.get("github_id") == github_id for maintainer in added_maintainers
+        )
+
+        if not maintainer_exists:
+            return "Only manually added maintainers can be deleted"
+
+        # Check if there's an ADD edit to remove (there should be one)
+        existing_edit = suggestion.maintainers_edits.filter(
+            maintainer__github_id=github_id, edit_type=MaintainersEdit.EditType.ADD
+        ).first()
+
+        if not existing_edit:
+            return "No add edit found for this maintainer"
+
+        return None
 
     def _perform_operation(
         self, suggestion: CVEDerivationClusterProposal, github_id: int
     ) -> None:
-        pass
+        with transaction.atomic():
+            # Remove the ADD edit to delete the maintainer
+            edit_to_remove = suggestion.maintainers_edits.get(
+                maintainer__github_id=github_id,
+                edit_type=MaintainersEdit.EditType.ADD,
+            )
+            edit_to_remove.delete()
+
+            # Update the cached categorized maintainers
+            categorized_maintainers = suggestion.cached.payload[
+                "categorized_maintainers"
+            ]
+            categorized_maintainers["added"] = [
+                m
+                for m in categorized_maintainers["added"]
+                if m["github_id"] != github_id
+            ]
+
+            # Save the suggestion
+            suggestion.cached.save()
 
     def _get_operation_name(self) -> str:
         return "delete"
