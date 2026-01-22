@@ -8,6 +8,7 @@
       hx-target="#suggestion-{{ data.suggestion_id }}"
       hx-swap="outerHTML show:none"
       hx-push-url="false"
+      hx-indicator="find button"
       autocomplete="off"
     >
       {% csrf_token %}

@@ -10,6 +10,7 @@
       hx-target="#suggestion-{{ data.suggestion_id }}"
       hx-swap="outerHTML show:none"
       hx-push-url="false"
+      hx-indicator="find button"
       autocomplete="off"
     >
       {% csrf_token %}
@@ -28,7 +29,6 @@
       </button>
     </form>
   </div>
-  <img class="maintainer-add-spinner htmx-indicator" src="/static/spinner.svg">
   {% if data.error_message %}
   <div class="error-inline">
     {{ data.error_message }}

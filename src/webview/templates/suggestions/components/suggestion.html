@@ -36,7 +36,6 @@
         {% endif %}
       </div>
       <div class="row gap">
-        <img class="state-change-indicator htmx-indicator" src="/static/spinner.svg">
         {% suggestion_activity_log data.suggestion data.activity_log %}
       </div>
     </div>
@@ -70,7 +69,7 @@
       action="{% url 'webview:suggestion:update_status' suggestion_id=data.suggestion.pk %}"
       hx-boost="true"
       hx-swap="outerHTML show:none"
-      hx-indicator="#suggestion-{{ data.suggestion.cached.payload.pk }} .state-change-indicator"
+      hx-indicator="#suggestion-{{ data.suggestion.cached.payload.pk }} .status-change-button"
       hx-push-url="false"
       autocomplete="off"
     >
@@ -92,25 +91,25 @@
       {% if user|is_maintainer_or_admin and data.suggestion.status != "published" %}
         <div class="row-reverse spread">
           {% if data.suggestion.status == "pending" %}
-            <button type="submit" name="new_status" value="accepted" class="btn btn-green row gap-small centered">
+            <button type="submit" name="new_status" value="accepted" class="status-change-button btn btn-green row gap-small centered">
               {% status_icon "accepted" %}
               Accept suggestion
             </button>
-            <button type="submit" name="new_status" value="rejected" class="btn btn-gray row gap-small centered">
+            <button type="submit" name="new_status" value="rejected" class="status-change-button btn btn-gray row gap-small centered">
               {% status_icon "rejected" %}
               Dismiss
             </button>
           {% elif data.suggestion.status == "rejected" %}
-            <button type="submit" name="new_status" value="accepted" class="btn btn-green row gap-small centered">
+            <button type="submit" name="new_status" value="accepted" class="status-change-button btn btn-green row gap-small centered">
               {% status_icon "accepted" %}
               Accept suggestion
             </button>
           {% elif data.suggestion.status == "accepted" %}
-            <button type="submit" name="new_status" value="published" class="btn btn-green row gap-small centered">
+            <button type="submit" name="new_status" value="published" class="status-change-button btn btn-green row gap-small centered">
               {% status_icon "published" %}
               Publish issue
             </button>
-            <button type="submit" name="new_status" value="rejected" class="btn btn-gray row gap-small centered">
+            <button type="submit" name="new_status" value="rejected" class="status-change-button btn btn-gray row gap-small centered">
               {% status_icon "rejected" %}
               Dismiss
             </button>

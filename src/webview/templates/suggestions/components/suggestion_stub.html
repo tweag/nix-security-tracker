@@ -12,7 +12,6 @@
     </h2>
   </div>
   <div class="row centered gap">
-    <img class="state-change-indicator htmx-indicator" src="/static/spinner.svg">
     <a href="{% url 'webview:suggestion:detail' suggestion_id=data.suggestion.pk %}">View</a>
     {% if data.undo_status_target %}
     <form
@@ -21,7 +20,7 @@
       action="{% url 'webview:suggestion:update_status' suggestion_id=data.suggestion.pk %}"
       hx-boost="true"
       hx-swap="outerHTML show:none"
-      hx-indicator="previous .state-change-indicator"
+      hx-indicator="find button"
       hx-push-url="false"
       autocomplete="off"
     >
