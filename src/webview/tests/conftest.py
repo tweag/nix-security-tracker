@@ -1,5 +1,6 @@
 import os
 from collections.abc import Callable, Generator
+from contextlib import AbstractContextManager, contextmanager
 from typing import Any
 from unittest.mock import _patch, patch
 
@@ -55,13 +56,25 @@ def mock_oauth_login(
 
 @pytest.fixture
 def as_staff(
+    logged_in_as: Callable[..., AbstractContextManager[Page]],
+    staff: User,
+) -> Generator[Page]:
+    with logged_in_as(staff) as page:
+        yield page
+
+
+@pytest.fixture
+def logged_in_as(
     live_server: LiveServer,
     mock_oauth_login: Callable[[User], _patch],
     page: Page,
-    staff: User,
-) -> Generator[Page]:
-    with mock_oauth_login(staff):
-        # XXX(@fricklerhandwerk): Login URLs are "{provider.id}_login":
-        # https://github.com/pennersr/django-allauth/blob/main/allauth/socialaccount/providers/oauth/urls.py#L11
-        page.goto(live_server.url + reverse(f"{GitHubProvider.id}_login"))
-        yield page
+) -> Callable[..., AbstractContextManager[Page]]:
+    @contextmanager
+    def wrapped(user: User) -> Generator[Page]:
+        with mock_oauth_login(user):
+            # XXX(@fricklerhandwerk): Login URLs are "{provider.id}_login":
+            # https://github.com/pennersr/django-allauth/blob/main/allauth/socialaccount/providers/oauth/urls.py#L11
+            page.goto(live_server.url + reverse(f"{GitHubProvider.id}_login"))
+            yield page
+
+    return wrapped
