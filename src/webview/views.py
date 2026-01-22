@@ -61,8 +61,6 @@ class NixpkgsIssueView(DetailView):
 
         # Fetch suggestion_context
         context["suggestion_context"] = get_suggestion_context(issue.suggestion)
-        logger.error("********")
-        logger.error(context["suggestion_context"])
 
         return context
 

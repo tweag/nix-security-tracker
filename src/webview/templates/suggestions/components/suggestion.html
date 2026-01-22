@@ -5,7 +5,7 @@
 {% else %}
 
   <article class="rounded-box column gap highlight-target" hx-target="this" id="suggestion-{{ data.suggestion.cached.payload.pk }}">
-    {% if show_status %}
+    {% if data.show_status %}
       <div class="row gap-small centered">
         {% status_icon data.suggestion.status %}
         {% if data.suggestion.status == "pending" %}

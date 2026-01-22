@@ -105,6 +105,8 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
         )
 
         if self._is_origin_url_a_list(request):
+            # We don't display the status in lists (they are "by status" lists already)
+            suggestion_context.show_status = False
             if not undo_status_change:
                 # If we come from a suggestion list, we don't update the component in
                 # place because the list would mix suggestions of different statuses.
@@ -117,11 +119,6 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
                     issue_link=github_issue_link,
                     undo_status_target=undo_status_target,
                 )
-        else:
-            # If we rerender but we are not in a suggestion list corresponding
-            # to a specific status, we want to display the suggestion status so
-            # the user can keep track
-            suggestion_context.show_status = True
 
         if request.headers.get("HX-Request"):
             return self.render_to_response({"data": suggestion_context})

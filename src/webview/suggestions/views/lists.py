@@ -35,6 +35,9 @@ class SuggestionListView(SuggestionBaseView, ABC):
         suggestion_contexts = []
         for suggestion in page_obj.object_list:
             suggestion_context = get_suggestion_context(suggestion)
+            suggestion_context.show_status = (
+                False  # We don't show status in list views (they are "by status" lists)
+            )
             suggestion_contexts.append(suggestion_context)
 
         context.update(

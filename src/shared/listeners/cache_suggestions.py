@@ -80,7 +80,7 @@ class CachedSuggestion(BaseModel):
     # Using lists of actual NixMaintainer model would be great
     # Alternatively use a typed dict like the Maintainer defined in shared.logs.events
     class CategorizedMaintainers(BaseModel):
-        original: list[dict]  # Maintainers of original packages
+        original: list[dict]  # Maintainers of original maintainers
         active: list[dict]  # Non ignored original maintainers
         ignored: list[dict]  # Ignored original maintainers
         added: list[dict]  # Additional maintainers (not part of original maintainers)
