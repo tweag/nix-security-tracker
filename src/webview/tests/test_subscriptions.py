@@ -622,12 +622,13 @@ def test_maintainer_notification_many_packages_in_suggestion(
     make_suggestion: Callable[..., CVEDerivationClusterProposal],
     make_drv: Callable[..., NixDerivation],
     maintainer: NixMaintainer,
-    user: User,
+    make_user: Callable[..., User],
 ) -> None:
     """
     Check that many packages by one maintainer in a suggestion can be processed.
     """
 
+    user = make_user(username=maintainer.github, uid=str(maintainer.github_id))
     drvs = {
         make_drv(
             attribute=f"package{i}", maintainer=maintainer
@@ -640,3 +641,4 @@ def test_maintainer_notification_many_packages_in_suggestion(
 
     notification = Notification.objects.first()
     assert notification
+    assert notification.user == user
