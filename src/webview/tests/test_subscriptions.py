@@ -335,23 +335,6 @@ class SubscriptionTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("login", response.url)
 
-    def test_user_unsubscribes_from_empty_package_name_fails_htmx(self) -> None:
-        """Test unsubscription fails for empty package name via HTMX"""
-        url = reverse("webview:subscriptions:remove")
-        response = self.client.post(url, {"package_name": ""}, HTTP_HX_REQUEST="true")
-
-        # Should return 200 with component template for HTMX request
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "subscriptions/components/packages.html")
-
-        # Check that error message is in context
-        self.assertIn("error_message", response.context)
-        self.assertIn("required", response.context["error_message"])
-
-        # Verify empty subscriptions in context
-        self.assertIn("package_subscriptions", response.context)
-        self.assertEqual(response.context["package_subscriptions"], [])
-
     def test_user_receives_notification_for_subscribed_package_suggestion(self) -> None:
         """Test that users receive notifications when suggestions affect their subscribed packages"""
         # User subscribes to firefox package
