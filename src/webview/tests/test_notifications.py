@@ -1,9 +1,56 @@
+from collections.abc import Callable
+
 from allauth.socialaccount.models import SocialAccount
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
+from playwright.sync_api import Page, expect
+from pytest_django.live_server_helper import LiveServer
 
+from shared.listeners.notify_users import create_package_subscription_notifications
+from shared.models.linkage import CVEDerivationClusterProposal, ProvenanceFlags
+from shared.models.nix_evaluation import (
+    NixDerivation,
+    NixMaintainer,
+)
 from webview.models import Notification
+
+
+def test_mark_notification_read_unread(
+    live_server: LiveServer,
+    staff: User,
+    as_staff: Page,
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+    make_maintainer_from_user: Callable[..., NixMaintainer],
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    """
+    Check that marking a notification read and unread has the desired effect
+    """
+    maintainer = make_maintainer_from_user(staff)
+    drv = make_drv(maintainer=maintainer)
+    suggestion = make_suggestion(drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH})
+    create_package_subscription_notifications(suggestion)
+
+    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    badge = as_staff.locator("#notifications-badge")
+    expect(badge).to_have_text("1")
+
+    badge.click()
+
+    db_notification = Notification.objects.first()
+    assert db_notification
+    notification = as_staff.locator(f"#notification-{db_notification.pk}")
+    expect(notification).to_be_visible()
+
+    mark_read = notification.get_by_role("button", name="Mark read")
+    mark_read.click()
+    expect(badge).to_have_text("0")
+    notification = as_staff.locator(f"#notification-{db_notification.pk}")
+    expect(notification).to_be_visible()
+    mark_unread = notification.get_by_role("button", name="Mark unread")
+    mark_unread.click()
+    expect(badge).to_have_text("1")
 
 
 class NotificationUserStoriesTests(TestCase):
@@ -27,66 +74,6 @@ class NotificationUserStoriesTests(TestCase):
         self.other_user = User.objects.create_user(
             username="otheruser", password="testpass"
         )
-
-    def test_user_receives_and_manages_single_notification(self) -> None:
-        """
-        Complete user story: User receives notification and manages it
-
-        1. User receives notification (system creates it)
-        2. User sees badge with count "1" on any page
-        3. User clicks badge, goes to notification center
-        4. User sees unread notification highlighted
-        5. User clicks "mark read", notification updates, badge shows "0"
-        6. User clicks "mark unread", notification updates, badge shows "1"
-        """
-        # Step 1: System creates notification for user
-        notification = Notification.objects.create_for_user(
-            user=self.user,
-            title="Test Notification",
-            message="This is a test notification for the user story.",
-        )
-
-        # Step 2: User sees badge with count "1" on main page
-        response = self.client.get(reverse("webview:suggestions_view"))
-        self.assertEqual(response.status_code, 200)
-        # Check that user's profile has correct unread count in context
-        self.assertEqual(response.context["user"].profile.unread_notifications_count, 1)
-
-        # Step 3: User clicks badge and goes to notification center
-        response = self.client.get(reverse("webview:notifications:center"))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Test Notification")
-        self.assertContains(response, "This is a test notification")
-
-        # Step 4: User sees unread notification highlighted (check CSS class)
-        self.assertContains(response, "highlight")
-
-        # Step 5: User clicks "mark read" - notification updates, badge shows "0"
-        response = self.client.post(
-            reverse("webview:notifications:toggle_read", args=[notification.id])
-        )
-        self.assertEqual(response.status_code, 302)  # Redirect for non-HTMX
-
-        # Verify notification is now read and counter updated
-        notification.refresh_from_db()
-        self.assertTrue(notification.is_read)
-
-        # Check notification center no longer shows unread styling
-        response = self.client.get(reverse("webview:notifications:center"))
-        self.assertNotContains(response, "highlight")
-
-        # Step 6: User clicks "mark unread" - notification updates, badge shows "1"
-        response = self.client.post(
-            reverse("webview:notifications:toggle_read", args=[notification.id])
-        )
-        self.assertEqual(response.status_code, 302)
-
-        # Verify notification is unread again and counter updated
-        notification.refresh_from_db()
-        self.assertFalse(notification.is_read)
-        # Check counter in fresh response context
-        response = self.client.get(reverse("webview:notifications:center"))
-        self.assertEqual(response.context["user"].profile.unread_notifications_count, 1)
 
     def test_user_manages_multiple_notifications_with_bulk_operations(self) -> None:
         """
