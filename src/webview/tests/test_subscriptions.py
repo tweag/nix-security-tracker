@@ -4,7 +4,7 @@ from allauth.socialaccount.models import SocialAccount
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 from pytest_django.live_server_helper import LiveServer
 
 from shared.listeners.automatic_linkage import build_new_links
@@ -44,6 +44,32 @@ def test_user_subscribes_to_valid_package_success(
         "button", name="Unsubscribe"
     )
     unsubscribe.click()
+
+
+def test_user_subscribes_to_invalid_package_fails(
+    live_server: LiveServer,
+    as_staff: Page,
+    no_js: bool,
+) -> None:
+    """Test subscription fails for non-existent package"""
+    as_staff.goto(live_server.url + reverse("webview:subscriptions:center"))
+    subscriptions = as_staff.locator("#package-subscriptions")
+    subscriptions.get_by_placeholder("Package name").fill("nonexistent")
+    subscribe = subscriptions.get_by_role("button", name="Subscribe")
+    subscribe.click()
+
+    if no_js:
+        error = as_staff.locator(
+            "#messages",
+            has_text="does not exist",
+        )
+    else:
+        error = subscriptions.locator(
+            ".error-block",
+            has_text="does not exist",
+        )
+
+    expect(error).to_be_visible()
 
 
 class SubscriptionTests(TestCase):
@@ -151,26 +177,6 @@ class SubscriptionTests(TestCase):
             system="x86_64-linux",
             parent_evaluation=self.evaluation,
         )
-
-    def test_user_subscribes_to_invalid_package_fails(self) -> None:
-        """Test subscription fails for non-existent package"""
-        url = reverse("webview:subscriptions:add")
-        response = self.client.post(url, {"package_name": "nonexistent-package"})
-
-        # Should redirect for non-HTMX request
-        self.assertEqual(response.status_code, 302)
-
-        # Follow redirect and check for error message and context
-        response = self.client.get(response.url)
-        self.assertEqual(response.status_code, 200)
-
-        # Check that error message is in Django messages
-        messages = list(response.context["messages"])
-        self.assertTrue(any("does not exist" in str(message) for message in messages))
-
-        # Verify no invalid subscription in context
-        self.assertIn("package_subscriptions", response.context)
-        self.assertEqual(response.context["package_subscriptions"], [])
 
     def test_user_subscribes_to_valid_package_success_htmx(self) -> None:
         """Test successful subscription to an existing package via HTMX"""
