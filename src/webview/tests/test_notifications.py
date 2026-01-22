@@ -1,5 +1,8 @@
+import re
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 
+import pytest
 from allauth.socialaccount.models import SocialAccount
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
@@ -163,6 +166,84 @@ def test_paginated_notifications(
     expect(badge).to_have_text(str(num_notifications - 1))
 
 
+@pytest.mark.parametrize(
+    "user_fixture,has_access",
+    [
+        ("committer", False),
+        ("staff", True),
+    ],
+)
+def test_notification_access_control(
+    has_access: bool,
+    request: pytest.FixtureRequest,
+    make_maintainer_from_user: Callable[..., NixMaintainer],
+    make_drv: Callable[..., NixDerivation],
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+    staff: User,
+    user_fixture: str,
+) -> None:
+    """
+    Low-level test of access control on notifications
+
+    This only tests methods in use at the time of writing.
+    """
+    maintainer = make_maintainer_from_user(staff)
+    drv = make_drv(maintainer=maintainer)
+    suggestion = make_suggestion(drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH})
+    create_package_subscription_notifications(suggestion)
+    notification = Notification.objects.first()
+    assert notification
+
+    # https://docs.pytest.org/en/latest/reference/reference.html?highlight=getfixturevalue#pytest.FixtureRequest.getfixturevalue
+    user = request.getfixturevalue(user_fixture)
+
+    if has_access:
+        assert Notification.objects.toggle_read_for_user(user, notification.id) == 0
+        assert Notification.objects.toggle_read_for_user(user, notification.id) == 1
+        assert Notification.objects.mark_all_read_for_user(user) == 1
+        assert Notification.objects.clear_all_for_user(user) == 1
+    else:
+        assert Notification.objects.toggle_read_for_user(user, notification.id) is None
+        assert Notification.objects.mark_all_read_for_user(user) == 0
+        assert Notification.objects.clear_all_for_user(user) == 0
+
+
+def test_notifications_per_user(
+    live_server: LiveServer,
+    page: Page,
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+    make_maintainer_from_user: Callable[..., NixMaintainer],
+    make_drv: Callable[..., NixDerivation],
+    logged_in_as: Callable[..., AbstractContextManager[Page]],
+    staff: User,
+    committer: User,
+) -> None:
+    """
+    Check that users only get their own notifications
+    """
+
+    staff_maintainer = make_maintainer_from_user(staff)
+    staff_drv = make_drv(maintainer=staff_maintainer)
+    staff_suggestion = make_suggestion(
+        drvs={staff_drv: ProvenanceFlags.PACKAGE_NAME_MATCH}
+    )
+    create_package_subscription_notifications(staff_suggestion)
+
+    # Anonymous users are redirected to login
+    page.goto(live_server.url + reverse("webview:notifications:center"))
+    expect(page).to_have_url(re.compile(re.escape(reverse("account_login"))))
+
+    with logged_in_as(staff) as as_staff:
+        as_staff.goto(live_server.url + reverse("webview:notifications:center"))
+        badge = as_staff.locator("#notifications-badge")
+        expect(badge).to_have_text("1")
+
+    with logged_in_as(committer) as as_committer:
+        as_committer.goto(live_server.url + reverse("webview:notifications:center"))
+        badge = as_committer.locator("#notifications-badge")
+        expect(badge).to_have_text("0")
+
+
 class NotificationUserStoriesTests(TestCase):
     def setUp(self) -> None:
         # Create test user with social account
@@ -184,51 +265,6 @@ class NotificationUserStoriesTests(TestCase):
         self.other_user = User.objects.create_user(
             username="otheruser", password="testpass"
         )
-
-    def test_user_security_boundaries_enforced(self) -> None:
-        """
-        User story: System properly enforces security boundaries
-
-        1. User A receives notifications
-        2. User B cannot access User A's notifications
-        3. User B cannot modify User A's notifications
-        4. Anonymous users are redirected to login
-        """
-        # Step 1: User A receives notifications
-        notification = Notification.objects.create_for_user(
-            user=self.user,
-            title="Private Notification",
-            message="This should only be visible to the owner",
-        )
-
-        # Step 2: User B cannot access User A's notifications
-        other_client = Client()
-        other_client.login(username="otheruser", password="testpass")
-
-        # Other user's notification center should not show User A's notifications
-        response = other_client.get(reverse("webview:notifications:center"))
-        self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, "Private Notification")
-        self.assertContains(response, "You don't have any notifications yet.")
-
-        # Step 3: User B cannot modify User A's notifications
-        response = other_client.post(
-            reverse("webview:notifications:toggle_read", args=[notification.id])
-        )
-        self.assertEqual(response.status_code, 404)  # Should not find the notification
-
-        # Step 4: Anonymous users are redirected to login
-        anonymous_client = Client()
-
-        response = anonymous_client.get(reverse("webview:notifications:center"))
-        self.assertEqual(response.status_code, 302)  # Redirect to login
-        self.assertIn("login", response.url)
-
-        response = anonymous_client.post(
-            reverse("webview:notifications:toggle_read", args=[notification.id])
-        )
-        self.assertEqual(response.status_code, 302)  # Redirect to login
-        self.assertIn("login", response.url)
 
     def test_user_sees_helpful_empty_state(self) -> None:
         """
