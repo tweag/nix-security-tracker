@@ -4,6 +4,8 @@ from allauth.socialaccount.models import SocialAccount
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
+from playwright.sync_api import Page
+from pytest_django.live_server_helper import LiveServer
 
 from shared.listeners.automatic_linkage import build_new_links
 from shared.listeners.notify_users import create_package_subscription_notifications
@@ -24,6 +26,24 @@ from shared.models.nix_evaluation import (
     NixMaintainer,
 )
 from webview.models import Notification
+
+
+def test_user_subscribes_to_valid_package_success(
+    live_server: LiveServer,
+    as_staff: Page,
+    staff: User,
+    drv: NixDerivation,
+) -> None:
+    """Test subscribing to an existing package and unsubscribing again"""
+    as_staff.goto(live_server.url + reverse("webview:subscriptions:center"))
+    subscriptions = as_staff.locator("#package-subscriptions")
+    subscriptions.get_by_placeholder("Package name").fill(drv.attribute)
+    subscribe = subscriptions.get_by_role("button", name="Subscribe")
+    subscribe.click()
+    unsubscribe = subscriptions.filter(has_text=drv.attribute).get_by_role(
+        "button", name="Unsubscribe"
+    )
+    unsubscribe.click()
 
 
 class SubscriptionTests(TestCase):
@@ -131,23 +151,6 @@ class SubscriptionTests(TestCase):
             system="x86_64-linux",
             parent_evaluation=self.evaluation,
         )
-
-    def test_user_subscribes_to_valid_package_success(self) -> None:
-        """Test successful subscription to an existing package"""
-        url = reverse("webview:subscriptions:add")
-        response = self.client.post(url, {"package_name": "firefox"})
-
-        # Should redirect for non-HTMX request
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("subscriptions", response.url)
-
-        # Follow redirect and check subscription center context
-        response = self.client.get(response.url)
-        self.assertEqual(response.status_code, 200)
-
-        # Verify subscription appears in context
-        self.assertIn("package_subscriptions", response.context)
-        self.assertIn("firefox", response.context["package_subscriptions"])
 
     def test_user_subscribes_to_invalid_package_fails(self) -> None:
         """Test subscription fails for non-existent package"""
