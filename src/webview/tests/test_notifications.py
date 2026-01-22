@@ -53,6 +53,57 @@ def test_mark_notification_read_unread(
     expect(badge).to_have_text("1")
 
 
+def test_notifications_bulk_operations(
+    live_server: LiveServer,
+    staff: User,
+    as_staff: Page,
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+    make_maintainer_from_user: Callable[..., NixMaintainer],
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    """
+    Check that bulk operations on notifications work as expected
+    """
+    num_notifications = 3
+    maintainer = make_maintainer_from_user(staff)
+    drv = make_drv(maintainer=maintainer)
+    suggestion = make_suggestion(drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH})
+    for i in range(num_notifications):
+        create_package_subscription_notifications(suggestion)
+
+    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    badge = as_staff.locator("#notifications-badge")
+    expect(badge).to_have_text(str(num_notifications))
+    badge.click()
+
+    db_notifications = Notification.objects.all()
+    for db_notification in db_notifications:
+        notification = as_staff.locator(f"#notification-{db_notification.pk}")
+        expect(notification).to_be_visible()
+        mark_read = notification.get_by_role("button", name="Mark read")
+        expect(mark_read).to_be_visible()
+
+    all_read = as_staff.get_by_role("button", name="Mark all as read")
+    all_read.click()
+
+    expect(badge).to_have_text("0")
+
+    for db_notification in db_notifications:
+        notification = as_staff.locator(f"#notification-{db_notification.pk}")
+        expect(notification).to_be_visible()
+        mark_unread = notification.get_by_role("button", name="Mark unread")
+        expect(mark_unread).to_be_visible()
+
+    remove_read = as_staff.get_by_role("button", name="Remove read notification")
+    remove_read.click()
+
+    expect(
+        as_staff.get_by_text("You don't have any notifications yet.")
+    ).to_be_visible()
+
+    assert Notification.objects.count() == 0
+
+
 class NotificationUserStoriesTests(TestCase):
     def setUp(self) -> None:
         # Create test user with social account
@@ -74,72 +125,6 @@ class NotificationUserStoriesTests(TestCase):
         self.other_user = User.objects.create_user(
             username="otheruser", password="testpass"
         )
-
-    def test_user_manages_multiple_notifications_with_bulk_operations(self) -> None:
-        """
-        User story: User handles multiple notifications using bulk operations
-
-        1. User receives multiple notifications
-        2. User sees correct badge count
-        3. User goes to notification center, sees all notifications
-        4. User uses "mark all as read" button
-        5. User sees all notifications marked as read, badge shows "0"
-        6. User uses "remove all read" to clean up
-        7. User sees notification center is now empty
-        """
-        # Step 1: User receives multiple notifications
-        notifications = []
-        for i in range(3):
-            notification = Notification.objects.create_for_user(
-                user=self.user,
-                title=f"Notification {i + 1}",
-                message=f"This is test notification number {i + 1}",
-            )
-            notifications.append(notification)
-
-        # Step 2: User sees correct badge count
-        response = self.client.get(reverse("webview:suggestions_view"))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["user"].profile.unread_notifications_count, 3)
-
-        # Step 3: User goes to notification center, sees all notifications
-        response = self.client.get(reverse("webview:notifications:center"))
-        self.assertEqual(response.status_code, 200)
-        for i in range(3):
-            self.assertContains(response, f"Notification {i + 1}")
-            self.assertContains(response, f"test notification number {i + 1}")
-
-        # All should be unread initially
-        response_content = response.content.decode()
-        unread_count = response_content.count("highlight")
-        self.assertEqual(unread_count, 3)
-
-        # Step 4: User uses "mark all as read" button
-        response = self.client.post(reverse("webview:notifications:mark_all_read"))
-        self.assertEqual(response.status_code, 302)  # Redirect for non-HTMX
-
-        # Step 5: All notifications marked as read, badge shows "0"
-        for notification in notifications:
-            notification.refresh_from_db()
-            self.assertTrue(notification.is_read)
-
-        # Check notification center shows no unread notifications
-        response = self.client.get(reverse("webview:notifications:center"))
-        self.assertNotContains(response, "highlight")
-        # Verify counter is 0 in context
-        self.assertEqual(response.context["user"].profile.unread_notifications_count, 0)
-
-        # Step 6: User uses "remove all read" to clean up
-        response = self.client.post(reverse("webview:notifications:remove_all_read"))
-        self.assertEqual(response.status_code, 302)  # Redirect for non-HTMX
-
-        # Step 7: Notification center is now empty
-        response = self.client.get(reverse("webview:notifications:center"))
-        self.assertContains(response, "You don't have any notifications yet.")
-
-        # Verify notifications were actually deleted
-        remaining_notifications = Notification.objects.filter(user=self.user).count()
-        self.assertEqual(remaining_notifications, 0)
 
     def test_user_navigates_paginated_notifications(self) -> None:
         """
