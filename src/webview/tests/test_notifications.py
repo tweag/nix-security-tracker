@@ -3,9 +3,7 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager
 
 import pytest
-from allauth.socialaccount.models import SocialAccount
 from django.contrib.auth.models import User
-from django.test import Client, TestCase
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 from pytest_django.live_server_helper import LiveServer
@@ -102,9 +100,9 @@ def test_notifications_bulk_operations(
     remove_read = as_staff.get_by_role("button", name="Remove read notification")
     remove_read.click()
 
-    expect(
-        as_staff.get_by_text("You don't have any notifications yet.")
-    ).to_be_visible()
+    for db_notification in db_notifications:
+        notification = as_staff.locator(f"#notification-{db_notification.pk}")
+        expect(notification).to_have_count(0)
 
     assert Notification.objects.count() == 0
 
@@ -244,63 +242,44 @@ def test_notifications_per_user(
         expect(badge).to_have_text("0")
 
 
-class NotificationUserStoriesTests(TestCase):
-    def setUp(self) -> None:
-        # Create test user with social account
-        self.user = User.objects.create_user(username="testuser", password="testpass")
-        self.user.is_staff = True
-        self.user.save()
+def test_notifications_empty_state(
+    live_server: LiveServer,
+    staff: User,
+    as_staff: Page,
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+    make_maintainer_from_user: Callable[..., NixMaintainer],
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    """
+    Check that appropriate message is displayed for the empty state
+    """
+    as_staff.goto(live_server.url + reverse("webview:notifications:center"))
+    empty_message = "You don't have any notifications yet."
+    expect(as_staff.get_by_text(empty_message)).to_be_visible()
 
-        SocialAccount.objects.get_or_create(
-            user=self.user,
-            provider="github",
-            uid="123456",
-            extra_data={"login": "testuser"},
-        )
+    badge = as_staff.locator("#notifications-badge")
+    expect(badge).to_have_text("0")
 
-        self.client = Client()
-        self.client.login(username="testuser", password="testpass")
+    mark_all_read = as_staff.get_by_text("Mark all as read")
+    expect(mark_all_read).to_have_count(0)
+    remove_read = as_staff.get_by_text("Remove read notifications")
+    expect(remove_read).to_have_count(0)
 
-        # Create another user to test security boundaries
-        self.other_user = User.objects.create_user(
-            username="otheruser", password="testpass"
-        )
+    maintainer = make_maintainer_from_user(staff)
+    drv = make_drv(maintainer=maintainer)
+    suggestion = make_suggestion(drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH})
+    create_package_subscription_notifications(suggestion)
 
-    def test_user_sees_helpful_empty_state(self) -> None:
-        """
-        User story: User sees appropriate messages for various empty states
-        """
-        # Step 1: New user has no notifications
-        response = self.client.get(reverse("webview:notifications:center"))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "You don't have any notifications yet.")
+    as_staff.goto(live_server.url + reverse("webview:notifications:center"))
+    mark_all_read.click()
+    remove_read.click()
 
-        # Should not show bulk operation buttons when empty
-        self.assertNotContains(response, "Mark all as read")
-        self.assertNotContains(response, "Remove read notifications")
+    expect(mark_all_read).to_have_count(0)
+    expect(remove_read).to_have_count(0)
 
-        # Step 2: User gets notifications, then removes them all
-        notification = Notification.objects.create_for_user(
-            user=self.user,
-            title="Temporary Notification",
-            message="This will be removed",
-        )
+    expect(as_staff.get_by_text(empty_message)).to_be_visible()
 
-        # Mark as read and remove
-        self.client.post(
-            reverse("webview:notifications:toggle_read", args=[notification.id])
-        )
-        self.client.post(reverse("webview:notifications:remove_all_read"))
+    badge = as_staff.locator("#notifications-badge")
+    expect(badge).to_have_text("0")
 
-        # Step 3: Should see empty state again
-        response = self.client.get(reverse("webview:notifications:center"))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "You don't have any notifications yet.")
-
-        # Verify notification was actually deleted
-        self.assertFalse(Notification.objects.filter(user=self.user).exists())
-
-        # Badge should show no unread notifications
-        response = self.client.get(reverse("webview:suggestions_view"))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["user"].profile.unread_notifications_count, 0)
+    assert Notification.objects.count() == 0
