@@ -15,6 +15,8 @@ from shared.models.nix_evaluation import (
 )
 from webview.models import Notification
 
+from ..notifications.views import NotificationCenterView
+
 
 def test_mark_notification_read_unread(
     live_server: LiveServer,
@@ -104,6 +106,63 @@ def test_notifications_bulk_operations(
     assert Notification.objects.count() == 0
 
 
+def test_paginated_notifications(
+    live_server: LiveServer,
+    staff: User,
+    as_staff: Page,
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+    make_maintainer_from_user: Callable[..., NixMaintainer],
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    """
+    Check that browsing multiple pages of notifications works as expected
+    """
+    page_size = NotificationCenterView.paginate_by
+    num_notifications = page_size + 1
+    maintainer = make_maintainer_from_user(staff)
+    drv = make_drv(maintainer=maintainer)
+    suggestion = make_suggestion(drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH})
+    for i in range(num_notifications):
+        create_package_subscription_notifications(suggestion)
+
+    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    badge = as_staff.locator("#notifications-badge")
+    expect(badge).to_have_text(str(num_notifications))
+    badge.click()
+
+    db_notifications = Notification.objects.all()
+    for i, db_notification in enumerate(reversed(db_notifications), start=1):
+        notification = as_staff.locator(f"#notification-{db_notification.pk}")
+        if i > page_size:
+            expect(notification).to_have_count(0)
+        else:
+            expect(notification).to_be_visible()
+            mark_read = notification.get_by_role("button", name="Mark read")
+            expect(mark_read).to_be_visible()
+
+    pagination = as_staff.locator("#pagination")
+    page_2 = pagination.get_by_role("link", name="2")
+    page_2.click()
+
+    for i, db_notification in enumerate(reversed(db_notifications), start=1):
+        notification = as_staff.locator(f"#notification-{db_notification.pk}")
+        if i <= page_size:
+            expect(notification).to_have_count(0)
+        else:
+            expect(notification).to_be_visible()
+            mark_read = notification.get_by_role("button", name="Mark read")
+            expect(mark_read).to_be_visible()
+
+    mark_read = as_staff.get_by_text("Mark read")
+    mark_read.click()
+
+    page_1 = pagination.get_by_role("link", name="1")
+    page_1.click()
+
+    expect(mark_read).to_have_count(num_notifications - 1)
+    expect(badge).to_have_text(str(num_notifications - 1))
+
+
 class NotificationUserStoriesTests(TestCase):
     def setUp(self) -> None:
         # Create test user with social account
@@ -125,78 +184,6 @@ class NotificationUserStoriesTests(TestCase):
         self.other_user = User.objects.create_user(
             username="otheruser", password="testpass"
         )
-
-    def test_user_navigates_paginated_notifications(self) -> None:
-        """
-        User story: User with many notifications browses through pages
-
-        1. User receives many notifications (more than one page)
-        2. User goes to notification center, sees pagination
-        3. User navigates to page 2, sees different notifications
-        4. User marks notification on page 2 as read
-        5. User returns to page 1, sees consistent state
-        6. Badge count reflects changes accurately
-        """
-        # Step 1: Create many notifications (more than paginate_by = 10)
-        notifications = []
-        for i in range(15):
-            notification = Notification.objects.create_for_user(
-                user=self.user,
-                title=f"Notification {i + 1:02d}",
-                message=f"Message content for notification {i + 1}",
-            )
-            notifications.append(notification)
-
-        # Verify all are unread
-        response = self.client.get(reverse("webview:suggestions_view"))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.context["user"].profile.unread_notifications_count, 15
-        )
-
-        # Step 2: User goes to notification center, sees pagination
-        response = self.client.get(reverse("webview:notifications:center"))
-        self.assertEqual(response.status_code, 200)
-
-        # Should see newest 10 notifications (15, 14, 13, ..., 06)
-        self.assertContains(response, "Notification 15")
-        self.assertContains(response, "Notification 06")
-        self.assertNotContains(response, "Notification 05")  # Should be on page 2
-
-        # Step 3: User navigates to page 2
-        response = self.client.get(reverse("webview:notifications:center") + "?page=2")
-        self.assertEqual(response.status_code, 200)
-
-        # Should see older notifications (05, 04, 03, 02, 01)
-        self.assertContains(response, "Notification 05")
-        self.assertContains(response, "Notification 01")
-        self.assertNotContains(response, "Notification 06")  # Should be on page 1
-
-        # Step 4: User marks notification on page 2 as read
-        # Get the first notification (oldest one, should be on page 2)
-        first_notification = notifications[0]  # "Notification 01"
-        response = self.client.post(
-            reverse("webview:notifications:toggle_read", args=[first_notification.id]),
-            data={"page": "2"},  # Preserve current page
-        )
-        self.assertEqual(response.status_code, 302)
-
-        # Step 5: User returns to page 1, sees consistent state
-        response = self.client.get(reverse("webview:notifications:center"))
-        self.assertEqual(response.status_code, 200)
-
-        # Should still see page 1 notifications
-        self.assertContains(response, "Notification 15")
-        self.assertContains(response, "Notification 06")
-
-        # Step 6: Badge count reflects the one notification marked as read
-        response = self.client.get(reverse("webview:suggestions_view"))
-        self.assertEqual(
-            response.context["user"].profile.unread_notifications_count, 14
-        )
-
-        first_notification.refresh_from_db()
-        self.assertTrue(first_notification.is_read)
 
     def test_user_works_without_javascript(self) -> None:
         """
