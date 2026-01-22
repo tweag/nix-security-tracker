@@ -8,6 +8,7 @@ from django.conf import settings
 from django.contrib.auth.models import Group, User
 
 from shared.listeners.cache_suggestions import cache_new_suggestions
+from shared.listeners.notify_users import create_package_subscription_notifications
 from shared.models.cve import (
     AffectedProduct,
     Container,
@@ -30,6 +31,7 @@ from shared.models.nix_evaluation import (
     NixEvaluation,
     NixMaintainer,
 )
+from webview.models import Notification
 
 
 @pytest.fixture
@@ -136,12 +138,13 @@ def make_maintainer(db: None) -> Callable[..., NixMaintainer]:
         name: str = "Test User",
         email: str = "test@example.com",
     ) -> NixMaintainer:
-        return NixMaintainer.objects.create(
+        maintainer, _ = NixMaintainer.objects.get_or_create(
             github_id=github_id,
             github=github,
             name=name,
             email=name,
         )
+        return maintainer
 
     return wrapped
 
@@ -152,7 +155,7 @@ def make_maintainer_from_user(
     user: User,
 ) -> Callable[..., NixMaintainer]:
     def wrapped(user: User = user) -> NixMaintainer:
-        social = SocialAccount.objects.get(user=user)
+        social, _ = SocialAccount.objects.get_or_create(user=user)
         return make_maintainer(github_id=int(social.uid), github=user.username)
 
     return wrapped
@@ -301,3 +304,21 @@ def committer(make_user: Callable[..., User]) -> User:
 @pytest.fixture
 def staff(make_user: Callable[..., User]) -> User:
     return make_user(username="staff", is_staff=True, uid="789")
+
+
+@pytest.fixture
+def make_suggestion_notification(
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+    make_maintainer_from_user: Callable[..., NixMaintainer],
+    make_drv: Callable[..., NixDerivation],
+) -> Callable[..., Notification]:
+    def wrapped(
+        user: User,
+    ) -> Notification:
+        maintainer = make_maintainer_from_user(user)
+        drv = make_drv(maintainer=maintainer)
+        suggestion = make_suggestion(drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH})
+        notification, *_ = create_package_subscription_notifications(suggestion)
+        return notification
+
+    return wrapped

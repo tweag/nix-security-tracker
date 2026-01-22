@@ -8,12 +8,6 @@ from django.urls import reverse
 from playwright.sync_api import Page, expect
 from pytest_django.live_server_helper import LiveServer
 
-from shared.listeners.notify_users import create_package_subscription_notifications
-from shared.models.linkage import CVEDerivationClusterProposal, ProvenanceFlags
-from shared.models.nix_evaluation import (
-    NixDerivation,
-    NixMaintainer,
-)
 from webview.models import Notification
 
 from ..notifications.views import NotificationCenterView
@@ -23,17 +17,12 @@ def test_mark_notification_read_unread(
     live_server: LiveServer,
     staff: User,
     as_staff: Page,
-    make_suggestion: Callable[..., CVEDerivationClusterProposal],
-    make_maintainer_from_user: Callable[..., NixMaintainer],
-    make_drv: Callable[..., NixDerivation],
+    make_suggestion_notification: Callable[..., Notification],
 ) -> None:
     """
     Check that marking a notification read and unread has the desired effect
     """
-    maintainer = make_maintainer_from_user(staff)
-    drv = make_drv(maintainer=maintainer)
-    suggestion = make_suggestion(drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH})
-    create_package_subscription_notifications(suggestion)
+    db_notification = make_suggestion_notification(staff)
 
     as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
     badge = as_staff.locator("#notifications-badge")
@@ -41,8 +30,6 @@ def test_mark_notification_read_unread(
 
     badge.click()
 
-    db_notification = Notification.objects.first()
-    assert db_notification
     notification = as_staff.locator(f"#notification-{db_notification.pk}")
     expect(notification).to_be_visible()
 
@@ -60,26 +47,22 @@ def test_notifications_bulk_operations(
     live_server: LiveServer,
     staff: User,
     as_staff: Page,
-    make_suggestion: Callable[..., CVEDerivationClusterProposal],
-    make_maintainer_from_user: Callable[..., NixMaintainer],
-    make_drv: Callable[..., NixDerivation],
+    make_suggestion_notification: Callable[..., Notification],
 ) -> None:
     """
     Check that bulk operations on notifications work as expected
     """
     num_notifications = 3
-    maintainer = make_maintainer_from_user(staff)
-    drv = make_drv(maintainer=maintainer)
-    suggestion = make_suggestion(drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH})
-    for i in range(num_notifications):
-        create_package_subscription_notifications(suggestion)
+
+    db_notifications = [
+        make_suggestion_notification(staff) for i in range(num_notifications)
+    ]
 
     as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
     badge = as_staff.locator("#notifications-badge")
     expect(badge).to_have_text(str(num_notifications))
     badge.click()
 
-    db_notifications = Notification.objects.all()
     for db_notification in db_notifications:
         notification = as_staff.locator(f"#notification-{db_notification.pk}")
         expect(notification).to_be_visible()
@@ -111,27 +94,23 @@ def test_paginated_notifications(
     live_server: LiveServer,
     staff: User,
     as_staff: Page,
-    make_suggestion: Callable[..., CVEDerivationClusterProposal],
-    make_maintainer_from_user: Callable[..., NixMaintainer],
-    make_drv: Callable[..., NixDerivation],
+    make_suggestion_notification: Callable[..., Notification],
 ) -> None:
     """
     Check that browsing multiple pages of notifications works as expected
     """
     page_size = NotificationCenterView.paginate_by
     num_notifications = page_size + 1
-    maintainer = make_maintainer_from_user(staff)
-    drv = make_drv(maintainer=maintainer)
-    suggestion = make_suggestion(drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH})
-    for i in range(num_notifications):
-        create_package_subscription_notifications(suggestion)
+
+    db_notifications = [
+        make_suggestion_notification(staff) for i in range(num_notifications)
+    ]
 
     as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
     badge = as_staff.locator("#notifications-badge")
     expect(badge).to_have_text(str(num_notifications))
     badge.click()
 
-    db_notifications = Notification.objects.all()
     for i, db_notification in enumerate(reversed(db_notifications), start=1):
         notification = as_staff.locator(f"#notification-{db_notification.pk}")
         if i > page_size:
@@ -174,23 +153,16 @@ def test_paginated_notifications(
 def test_notification_access_control(
     has_access: bool,
     request: pytest.FixtureRequest,
-    make_maintainer_from_user: Callable[..., NixMaintainer],
-    make_drv: Callable[..., NixDerivation],
-    make_suggestion: Callable[..., CVEDerivationClusterProposal],
     staff: User,
     user_fixture: str,
+    make_suggestion_notification: Callable[..., Notification],
 ) -> None:
     """
     Low-level test of access control on notifications
 
     This only tests methods in use at the time of writing.
     """
-    maintainer = make_maintainer_from_user(staff)
-    drv = make_drv(maintainer=maintainer)
-    suggestion = make_suggestion(drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH})
-    create_package_subscription_notifications(suggestion)
-    notification = Notification.objects.first()
-    assert notification
+    notification = make_suggestion_notification(staff)
 
     # https://docs.pytest.org/en/latest/reference/reference.html?highlight=getfixturevalue#pytest.FixtureRequest.getfixturevalue
     user = request.getfixturevalue(user_fixture)
@@ -209,23 +181,15 @@ def test_notification_access_control(
 def test_notifications_per_user(
     live_server: LiveServer,
     page: Page,
-    make_suggestion: Callable[..., CVEDerivationClusterProposal],
-    make_maintainer_from_user: Callable[..., NixMaintainer],
-    make_drv: Callable[..., NixDerivation],
     logged_in_as: Callable[..., AbstractContextManager[Page]],
     staff: User,
     committer: User,
+    make_suggestion_notification: Callable[..., Notification],
 ) -> None:
     """
     Check that users only get their own notifications
     """
-
-    staff_maintainer = make_maintainer_from_user(staff)
-    staff_drv = make_drv(maintainer=staff_maintainer)
-    staff_suggestion = make_suggestion(
-        drvs={staff_drv: ProvenanceFlags.PACKAGE_NAME_MATCH}
-    )
-    create_package_subscription_notifications(staff_suggestion)
+    make_suggestion_notification(staff)
 
     # Anonymous users are redirected to login
     page.goto(live_server.url + reverse("webview:notifications:center"))
@@ -246,9 +210,7 @@ def test_notifications_empty_state(
     live_server: LiveServer,
     staff: User,
     as_staff: Page,
-    make_suggestion: Callable[..., CVEDerivationClusterProposal],
-    make_maintainer_from_user: Callable[..., NixMaintainer],
-    make_drv: Callable[..., NixDerivation],
+    make_suggestion_notification: Callable[..., Notification],
 ) -> None:
     """
     Check that appropriate message is displayed for the empty state
@@ -265,10 +227,7 @@ def test_notifications_empty_state(
     remove_read = as_staff.get_by_text("Remove read notifications")
     expect(remove_read).to_have_count(0)
 
-    maintainer = make_maintainer_from_user(staff)
-    drv = make_drv(maintainer=maintainer)
-    suggestion = make_suggestion(drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH})
-    create_package_subscription_notifications(suggestion)
+    make_suggestion_notification(staff)
 
     as_staff.goto(live_server.url + reverse("webview:notifications:center"))
     mark_all_read.click()
