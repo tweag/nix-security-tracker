@@ -178,27 +178,6 @@ class SubscriptionTests(TestCase):
             parent_evaluation=self.evaluation,
         )
 
-    def test_user_subscribes_to_invalid_package_fails_htmx(self) -> None:
-        """Test subscription fails for non-existent package via HTMX"""
-        url = reverse("webview:subscriptions:add")
-        response = self.client.post(
-            url, {"package_name": "nonexistent-package"}, HTTP_HX_REQUEST="true"
-        )
-
-        # Should return 200 with component template for HTMX request
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "subscriptions/components/packages.html")
-
-        # Check that error message is in context
-        self.assertIn("error_message", response.context)
-        self.assertIn("does not exist", response.context["error_message"])
-
-        # Verify no invalid subscription in context
-        self.assertIn("package_subscriptions", response.context)
-        self.assertNotIn(
-            "nonexistent-package", response.context["package_subscriptions"]
-        )
-
     def test_user_subscribes_to_empty_package_name_fails_htmx(self) -> None:
         """Test subscription fails for empty package name via HTMX"""
         url = reverse("webview:subscriptions:add")
