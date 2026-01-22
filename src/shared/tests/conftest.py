@@ -129,10 +129,38 @@ def evaluation(make_evaluation: Callable[..., NixEvaluation]) -> NixEvaluation:
 
 
 @pytest.fixture
-def maintainer(db: None) -> NixMaintainer:
-    return NixMaintainer.objects.create(
-        github_id=123, github="testuser", name="Test User", email="test@example.com"
-    )
+def make_maintainer(db: None) -> Callable[..., NixMaintainer]:
+    def wrapped(
+        github_id: int = 321,
+        github: str = "maintainer",
+        name: str = "Test User",
+        email: str = "test@example.com",
+    ) -> NixMaintainer:
+        return NixMaintainer.objects.create(
+            github_id=github_id,
+            github=github,
+            name=name,
+            email=name,
+        )
+
+    return wrapped
+
+
+@pytest.fixture
+def make_maintainer_from_user(
+    make_maintainer: Callable[..., NixMaintainer],
+    user: User,
+) -> Callable[..., NixMaintainer]:
+    def wrapped(user: User = user) -> NixMaintainer:
+        social = SocialAccount.objects.get(user=user)
+        return make_maintainer(github_id=int(social.uid), github=user.username)
+
+    return wrapped
+
+
+@pytest.fixture
+def maintainer(make_maintainer: Callable[..., NixMaintainer]) -> NixMaintainer:
+    return make_maintainer()
 
 
 @pytest.fixture
@@ -235,7 +263,7 @@ def make_user(
         is_committer: bool = True,
         username: str = "testuser",
         provider: str = GitHubProvider.id,
-        uid: str = "123456",
+        uid: str = "123",
     ) -> User:
         user = django_user_model.objects.create_user(
             username=username,
@@ -267,9 +295,9 @@ def user(make_user: Callable[..., User]) -> User:
 
 @pytest.fixture
 def committer(make_user: Callable[..., User]) -> User:
-    return make_user(is_committer=True)
+    return make_user(username="committer", is_committer=True, uid="456")
 
 
 @pytest.fixture
 def staff(make_user: Callable[..., User]) -> User:
-    return make_user(is_staff=True)
+    return make_user(username="staff", is_staff=True, uid="789")
