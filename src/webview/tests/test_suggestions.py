@@ -1,13 +1,16 @@
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from datetime import timedelta
 from unittest.mock import patch
 
+import freezegun
 import pytest
 from allauth.socialaccount.models import SocialAccount
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
+from freezegun.api import FakeDatetime
 from playwright.sync_api import Page, expect
 from pytest_django.live_server_helper import LiveServer
 
@@ -899,6 +902,76 @@ def test_maintainer_removal_creates_activity_log_entry(
     expect(entry).to_be_visible()
 
 
+@pytest.fixture()
+def frozen_time() -> Generator:
+    with freezegun.freeze_time("2026-01-13") as ft:
+        yield ft
+
+
+@pytest.mark.parametrize(
+    "within_interval",
+    [True, False],
+)
+def test_maintainer_restoration_activity_log_cancels(
+    live_server: LiveServer,
+    as_staff: Page,
+    staff: User,
+    committer: User,
+    cached_suggestion: CVEDerivationClusterProposal,
+    frozen_time: FakeDatetime,
+    no_js: bool,
+    within_interval: bool,
+) -> None:
+    """Test that restoring a removed maintainer within time window cancels both events"""
+    if no_js:
+        pytest.xfail("Not implemented")
+    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
+    maintainers_list = suggestion.locator(f"#maintainers-list-{cached_suggestion.pk}")
+    maintainer_name, *_ = cached_suggestion.derivations.all().values_list(
+        "metadata__maintainers__github", flat=True
+    )
+
+    remove = maintainers_list.get_by_role("button", name="Remove")
+    remove.click()
+    expect(remove).not_to_be_visible()
+
+    if within_interval:
+        seconds = settings.DEBOUNCE_ACTIVITY_LOG_SECONDS / 2
+    else:
+        seconds = settings.DEBOUNCE_ACTIVITY_LOG_SECONDS * 2
+
+    frozen_time.tick(delta=timedelta(seconds=seconds))
+    restore = maintainers_list.get_by_role("button", name="Restore")
+    expect(restore).to_be_visible()
+    restore.click()
+    expect(restore).not_to_be_visible()
+
+    # FIXME(@fricklerhandwerk): Activity log should be updated automatically
+    as_staff.reload()
+
+    activity_log = suggestion.locator(
+        f"#suggestion-activity-log-{cached_suggestion.pk}"
+    )
+    if not within_interval:
+        expect(activity_log).to_be_visible()
+        activity_log.click()
+        removed_maintainer = (
+            activity_log.filter(has_text=staff.username)
+            .filter(has_text="removed maintainer")
+            .filter(has_text=maintainer_name)
+        )
+        added_maintainer = (
+            activity_log.filter(has_text=staff.username)
+            .filter(has_text="added maintainer")
+            .filter(has_text=maintainer_name)
+        )
+        expect(removed_maintainer).to_be_visible()
+        expect(added_maintainer).to_be_visible()
+    else:
+        expect(activity_log).to_have_count(0)
+
+
 class MaintainersEditActivityLogTests(TestCase):
     def setUp(self) -> None:
         # Create user and log in
@@ -1009,97 +1082,6 @@ class MaintainersEditActivityLogTests(TestCase):
         # Cache the suggestion
         cache_new_suggestions(self.suggestion)
         self.suggestion.refresh_from_db()
-
-    def test_maintainer_restoration_within_time_window_cancels_events(self) -> None:
-        """Test that restoring a removed maintainer within time window cancels both events"""
-
-        # First remove the existing maintainer
-        url = reverse("webview:edit_maintainers")
-        self.client.post(
-            url,
-            {
-                "suggestion_id": self.suggestion.pk,
-                "edit_maintainer_id": str(self.existing_maintainer.github_id),
-            },
-        )
-
-        # Then restore the maintainer by clicking the button again
-        with patch(
-            "django.utils.timezone.now",
-            return_value=timezone.now() + timedelta(seconds=5),
-        ):
-            self.client.post(
-                url,
-                {
-                    "suggestion_id": self.suggestion.pk,
-                    "edit_maintainer_id": str(self.existing_maintainer.github_id),
-                },
-            )
-
-        # Check that activity log data is properly sent to the template context
-        response = self.client.get(reverse("webview:drafts_view"))
-        self.assertEqual(response.status_code, 200)
-
-        suggestions = response.context["object_list"]
-        our_suggestion = next(
-            (s for s in suggestions if s.proposal_id == self.suggestion.pk), None
-        )
-        self.assertIsNotNone(our_suggestion)
-        assert our_suggestion is not None  # Needed for type checking
-
-        # Verify activity log is attached and contains no events
-        self.assertTrue(hasattr(our_suggestion, "activity_log"))
-        self.assertEqual(len(our_suggestion.activity_log), 0)
-
-    def test_maintainer_restoration_outside_time_window_preserves_events(self) -> None:
-        """Test that restoring a removed maintainer outside time window preserves both events"""
-        # First remove the existing maintainer
-        url = reverse("webview:edit_maintainers")
-        self.client.post(
-            url,
-            {
-                "suggestion_id": self.suggestion.pk,
-                "edit_maintainer_id": str(self.existing_maintainer.github_id),
-            },
-        )
-
-        # Then restore the maintainer by clicking the button again
-        with patch(
-            "django.utils.timezone.now",
-            return_value=timezone.now() + timedelta(seconds=40),
-        ):
-            self.client.post(
-                url,
-                {
-                    "suggestion_id": self.suggestion.pk,
-                    "edit_maintainer_id": str(self.existing_maintainer.github_id),
-                },
-            )
-
-        # Check that activity log data is properly sent to the template context
-        response = self.client.get(reverse("webview:drafts_view"))
-        self.assertEqual(response.status_code, 200)
-
-        suggestions = response.context["object_list"]
-        our_suggestion = next(
-            (s for s in suggestions if s.proposal_id == self.suggestion.pk), None
-        )
-        self.assertIsNotNone(our_suggestion)
-        assert our_suggestion is not None  # Needed for type checking
-
-        # Verify activity log is attached and contains both events
-        self.assertTrue(hasattr(our_suggestion, "activity_log"))
-        self.assertEqual(len(our_suggestion.activity_log), 2)
-
-        # Verify the activity log entries match what we expect
-        log_removal = our_suggestion.activity_log[0]
-        log_restoration = our_suggestion.activity_log[1]
-
-        self.assertEqual(log_removal.action, "maintainers.remove")
-        self.assertEqual(log_removal.maintainers[0]["github"], "existinguser")
-
-        self.assertEqual(log_restoration.action, "maintainers.add")
-        self.assertEqual(log_restoration.maintainers[0]["github"], "existinguser")
 
     def test_multiple_maintainer_edits_are_batched_in_activity_log(self) -> None:
         """Test that multiple maintainer edits by the same user are batched together"""

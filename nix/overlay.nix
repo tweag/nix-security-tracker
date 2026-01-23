@@ -61,6 +61,7 @@ in
       pytest-django
       pytest-playwright
       cvss
+      freezegun
     ];
 
     passthru.PLAYWRIGHT_BROWSERS_PATH = final.playwright-driver.browsers;
