@@ -152,6 +152,12 @@ class Settings(BaseSettings):
             """,
             default=False,
         )
+        DEBOUNCE_ACTIVITY_LOG_SECONDS: int = Field(
+            description="""
+            Time interval (in seconds) within which complementary events will be collapsed in the activity log.
+            """,
+            default=30,
+        )
         EMAIL_BACKEND: str = "django.core.mail.backends.console.EmailBackend"
         EMAIL_HOST: str = "localhost"
         EMAIL_PORT: int = 25
