@@ -99,9 +99,12 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
         # Refresh activity_log
         suggestion_context.activity_log = fetch_activity_log(suggestion.pk)
 
-        # Refresh packages edit status
+        # Refresh packages and maintainers edit status
         suggestion_context.package_list_context.editable = is_suggestion_editable(
             suggestion
+        )
+        suggestion_context.maintainer_list_context.set_editable(
+            is_suggestion_editable(suggestion)
         )
 
         if self._is_origin_url_a_list(request):

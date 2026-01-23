@@ -30,7 +30,7 @@ class SuggestionStubContext:
 # Maintainers
 
 
-class MaintainerEditabilityStatus(Enum):
+class MaintainerStatus(Enum):
     NON_EDITABLE = "non-editable"
     IGNORABLE = "ignorable"
     RESTORABLE = "restorable"
@@ -40,7 +40,8 @@ class MaintainerEditabilityStatus(Enum):
 @dataclass
 class MaintainerContext:
     maintainer: Maintainer
-    editability: MaintainerEditabilityStatus
+    editable: bool
+    status: MaintainerStatus
     suggestion_id: int
 
 
@@ -58,6 +59,11 @@ class MaintainerListContext:
     editable: bool
     suggestion_id: int
     maintainer_add_context: MaintainerAddContext
+
+    def set_editable(self, editable: bool) -> None:
+        self.editable = editable
+        for maintainer_context in self.active + self.ignored + self.additional:
+            maintainer_context.editable = editable
 
 
 # Suggestions

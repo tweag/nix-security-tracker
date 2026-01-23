@@ -2,8 +2,8 @@ from shared.models.linkage import CVEDerivationClusterProposal
 from webview.suggestions.context.types import (
     MaintainerAddContext,
     MaintainerContext,
-    MaintainerEditabilityStatus,
     MaintainerListContext,
+    MaintainerStatus,
     PackageListContext,
 )
 
@@ -54,9 +54,8 @@ def get_maintainer_list_context(
     active_contexts = [
         MaintainerContext(
             maintainer=maintainer,
-            editability=MaintainerEditabilityStatus.IGNORABLE
-            if maintainers_editable
-            else MaintainerEditabilityStatus.NON_EDITABLE,
+            editable=maintainers_editable,
+            status=MaintainerStatus.IGNORABLE,
             suggestion_id=suggestion.pk,
         )
         for maintainer in categorized_maintainers["active"]
@@ -65,9 +64,8 @@ def get_maintainer_list_context(
     ignored_contexts = [
         MaintainerContext(
             maintainer=maintainer,
-            editability=MaintainerEditabilityStatus.RESTORABLE
-            if maintainers_editable
-            else MaintainerEditabilityStatus.NON_EDITABLE,
+            editable=maintainers_editable,
+            status=MaintainerStatus.RESTORABLE,
             suggestion_id=suggestion.pk,
         )
         for maintainer in categorized_maintainers["ignored"]
@@ -76,9 +74,8 @@ def get_maintainer_list_context(
     additional_contexts = [
         MaintainerContext(
             maintainer=maintainer,
-            editability=MaintainerEditabilityStatus.DELETABLE
-            if maintainers_editable
-            else MaintainerEditabilityStatus.NON_EDITABLE,
+            editable=maintainers_editable,
+            status=MaintainerStatus.DELETABLE,
             suggestion_id=suggestion.pk,
         )
         for maintainer in categorized_maintainers["added"]
