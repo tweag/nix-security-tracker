@@ -1,11 +1,15 @@
+from collections.abc import Callable
 from datetime import timedelta
 from unittest.mock import patch
 
+import pytest
 from allauth.socialaccount.models import SocialAccount
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
+from playwright.sync_api import Page, expect
+from pytest_django.live_server_helper import LiveServer
 
 from shared.listeners.cache_suggestions import cache_new_suggestions
 from shared.models.cve import (
@@ -821,6 +825,44 @@ class PackageEditActivityLogTests(TestCase):
         self.assertIn("other", context_usernames)
 
 
+def test_maintainer_addition_creates_activity_log_entry(
+    live_server: LiveServer,
+    as_staff: Page,
+    staff: User,
+    committer: User,
+    make_maintainer_from_user: Callable[..., NixMaintainer],
+    cached_suggestion: CVEDerivationClusterProposal,
+    no_js: bool,
+) -> None:
+    """Test that adding a maintainer creates an activity log entry"""
+    if no_js:
+        pytest.xfail("Not implemented")
+    maintainer = make_maintainer_from_user(committer)
+    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
+    maintainers_list = suggestion.locator(f"#maintainers-list-{cached_suggestion.pk}")
+    maintainers_list.locator("input").fill(maintainer.github)
+    add = maintainers_list.get_by_role("button", name="Add")
+    add.click()
+    maintainers_list = suggestion.locator(f"#maintainers-list-{cached_suggestion.pk}")
+    new_maintainer = maintainers_list.get_by_text(maintainer.github)
+    expect(new_maintainer).to_be_visible()
+    if not no_js:
+        # FIXME(@fricklerhandwerk): Activity log should be updated automatically
+        as_staff.reload()
+    activity_log = suggestion.locator(
+        f"#suggestion-activity-log-{cached_suggestion.pk}"
+    )
+    activity_log.click()
+    activity_log.get_by_text(staff.username)
+    entry = (
+        activity_log.filter(has_text=staff.username)
+        .filter(has_text="added maintainer")
+        .filter(has_text=maintainer.github)
+    )
+    expect(entry).to_be_visible()
+
+
 class MaintainersEditActivityLogTests(TestCase):
     def setUp(self) -> None:
         # Create user and log in
@@ -931,41 +973,6 @@ class MaintainersEditActivityLogTests(TestCase):
         # Cache the suggestion
         cache_new_suggestions(self.suggestion)
         self.suggestion.refresh_from_db()
-
-    def test_maintainer_addition_creates_activity_log_entry(self) -> None:
-        """Test that adding a maintainer creates an activity log entry"""
-        # Add a maintainer that exists in the database but not in the suggestion
-        url = reverse("webview:add_maintainer")
-        response = self.client.post(
-            url,
-            {
-                "suggestion_id": self.suggestion.pk,
-                "new_maintainer_github_handle": "otheruser",
-            },
-        )
-        self.assertEqual(response.status_code, 200)
-
-        # Check that activity log data is properly sent to the template context
-        response = self.client.get(reverse("webview:drafts_view"))
-        self.assertEqual(response.status_code, 200)
-
-        # Find our suggestion in the context
-        suggestions = response.context["object_list"]
-        our_suggestion = next(
-            (s for s in suggestions if s.proposal_id == self.suggestion.pk), None
-        )
-        self.assertIsNotNone(our_suggestion)
-        assert our_suggestion is not None  # Needed for type checking
-
-        # Verify activity log is attached to the suggestion object
-        self.assertTrue(hasattr(our_suggestion, "activity_log"))
-        self.assertEqual(len(our_suggestion.activity_log), 1)
-
-        # Verify the activity log entry matches what we expect
-        log_entry = our_suggestion.activity_log[0]
-        self.assertEqual(log_entry.action, "maintainers.add")
-        self.assertEqual(log_entry.maintainers[0]["github"], "otheruser")
-        self.assertEqual(log_entry.username, "admin")
 
     def test_maintainer_removal_creates_activity_log_entry(self) -> None:
         """Test that removing a maintainer creates an activity log entry"""
