@@ -33,17 +33,27 @@ def test_user_subscribes_to_valid_package_success(
     as_staff: Page,
     staff: User,
     drv: NixDerivation,
+    no_js: bool,
 ) -> None:
     """Test subscribing to an existing package and unsubscribing again"""
     as_staff.goto(live_server.url + reverse("webview:subscriptions:center"))
     subscriptions = as_staff.locator("#package-subscriptions")
     subscriptions.get_by_placeholder("Package name").fill(drv.attribute)
+    empty_state = subscriptions.get_by_text(
+        "You haven't subscribed to any packages yet."
+    )
+    expect(empty_state).to_be_visible()
     subscribe = subscriptions.get_by_role("button", name="Subscribe")
     subscribe.click()
     unsubscribe = subscriptions.filter(has_text=drv.attribute).get_by_role(
         "button", name="Unsubscribe"
     )
+    if not no_js:
+        # FIXME(@fricklerhandwerk): Shouldn't we always have a confirmation dialog?
+        as_staff.on("dialog", lambda dialog: dialog.accept())
     unsubscribe.click()
+    expect(empty_state).to_be_visible()
+    expect(unsubscribe).to_have_count(0)
 
 
 def test_user_subscribes_to_invalid_package_fails(
@@ -129,7 +139,6 @@ def test_subscription_center_shows_user_subscriptions(
     input_field.fill("chromium")
     subscribe.click()
     expect(unsubscribe).to_have_count(2)
-
 
 
 class SubscriptionTests(TestCase):
@@ -237,15 +246,6 @@ class SubscriptionTests(TestCase):
             system="x86_64-linux",
             parent_evaluation=self.evaluation,
         )
-
-    def test_subscription_center_shows_empty_state(self) -> None:
-        """Test empty state when user has no subscriptions"""
-        response = self.client.get(reverse("webview:subscriptions:center"))
-        self.assertEqual(response.status_code, 200)
-
-        # Check context shows empty subscriptions
-        self.assertIn("package_subscriptions", response.context)
-        self.assertEqual(response.context["package_subscriptions"], [])
 
     def test_subscription_center_requires_login(self) -> None:
         """Test that subscription center redirects when not logged in"""
