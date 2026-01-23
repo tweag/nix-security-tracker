@@ -108,6 +108,30 @@ def test_user_cannot_subscribe_to_same_package_twice(
     expect(unsubscribe).to_be_visible()
 
 
+def test_subscription_center_shows_user_subscriptions(
+    make_drv: Callable[..., NixDerivation],
+    live_server: LiveServer,
+    as_staff: Page,
+    no_js: bool,
+) -> None:
+    """Test that the center displays user's current subscriptions"""
+    make_drv(pname="firefox")
+    make_drv(pname="chromium")
+
+    as_staff.goto(live_server.url + reverse("webview:subscriptions:center"))
+    subscriptions = as_staff.locator("#package-subscriptions")
+    input_field = subscriptions.get_by_placeholder("Package name")
+    input_field.fill("firefox")
+    subscribe = subscriptions.get_by_role("button", name="Subscribe", exact=True)
+    subscribe.click()
+    unsubscribe = subscriptions.get_by_role("button", name="Unsubscribe")
+    expect(unsubscribe).to_have_count(1)
+    input_field.fill("chromium")
+    subscribe.click()
+    expect(unsubscribe).to_have_count(2)
+
+
+
 class SubscriptionTests(TestCase):
     def setUp(self) -> None:
         # Create test user with social account
@@ -213,26 +237,6 @@ class SubscriptionTests(TestCase):
             system="x86_64-linux",
             parent_evaluation=self.evaluation,
         )
-
-    def test_subscription_center_shows_user_subscriptions(self) -> None:
-        """Test that the center displays user's current subscriptions"""
-        # First add some subscriptions via HTMX
-        add_url = reverse("webview:subscriptions:add")
-        self.client.post(add_url, {"package_name": "firefox"}, HTTP_HX_REQUEST="true")
-
-        # Add second package
-        self.client.post(add_url, {"package_name": "chromium"}, HTTP_HX_REQUEST="true")
-
-        # Check subscription center shows both subscriptions
-        response = self.client.get(reverse("webview:subscriptions:center"))
-        self.assertEqual(response.status_code, 200)
-
-        # Check context contains both subscriptions
-        self.assertIn("package_subscriptions", response.context)
-        subscriptions = response.context["package_subscriptions"]
-        self.assertIn("firefox", subscriptions)
-        self.assertIn("chromium", subscriptions)
-        self.assertEqual(len(subscriptions), 2)
 
     def test_subscription_center_shows_empty_state(self) -> None:
         """Test empty state when user has no subscriptions"""
