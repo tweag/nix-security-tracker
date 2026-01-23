@@ -311,15 +311,14 @@ def make_maintainer_notification(
     make_suggestion: Callable[..., CVEDerivationClusterProposal],
     make_maintainer_from_user: Callable[..., NixMaintainer],
     make_drv: Callable[..., NixDerivation],
-) -> Callable[..., Notification]:
+) -> Callable[..., list[Notification]]:
     def wrapped(
         user: User,
-    ) -> Notification:
+    ) -> list[Notification]:
         maintainer = make_maintainer_from_user(user)
         drv = make_drv(maintainer=maintainer)
         suggestion = make_suggestion(drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH})
-        notification, *_ = create_package_subscription_notifications(suggestion)
-        return notification
+        return create_package_subscription_notifications(suggestion)
 
     return wrapped
 
@@ -329,12 +328,11 @@ def make_package_notification(
     make_suggestion: Callable[..., CVEDerivationClusterProposal],
     make_maintainer_from_user: Callable[..., NixMaintainer],
     make_drv: Callable[..., NixDerivation],
-) -> Callable[..., Notification]:
+) -> Callable[..., list[Notification]]:
     def wrapped(
         drv: NixDerivation,
-    ) -> Notification:
+    ) -> list[Notification]:
         suggestion = make_suggestion(drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH})
-        notification, *_ = create_package_subscription_notifications(suggestion)
-        return notification
+        return create_package_subscription_notifications(suggestion)
 
     return wrapped

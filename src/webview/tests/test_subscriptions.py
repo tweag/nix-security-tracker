@@ -157,7 +157,7 @@ def test_user_receives_notification_for_subscribed_package(
     committer: User,
     make_maintainer_from_user: Callable[..., NixMaintainer],
     make_drv: Callable[..., NixDerivation],
-    make_package_notification: Callable[..., Notification],
+    make_package_notification: Callable[..., list[Notification]],
 ) -> None:
     """Test that users receive notifications when suggestions affect their subscribed packages"""
     drv = make_drv(maintainer=make_maintainer_from_user(committer))
