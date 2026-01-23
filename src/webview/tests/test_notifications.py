@@ -17,12 +17,12 @@ def test_mark_notification_read_unread(
     live_server: LiveServer,
     staff: User,
     as_staff: Page,
-    make_suggestion_notification: Callable[..., Notification],
+    make_maintainer_notification: Callable[..., Notification],
 ) -> None:
     """
     Check that marking a notification read and unread has the desired effect
     """
-    db_notification = make_suggestion_notification(staff)
+    db_notification = make_maintainer_notification(staff)
 
     as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
     badge = as_staff.locator("#notifications-badge")
@@ -47,7 +47,7 @@ def test_notifications_bulk_operations(
     live_server: LiveServer,
     staff: User,
     as_staff: Page,
-    make_suggestion_notification: Callable[..., Notification],
+    make_maintainer_notification: Callable[..., Notification],
 ) -> None:
     """
     Check that bulk operations on notifications work as expected
@@ -55,7 +55,7 @@ def test_notifications_bulk_operations(
     num_notifications = 3
 
     db_notifications = [
-        make_suggestion_notification(staff) for i in range(num_notifications)
+        make_maintainer_notification(staff) for i in range(num_notifications)
     ]
 
     as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
@@ -94,7 +94,7 @@ def test_paginated_notifications(
     live_server: LiveServer,
     staff: User,
     as_staff: Page,
-    make_suggestion_notification: Callable[..., Notification],
+    make_maintainer_notification: Callable[..., Notification],
 ) -> None:
     """
     Check that browsing multiple pages of notifications works as expected
@@ -103,7 +103,7 @@ def test_paginated_notifications(
     num_notifications = page_size + 1
 
     db_notifications = [
-        make_suggestion_notification(staff) for i in range(num_notifications)
+        make_maintainer_notification(staff) for i in range(num_notifications)
     ]
 
     as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
@@ -155,14 +155,14 @@ def test_notification_access_control(
     request: pytest.FixtureRequest,
     staff: User,
     user_fixture: str,
-    make_suggestion_notification: Callable[..., Notification],
+    make_maintainer_notification: Callable[..., Notification],
 ) -> None:
     """
     Low-level test of access control on notifications
 
     This only tests methods in use at the time of writing.
     """
-    notification = make_suggestion_notification(staff)
+    notification = make_maintainer_notification(staff)
 
     # https://docs.pytest.org/en/latest/reference/reference.html?highlight=getfixturevalue#pytest.FixtureRequest.getfixturevalue
     user = request.getfixturevalue(user_fixture)
@@ -184,12 +184,12 @@ def test_notifications_per_user(
     logged_in_as: Callable[..., AbstractContextManager[Page]],
     staff: User,
     committer: User,
-    make_suggestion_notification: Callable[..., Notification],
+    make_maintainer_notification: Callable[..., Notification],
 ) -> None:
     """
     Check that users only get their own notifications
     """
-    make_suggestion_notification(staff)
+    make_maintainer_notification(staff)
 
     # Anonymous users are redirected to login
     page.goto(live_server.url + reverse("webview:notifications:center"))
@@ -210,7 +210,7 @@ def test_notifications_empty_state(
     live_server: LiveServer,
     staff: User,
     as_staff: Page,
-    make_suggestion_notification: Callable[..., Notification],
+    make_maintainer_notification: Callable[..., Notification],
 ) -> None:
     """
     Check that appropriate message is displayed for the empty state
@@ -227,7 +227,7 @@ def test_notifications_empty_state(
     remove_read = as_staff.get_by_text("Remove read notifications")
     expect(remove_read).to_have_count(0)
 
-    make_suggestion_notification(staff)
+    make_maintainer_notification(staff)
 
     as_staff.goto(live_server.url + reverse("webview:notifications:center"))
     mark_all_read.click()
