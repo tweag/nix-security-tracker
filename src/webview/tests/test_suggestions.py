@@ -39,6 +39,61 @@ from shared.models.nix_evaluation import (
 )
 
 
+@pytest.mark.parametrize(
+    "status, editable, endpoint",
+    [
+        (CVEDerivationClusterProposal.Status.PENDING, True, "suggestions"),
+        (CVEDerivationClusterProposal.Status.REJECTED, False, "dismissed"),
+        (CVEDerivationClusterProposal.Status.ACCEPTED, True, "drafts"),
+    ],
+)
+def test_package_removal(
+    live_server: LiveServer,
+    as_staff: Page,
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+    make_drv: Callable[..., NixDerivation],
+    editable: bool,
+    status: CVEDerivationClusterProposal.Status,
+    endpoint: str,
+    no_js: bool,
+) -> None:
+    """Test removing a package permanently"""
+    drv1 = make_drv(pname="package1")
+    drv2 = make_drv(pname="package2")
+    suggestion = make_cached_suggestion(
+        status=status,
+        drvs={
+            drv1: ProvenanceFlags.PACKAGE_NAME_MATCH,
+            drv2: ProvenanceFlags.PACKAGE_NAME_MATCH,
+        },
+    )
+
+    as_staff.goto(live_server.url + reverse(f"webview:{endpoint}_view"))
+    matches = as_staff.locator(f"#nixpkgs-matches-{suggestion.pk}")
+    expect(matches.get_by_text("package1")).to_be_visible()
+    expect(matches.get_by_text("package2")).to_be_visible()
+
+    checkbox = as_staff.locator('input[value="package1"]')
+    if not editable:
+        expect(checkbox).not_to_be_visible()
+        return
+    else:
+        if no_js:
+            checkbox.uncheck()
+            purge = as_staff.get_by_role("button", name="Purge deleted packages")
+            purge.click()
+        else:
+            # FIXME(@fricklerhandwerk): There's currently no visible indication whether the action is done.
+            with as_staff.expect_response(
+                live_server.url + reverse(f"webview:{endpoint}_view")
+            ):
+                checkbox.uncheck()
+            as_staff.reload()
+
+    expect(matches.get_by_text("package1")).not_to_be_visible()
+    expect(matches.get_by_text("package2")).to_be_visible()
+
+
 class PackageRemovalTests(TestCase):
     def setUp(self) -> None:
         # Create user and log in
@@ -158,71 +213,6 @@ class PackageRemovalTests(TestCase):
         # Cache the suggestion to populate the packages payload
         cache_new_suggestions(self.suggestion)
         self.suggestion.refresh_from_db()
-
-    def _test_package_removal(
-        self,
-        status: CVEDerivationClusterProposal.Status,
-        url_name: str,
-        should_remove_package: bool,
-    ) -> None:
-        """Helper method for testing package removal with different statuses"""
-        # Set suggestion status
-        self.suggestion.status = status
-        self.suggestion.save()
-
-        # Make request to keep only derivation1 (remove derivation2)
-        url = reverse(url_name)
-        response = self.client.post(
-            url,
-            {
-                "suggestion_id": self.suggestion.pk,
-                "attribute": ["package1"],
-            },
-        )
-        self.assertEqual(response.status_code, 200)
-
-        # Verify the result based on expected behavior
-        self.suggestion.refresh_from_db()
-        updated_cached_packages = self.suggestion.cached.payload["packages"]
-
-        if should_remove_package:
-            # Package should be removed
-            self.assertIn("package1", updated_cached_packages)
-            self.assertNotIn("package2", updated_cached_packages)
-        else:
-            # Package should NOT be removed (rejected suggestions are not editable)
-            self.assertIn("package1", updated_cached_packages)
-            self.assertIn("package2", updated_cached_packages)
-
-    def test_packages_are_initially_present(self) -> None:
-        # Verify both packages are in the cached payload
-        cached_packages = self.suggestion.cached.payload["packages"]
-        self.assertIn("package1", cached_packages)
-        self.assertIn("package2", cached_packages)
-
-    def test_remove_package_from_accepted_suggestion(self) -> None:
-        """Test removing a package from a suggestion in accepted status (editable draft issue)"""
-        self._test_package_removal(
-            CVEDerivationClusterProposal.Status.ACCEPTED,
-            "webview:drafts_view",
-            should_remove_package=True,
-        )
-
-    def test_remove_package_from_pending_suggestion(self) -> None:
-        """Test removing a package from a suggestion in pending status (editable)"""
-        self._test_package_removal(
-            CVEDerivationClusterProposal.Status.PENDING,
-            "webview:suggestions_view",
-            should_remove_package=True,
-        )
-
-    def test_cannot_remove_package_from_rejected_suggestion(self) -> None:
-        """Test that packages cannot be removed from dismissed suggestions (not editable)"""
-        self._test_package_removal(
-            CVEDerivationClusterProposal.Status.REJECTED,
-            "webview:dismissed_view",
-            should_remove_package=False,
-        )
 
     def test_restore_package(self) -> None:
         """Test removing a package from a suggestion in pending status (editable)"""
