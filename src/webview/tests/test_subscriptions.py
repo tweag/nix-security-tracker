@@ -151,6 +151,31 @@ def test_subscription_center_requires_login(
     expect(page).to_have_url(re.compile(re.escape(reverse("account_login"))))
 
 
+def test_user_receives_notification_for_subscribed_package(
+    live_server: LiveServer,
+    as_staff: Page,
+    committer: User,
+    make_maintainer_from_user: Callable[..., NixMaintainer],
+    make_drv: Callable[..., NixDerivation],
+    make_package_notification: Callable[..., Notification],
+) -> None:
+    """Test that users receive notifications when suggestions affect their subscribed packages"""
+    drv = make_drv(maintainer=make_maintainer_from_user(committer))
+
+    as_staff.goto(live_server.url + reverse("webview:subscriptions:center"))
+    subscriptions = as_staff.locator("#package-subscriptions")
+    subscriptions.get_by_placeholder("Package name").fill(drv.attribute)
+    subscribe = subscriptions.get_by_role("button", name="Subscribe")
+    subscribe.click()
+
+    make_package_notification(drv)
+
+    as_staff.goto(live_server.url + reverse("webview:notifications:center"))
+
+    badge = as_staff.locator("#notifications-badge")
+    expect(badge).to_have_text("1")
+
+
 class SubscriptionTests(TestCase):
     def setUp(self) -> None:
         # Create test user with social account
@@ -256,57 +281,6 @@ class SubscriptionTests(TestCase):
             system="x86_64-linux",
             parent_evaluation=self.evaluation,
         )
-
-    def test_user_receives_notification_for_subscribed_package_suggestion(self) -> None:
-        """Test that users receive notifications when suggestions affect their subscribed packages"""
-        # User subscribes to firefox package
-        add_url = reverse("webview:subscriptions:add")
-        self.client.post(add_url, {"package_name": "firefox"}, HTTP_HX_REQUEST="true")
-
-        # Create CVE and container
-        assigner = Organization.objects.create(uuid=1, short_name="test_org")
-        cve_record = CveRecord.objects.create(
-            cve_id="CVE-2025-0001",
-            assigner=assigner,
-        )
-
-        description = Description.objects.create(value="Test firefox vulnerability")
-        metric = Metric.objects.create(format="cvssV3_1", raw_cvss_json={})
-        affected_product = AffectedProduct.objects.create(package_name="firefox")
-        affected_product.versions.add(
-            Version.objects.create(status=Version.Status.AFFECTED, version="120.0")
-        )
-
-        container = cve_record.container.create(
-            provider=assigner,
-            title="Firefox Security Issue",
-        )
-
-        container.affected.set([affected_product])
-        container.descriptions.set([description])
-        container.metrics.set([metric])
-
-        # Trigger the linkage and notification system manually since pgpubsub triggers won't work in tests
-        linkage_created = build_new_links(container)
-
-        if linkage_created:
-            # Get the created proposal and trigger notifications
-            suggestion = CVEDerivationClusterProposal.objects.get(cve=cve_record)
-            create_package_subscription_notifications(suggestion)
-
-        # Verify notification appears in notification center context
-        response = self.client.get(reverse("webview:notifications:center"))
-        self.assertEqual(response.status_code, 200)
-
-        # Check that notification appears in context
-        notifications = response.context["notifications"]
-        self.assertEqual(len(notifications), 1)
-
-        notification = notifications[0]
-        self.assertEqual(notification.user, self.user)
-        self.assertIn("firefox", notification.message)
-        self.assertIn("CVE-2025-0001", notification.title)
-        self.assertFalse(notification.is_read)  # Should be unread initially
 
     def test_user_receives_notification_for_maintained_package_suggestion(self) -> None:
         """Test that users receive notifications when suggestions affect packages they maintain (automatic subscription)"""
