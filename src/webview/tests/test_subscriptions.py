@@ -1,9 +1,7 @@
 import re
 from collections.abc import Callable
 
-from allauth.socialaccount.models import SocialAccount
 from django.contrib.auth.models import User
-from django.test import Client, TestCase
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 from pytest_django.live_server_helper import LiveServer
@@ -11,10 +9,7 @@ from pytest_django.live_server_helper import LiveServer
 from shared.listeners.notify_users import create_package_subscription_notifications
 from shared.models.linkage import CVEDerivationClusterProposal, ProvenanceFlags
 from shared.models.nix_evaluation import (
-    NixChannel,
     NixDerivation,
-    NixDerivationMeta,
-    NixEvaluation,
     NixMaintainer,
 )
 from webview.models import Notification
@@ -204,128 +199,21 @@ def test_package_subscription(
     subscribe.click()
 
 
-class SubscriptionTests(TestCase):
-    def setUp(self) -> None:
-        # Create test user with social account
-        self.user = User.objects.create_user(username="testuser", password="testpass")
-        self.user.is_staff = True
-        self.user.save()
-
-        SocialAccount.objects.get_or_create(
-            user=self.user,
-            provider="github",
-            uid="123456",
-            extra_data={"login": "testuser"},
-        )
-
-        self.client = Client()
-        self.client.login(username="testuser", password="testpass")
-
-        # Create test NixDerivation data for package validation
-        self.maintainer = NixMaintainer.objects.create(
-            github_id=123,
-            github="testmaintainer",
-            name="Test Maintainer",
-            email="test@example.com",
-        )
-        self.meta = NixDerivationMeta.objects.create(
-            description="Test package",
-            insecure=False,
-            available=True,
-            broken=False,
-            unfree=False,
-            unsupported=False,
-        )
-        self.meta.maintainers.add(self.maintainer)
-
-        self.evaluation = NixEvaluation.objects.create(
-            channel=NixChannel.objects.create(
-                staging_branch="release-24.05",
-                channel_branch="nixos-24.05",
-                head_sha1_commit="deadbeef",
-                state=NixChannel.ChannelState.STABLE,
-                release_version="24.05",
-                repository="https://github.com/NixOS/nixpkgs",
-            ),
-            commit_sha1="deadbeef",
-            state=NixEvaluation.EvaluationState.COMPLETED,
-        )
-
-        # Create valid packages that can be subscribed to
-        self.valid_package1 = NixDerivation.objects.create(
-            attribute="firefox",
-            derivation_path="/nix/store/firefox.drv",
-            name="firefox-120.0",
-            metadata=self.meta,
-            system="x86_64-linux",
-            parent_evaluation=self.evaluation,
-        )
-
-        # Create separate metadata for chromium
-        self.meta2 = NixDerivationMeta.objects.create(
-            description="Test chromium package",
-            insecure=False,
-            available=True,
-            broken=False,
-            unfree=False,
-            unsupported=False,
-        )
-        self.meta2.maintainers.add(self.maintainer)
-
-        self.valid_package2 = NixDerivation.objects.create(
-            attribute="chromium",
-            derivation_path="/nix/store/chromium.drv",
-            name="chromium-119.0",
-            metadata=self.meta2,
-            system="x86_64-linux",
-            parent_evaluation=self.evaluation,
-        )
-
-        # Create a maintainer for the test user
-        self.user_maintainer = NixMaintainer.objects.create(
-            github_id=123456,  # Same as the user's social account uid
-            github="testuser",  # Same as the user's username
-            name="Test User",
-            email="testuser@example.com",
-        )
-
-        # Create metadata for a package where test user is maintainer
-        self.meta3 = NixDerivationMeta.objects.create(
-            description="Test package maintained by test user",
-            insecure=False,
-            available=True,
-            broken=False,
-            unfree=False,
-            unsupported=False,
-        )
-        self.meta3.maintainers.add(self.user_maintainer)
-
-        # Create a package where the test user is a maintainer
-        self.user_maintained_package = NixDerivation.objects.create(
-            attribute="neovim",
-            derivation_path="/nix/store/neovim.drv",
-            name="neovim-0.9.5",
-            metadata=self.meta3,
-            system="x86_64-linux",
-            parent_evaluation=self.evaluation,
-        )
-
-    def test_package_subscription_page_shows_invalid_package(self) -> None:
-        """Test that the package subscription page shows error for invalid packages"""
-        url = reverse(
-            "webview:subscriptions:package", kwargs={"package_name": "nonexistent"}
-        )
-        response = self.client.get(url)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "subscriptions/package_subscription.html")
-
-        # Check context
-        self.assertEqual(response.context["package_name"], "nonexistent")
-        self.assertFalse(response.context["package_exists"])
-        self.assertFalse(response.context["is_subscribed"])
-        self.assertIsNotNone(response.context["error_message"])
-        self.assertIn("does not exist", response.context["error_message"])
+def test_package_subscription_invalid_name(
+    live_server: LiveServer,
+    as_staff: Page,
+) -> None:
+    """Test that the package subscription page shows error for invalid packages"""
+    url = reverse(
+        "webview:subscriptions:package", kwargs={"package_name": "nonexistent"}
+    )
+    as_staff.goto(live_server.url + url)
+    main = as_staff.locator("main")
+    error = main.locator(
+        ".error-block",
+        has_text="could not be found",
+    )
+    expect(error).to_be_visible()
 
 
 def test_maintainer_notification_many_packages_in_suggestion(
