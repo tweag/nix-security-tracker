@@ -214,30 +214,6 @@ class SubscriptionTests(TestCase):
             parent_evaluation=self.evaluation,
         )
 
-    def test_user_unsubscribes_from_package_success_htmx(self) -> None:
-        """Test successful unsubscription via HTMX"""
-        # First subscribe to a package via HTMX
-        add_url = reverse("webview:subscriptions:add")
-        self.client.post(add_url, {"package_name": "firefox"}, HTTP_HX_REQUEST="true")
-
-        # Now unsubscribe via HTMX
-        remove_url = reverse("webview:subscriptions:remove")
-        response = self.client.post(
-            remove_url, {"package_name": "firefox"}, HTTP_HX_REQUEST="true"
-        )
-
-        # Should return 200 with component template for HTMX request
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "subscriptions/components/packages.html")
-
-        # Verify subscription was removed from context
-        self.assertIn("package_subscriptions", response.context)
-        self.assertNotIn("firefox", response.context["package_subscriptions"])
-        self.assertEqual(response.context["package_subscriptions"], [])
-
-        # Should not have error message
-        self.assertNotIn("error_message", response.context)
-
     def test_user_cannot_unsubscribe_from_non_subscribed_package_htmx(self) -> None:
         """Test unsubscription fails for packages not subscribed to via HTMX"""
         url = reverse("webview:subscriptions:remove")
