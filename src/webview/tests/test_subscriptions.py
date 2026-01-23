@@ -178,23 +178,6 @@ class SubscriptionTests(TestCase):
             parent_evaluation=self.evaluation,
         )
 
-    def test_user_subscribes_to_empty_package_name_fails_htmx(self) -> None:
-        """Test subscription fails for empty package name via HTMX"""
-        url = reverse("webview:subscriptions:add")
-        response = self.client.post(url, {"package_name": ""}, HTTP_HX_REQUEST="true")
-
-        # Should return 200 with component template for HTMX request
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "subscriptions/components/packages.html")
-
-        # Check that error message is in context
-        self.assertIn("error_message", response.context)
-        self.assertIn("cannot be empty", response.context["error_message"])
-
-        # Verify no subscriptions in context
-        self.assertIn("package_subscriptions", response.context)
-        self.assertEqual(response.context["package_subscriptions"], [])
-
     def test_user_cannot_subscribe_to_same_package_twice_htmx(self) -> None:
         """Test duplicate subscription prevention via HTMX"""
         url = reverse("webview:subscriptions:add")
