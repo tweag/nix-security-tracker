@@ -8,16 +8,7 @@ from django.urls import reverse
 from playwright.sync_api import Page, expect
 from pytest_django.live_server_helper import LiveServer
 
-from shared.listeners.automatic_linkage import build_new_links
 from shared.listeners.notify_users import create_package_subscription_notifications
-from shared.models.cve import (
-    AffectedProduct,
-    CveRecord,
-    Description,
-    Metric,
-    Organization,
-    Version,
-)
 from shared.models.linkage import CVEDerivationClusterProposal, ProvenanceFlags
 from shared.models.nix_evaluation import (
     NixChannel,
@@ -173,6 +164,28 @@ def test_user_receives_notification_for_subscribed_package(
     expect(badge).to_have_text("1")
 
 
+def test_user_does_not_receive_notification_when_auto_subscribe_disabled(
+    live_server: LiveServer,
+    as_staff: Page,
+    staff: User,
+    make_maintainer_notification: Callable[..., list[Notification]],
+) -> None:
+    """Test that users do NOT receive notifications for maintained packages when auto-subscription is disabled"""
+    as_staff.goto(live_server.url + reverse("webview:subscriptions:center"))
+    auto_subscriptions = as_staff.locator("#maintainer-auto-subscription")
+    auto_subscribe = auto_subscriptions.get_by_role("button", name="Disable")
+    auto_subscribe.click()
+    make_maintainer_notification(staff)
+    as_staff.reload()
+    badge = as_staff.locator("#notifications-badge")
+    expect(badge).to_have_text("0")
+    auto_subscribe = auto_subscriptions.get_by_role("button", name="Enable")
+    auto_subscribe.click()
+    make_maintainer_notification(staff)
+    as_staff.reload()
+    expect(badge).to_have_text("1")
+
+
 class SubscriptionTests(TestCase):
     def setUp(self) -> None:
         # Create test user with social account
@@ -278,67 +291,6 @@ class SubscriptionTests(TestCase):
             system="x86_64-linux",
             parent_evaluation=self.evaluation,
         )
-
-    def test_user_does_not_receive_notification_when_auto_subscribe_disabled(
-        self,
-    ) -> None:
-        """Test that users do NOT receive notifications for maintained packages when auto-subscription is disabled"""
-        # Disable auto-subscription using the view
-        toggle_url = reverse("webview:subscriptions:toggle_auto_subscribe")
-        response = self.client.post(
-            toggle_url, {"action": "disable"}, HTTP_HX_REQUEST="true"
-        )
-
-        # Should return 200 with component template for HTMX request
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(
-            response, "subscriptions/components/auto_subscribe.html"
-        )
-
-        # Verify auto-subscription is disabled in response context
-        self.assertIn("auto_subscribe_enabled", response.context)
-        self.assertFalse(response.context["auto_subscribe_enabled"])
-
-        # Create CVE and container
-        assigner = Organization.objects.create(uuid=3, short_name="test_org3")
-        cve_record = CveRecord.objects.create(
-            cve_id="CVE-2025-0003",
-            assigner=assigner,
-        )
-
-        description = Description.objects.create(
-            value="Test neovim vulnerability with auto-subscribe disabled"
-        )
-        metric = Metric.objects.create(format="cvssV3_1", raw_cvss_json={})
-        affected_product = AffectedProduct.objects.create(package_name="neovim")
-        affected_product.versions.add(
-            Version.objects.create(status=Version.Status.AFFECTED, version="0.9.5")
-        )
-
-        container = cve_record.container.create(
-            provider=assigner,
-            title="Neovim Security Issue",
-        )
-
-        container.affected.set([affected_product])
-        container.descriptions.set([description])
-        container.metrics.set([metric])
-
-        # Trigger the linkage and notification system manually since pgpubsub triggers won't work in tests
-        linkage_created = build_new_links(container)
-
-        if linkage_created:
-            # Get the created proposal and trigger notifications
-            suggestion = CVEDerivationClusterProposal.objects.get(cve=cve_record)
-            create_package_subscription_notifications(suggestion)
-
-        # Verify NO notification appears in notification center context
-        response = self.client.get(reverse("webview:notifications:center"))
-        self.assertEqual(response.status_code, 200)
-
-        # Check that NO notifications appear in context
-        notifications = response.context["notifications"]
-        self.assertEqual(len(notifications), 0)
 
     def test_package_subscription_page_shows_valid_package(self) -> None:
         """Test that the package subscription page displays correctly for valid packages"""
