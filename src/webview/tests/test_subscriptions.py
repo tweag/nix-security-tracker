@@ -72,6 +72,42 @@ def test_user_subscribes_to_invalid_package_fails(
     expect(error).to_be_visible()
 
 
+def test_user_cannot_subscribe_to_same_package_twice(
+    live_server: LiveServer,
+    as_staff: Page,
+    staff: User,
+    no_js: bool,
+    drv: NixDerivation,
+) -> None:
+    """Test that one can't subscribe to a package twice"""
+    as_staff.goto(live_server.url + reverse("webview:subscriptions:center"))
+    subscriptions = as_staff.locator("#package-subscriptions")
+    subscriptions.get_by_placeholder("Package name").fill(drv.attribute)
+    subscribe = subscriptions.get_by_role("button", name="Subscribe", exact=True)
+    subscribe.click()
+
+    unsubscribe = subscriptions.filter(has_text=drv.attribute).get_by_role(
+        "button", name="Unsubscribe"
+    )
+    expect(unsubscribe).to_be_visible()
+
+    subscriptions.get_by_placeholder("Package name").fill(drv.attribute)
+    subscribe.click()
+
+    if no_js:
+        error = as_staff.locator(
+            "#messages",
+            has_text="already subscribed",
+        )
+    else:
+        error = subscriptions.locator(
+            ".error-block",
+            has_text="already subscribed",
+        )
+    expect(error).to_be_visible()
+    expect(unsubscribe).to_be_visible()
+
+
 class SubscriptionTests(TestCase):
     def setUp(self) -> None:
         # Create test user with social account
@@ -177,34 +213,6 @@ class SubscriptionTests(TestCase):
             system="x86_64-linux",
             parent_evaluation=self.evaluation,
         )
-
-    def test_user_cannot_subscribe_to_same_package_twice_htmx(self) -> None:
-        """Test duplicate subscription prevention via HTMX"""
-        url = reverse("webview:subscriptions:add")
-
-        # First subscription should succeed
-        response = self.client.post(
-            url, {"package_name": "firefox"}, HTTP_HX_REQUEST="true"
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("firefox", response.context["package_subscriptions"])
-
-        # Second subscription to same package should fail
-        response = self.client.post(
-            url, {"package_name": "firefox"}, HTTP_HX_REQUEST="true"
-        )
-
-        # Should return 200 with component template
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "subscriptions/components/packages.html")
-
-        # Check that error message is in context
-        self.assertIn("error_message", response.context)
-        self.assertIn("already subscribed", response.context["error_message"])
-
-        # Verify firefox still appears only once in context
-        self.assertIn("package_subscriptions", response.context)
-        self.assertIn("firefox", response.context["package_subscriptions"])
 
     def test_user_unsubscribes_from_package_success_htmx(self) -> None:
         """Test successful unsubscription via HTMX"""
