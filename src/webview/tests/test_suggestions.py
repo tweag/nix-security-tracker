@@ -863,6 +863,42 @@ def test_maintainer_addition_creates_activity_log_entry(
     expect(entry).to_be_visible()
 
 
+def test_maintainer_removal_creates_activity_log_entry(
+    live_server: LiveServer,
+    as_staff: Page,
+    staff: User,
+    committer: User,
+    cached_suggestion: CVEDerivationClusterProposal,
+    no_js: bool,
+) -> None:
+    """Test that removing a maintainer creates an activity log entry"""
+    if no_js:
+        pytest.xfail("Not implemented")
+    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
+    maintainers_list = suggestion.locator(f"#maintainers-list-{cached_suggestion.pk}")
+    maintainer_name, *_ = cached_suggestion.derivations.all().values_list(
+        "metadata__maintainers__github", flat=True
+    )
+    remove = maintainers_list.get_by_role("button", name="Remove")
+    remove.click()
+    restore = maintainers_list.get_by_role("button", name="Restore")
+    expect(restore).to_be_visible()
+    # FIXME(@fricklerhandwerk): Activity log should be updated automatically
+    as_staff.reload()
+
+    activity_log = suggestion.locator(
+        f"#suggestion-activity-log-{cached_suggestion.pk}"
+    )
+    activity_log.click()
+    entry = (
+        activity_log.filter(has_text=staff.username)
+        .filter(has_text="removed maintainer")
+        .filter(has_text=maintainer_name)
+    )
+    expect(entry).to_be_visible()
+
+
 class MaintainersEditActivityLogTests(TestCase):
     def setUp(self) -> None:
         # Create user and log in
@@ -973,41 +1009,6 @@ class MaintainersEditActivityLogTests(TestCase):
         # Cache the suggestion
         cache_new_suggestions(self.suggestion)
         self.suggestion.refresh_from_db()
-
-    def test_maintainer_removal_creates_activity_log_entry(self) -> None:
-        """Test that removing a maintainer creates an activity log entry"""
-        # Remove the existing maintainer using SelectableMaintainerView
-        url = reverse("webview:edit_maintainers")
-        response = self.client.post(
-            url,
-            {
-                "suggestion_id": self.suggestion.pk,
-                "edit_maintainer_id": str(self.existing_maintainer.github_id),
-            },
-        )
-        self.assertEqual(response.status_code, 200)
-
-        # Check that activity log data is properly sent to the template context
-        response = self.client.get(reverse("webview:drafts_view"))
-        self.assertEqual(response.status_code, 200)
-
-        # Find our suggestion in the context
-        suggestions = response.context["object_list"]
-        our_suggestion = next(
-            (s for s in suggestions if s.proposal_id == self.suggestion.pk), None
-        )
-        self.assertIsNotNone(our_suggestion)
-        assert our_suggestion is not None  # Needed for type checking
-
-        # Verify activity log is attached to the suggestion object
-        self.assertTrue(hasattr(our_suggestion, "activity_log"))
-        self.assertEqual(len(our_suggestion.activity_log), 1)
-
-        # Verify the activity log entry matches what we expect
-        log_entry = our_suggestion.activity_log[0]
-        self.assertEqual(log_entry.action, "maintainers.remove")
-        self.assertEqual(log_entry.maintainers[0]["github"], "existinguser")
-        self.assertEqual(log_entry.username, "admin")
 
     def test_maintainer_restoration_within_time_window_cancels_events(self) -> None:
         """Test that restoring a removed maintainer within time window cancels both events"""
