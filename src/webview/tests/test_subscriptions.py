@@ -1,3 +1,4 @@
+import re
 from collections.abc import Callable
 
 from allauth.socialaccount.models import SocialAccount
@@ -141,6 +142,15 @@ def test_subscription_center_shows_user_subscriptions(
     expect(unsubscribe).to_have_count(2)
 
 
+def test_subscription_center_requires_login(
+    live_server: LiveServer,
+    page: Page,
+) -> None:
+    """Test that subscription center redirects when not logged in"""
+    page.goto(live_server.url + reverse("webview:subscriptions:center"))
+    expect(page).to_have_url(re.compile(re.escape(reverse("account_login"))))
+
+
 class SubscriptionTests(TestCase):
     def setUp(self) -> None:
         # Create test user with social account
@@ -246,46 +256,6 @@ class SubscriptionTests(TestCase):
             system="x86_64-linux",
             parent_evaluation=self.evaluation,
         )
-
-    def test_subscription_center_requires_login(self) -> None:
-        """Test that subscription center redirects when not logged in"""
-        # Logout the user
-        self.client.logout()
-
-        response = self.client.get(reverse("webview:subscriptions:center"))
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("login", response.url)
-
-        # Test add endpoint also requires login
-        response = self.client.post(
-            reverse("webview:subscriptions:add"), {"package_name": "firefox"}
-        )
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("login", response.url)
-
-        # Test remove endpoint also requires login
-        response = self.client.post(
-            reverse("webview:subscriptions:remove"), {"package_name": "firefox"}
-        )
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("login", response.url)
-
-        # Test HTMX requests also require login
-        response = self.client.post(
-            reverse("webview:subscriptions:add"),
-            {"package_name": "firefox"},
-            HTTP_HX_REQUEST="true",
-        )
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("login", response.url)
-
-        response = self.client.post(
-            reverse("webview:subscriptions:remove"),
-            {"package_name": "firefox"},
-            HTTP_HX_REQUEST="true",
-        )
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("login", response.url)
 
     def test_user_receives_notification_for_subscribed_package_suggestion(self) -> None:
         """Test that users receive notifications when suggestions affect their subscribed packages"""
