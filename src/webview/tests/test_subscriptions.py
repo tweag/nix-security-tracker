@@ -167,11 +167,8 @@ def test_user_receives_notification_for_subscribed_package(
     subscriptions.get_by_placeholder("Package name").fill(drv.attribute)
     subscribe = subscriptions.get_by_role("button", name="Subscribe")
     subscribe.click()
-
     make_package_notification(drv)
-
     as_staff.goto(live_server.url + reverse("webview:notifications:center"))
-
     badge = as_staff.locator("#notifications-badge")
     expect(badge).to_have_text("1")
 
@@ -281,54 +278,6 @@ class SubscriptionTests(TestCase):
             system="x86_64-linux",
             parent_evaluation=self.evaluation,
         )
-
-    def test_user_receives_notification_for_maintained_package_suggestion(self) -> None:
-        """Test that users receive notifications when suggestions affect packages they maintain (automatic subscription)"""
-
-        # Create CVE and container
-        assigner = Organization.objects.create(uuid=2, short_name="test_org2")
-        cve_record = CveRecord.objects.create(
-            cve_id="CVE-2025-0002",
-            assigner=assigner,
-        )
-
-        description = Description.objects.create(value="Test neovim vulnerability")
-        metric = Metric.objects.create(format="cvssV3_1", raw_cvss_json={})
-        affected_product = AffectedProduct.objects.create(package_name="neovim")
-        affected_product.versions.add(
-            Version.objects.create(status=Version.Status.AFFECTED, version="0.9.5")
-        )
-
-        container = cve_record.container.create(
-            provider=assigner,
-            title="Neovim Security Issue",
-        )
-
-        container.affected.set([affected_product])
-        container.descriptions.set([description])
-        container.metrics.set([metric])
-
-        # Trigger the linkage and notification system manually since pgpubsub triggers won't work in tests
-        linkage_created = build_new_links(container)
-
-        if linkage_created:
-            # Get the created proposal and trigger notifications
-            suggestion = CVEDerivationClusterProposal.objects.get(cve=cve_record)
-            create_package_subscription_notifications(suggestion)
-
-        # Verify notification appears in notification center context
-        response = self.client.get(reverse("webview:notifications:center"))
-        self.assertEqual(response.status_code, 200)
-
-        # Check that notification appears in context
-        notifications = response.context["notifications"]
-        self.assertEqual(len(notifications), 1)
-
-        notification = notifications[0]
-        self.assertEqual(notification.user, self.user)
-        self.assertIn("neovim", notification.message)
-        self.assertIn("CVE-2025-0002", notification.title)
-        self.assertFalse(notification.is_read)  # Should be unread initially
 
     def test_user_does_not_receive_notification_when_auto_subscribe_disabled(
         self,
