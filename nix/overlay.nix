@@ -60,6 +60,7 @@ in
       pytest
       pytest-django
       pytest-playwright
+      pytest-mock
       cvss
       freezegun
     ];
