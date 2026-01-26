@@ -94,160 +94,65 @@ def test_package_removal(
     expect(matches.get_by_text("package2")).to_be_visible()
 
 
-class PackageRemovalTests(TestCase):
-    def setUp(self) -> None:
-        # Create user and log in
-        self.user = User.objects.create_user(username="admin", password="pw")
-        self.user.is_staff = True
-        self.user.save()
+@pytest.mark.parametrize(
+    "status, editable, endpoint",
+    [
+        (CVEDerivationClusterProposal.Status.PENDING, True, "suggestions"),
+        (CVEDerivationClusterProposal.Status.REJECTED, False, "dismissed"),
+        (CVEDerivationClusterProposal.Status.ACCEPTED, True, "drafts"),
+    ],
+)
+def test_restore_package(
+    live_server: LiveServer,
+    as_staff: Page,
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+    make_drv: Callable[..., NixDerivation],
+    editable: bool,
+    status: CVEDerivationClusterProposal.Status,
+    endpoint: str,
+    no_js: bool,
+) -> None:
+    """Test removing a package from a suggestion in pending status (editable)"""
+    drv1 = make_drv(pname="package1")
+    drv2 = make_drv(pname="package2")
+    suggestion = make_cached_suggestion(
+        status=status,
+        drvs={
+            drv1: ProvenanceFlags.PACKAGE_NAME_MATCH,
+            drv2: ProvenanceFlags.PACKAGE_NAME_MATCH,
+        },
+    )
 
-        # Create a GitHub social account for the user
-        SocialAccount.objects.get_or_create(
-            user=self.user,
-            provider="github",
-            uid="123456",
-            extra_data={"login": "admin"},
-        )
+    as_staff.goto(live_server.url + reverse(f"webview:{endpoint}_view"))
+    matches = as_staff.locator(f"#nixpkgs-matches-{suggestion.pk}")
+    expect(matches.get_by_text("package1")).to_be_visible()
+    expect(matches.get_by_text("package2")).to_be_visible()
 
-        self.client = Client()
-        self.client.login(username="admin", password="pw")
+    checkbox = as_staff.locator('input[value="package1"]')
 
-        # Create CVE and related objects
-        self.assigner = Organization.objects.create(uuid=1, short_name="foo")
-        self.cve_record = CveRecord.objects.create(
-            cve_id="CVE-2025-0001",
-            assigner=self.assigner,
-        )
-        self.description = Description.objects.create(value="Test description")
-        self.metric = Metric.objects.create(format="cvssV3_1", raw_cvss_json={})
-        self.affected_product = AffectedProduct.objects.create(
-            package_name="dummy-package"
-        )
-        self.affected_product.versions.add(
-            Version.objects.create(status=Version.Status.AFFECTED, version="1.0")
-        )
-        self.cve_container = self.cve_record.container.create(
-            provider=self.assigner,
-            title="Dummy Title",
-        )
-        self.cve_container.affected.add(self.affected_product)
-        self.cve_container.descriptions.add(self.description)
-        self.cve_container.metrics.add(self.metric)
+    if not editable:
+        expect(checkbox).not_to_be_visible()
+        return
+    else:
+        if no_js:
+            checkbox.uncheck()
+            checkbox.check()
+            purge = as_staff.get_by_role("button", name="Purge deleted packages")
+            purge.click()
+        else:
+            # FIXME(@fricklerhandwerk): There's currently no visible indication whether the action is done.
+            with as_staff.expect_response(
+                live_server.url + reverse(f"webview:{endpoint}_view")
+            ):
+                checkbox.uncheck()
+            with as_staff.expect_response(
+                live_server.url + reverse(f"webview:{endpoint}_view")
+            ):
+                checkbox.check()
+            as_staff.reload()
 
-        # Create maintainer and metadata
-        self.maintainer = NixMaintainer.objects.create(
-            github_id=123,
-            github="testuser",
-            name="Test User",
-            email="test@example.com",
-        )
-        self.meta1 = NixDerivationMeta.objects.create(
-            description="First dummy derivation",
-            insecure=False,
-            available=True,
-            broken=False,
-            unfree=False,
-            unsupported=False,
-        )
-        self.meta1.maintainers.add(self.maintainer)
-
-        self.meta2 = NixDerivationMeta.objects.create(
-            description="Second dummy derivation",
-            insecure=False,
-            available=True,
-            broken=False,
-            unfree=False,
-            unsupported=False,
-        )
-        self.meta2.maintainers.add(self.maintainer)
-
-        # Create evaluation and derivations
-        self.evaluation = NixEvaluation.objects.create(
-            channel=NixChannel.objects.create(
-                staging_branch="release-24.05",
-                channel_branch="nixos-24.05",
-                head_sha1_commit="deadbeef",
-                state=NixChannel.ChannelState.STABLE,
-                release_version="24.05",
-                repository="https://github.com/NixOS/nixpkgs",
-            ),
-            commit_sha1="deadbeef",
-            state=NixEvaluation.EvaluationState.COMPLETED,
-        )
-
-        # Create two derivations for the same suggestion
-        self.derivation1 = NixDerivation.objects.create(
-            attribute="package1",
-            derivation_path="/nix/store/package1.drv",
-            name="package1-1.0",
-            metadata=self.meta1,
-            system="x86_64-linux",
-            parent_evaluation=self.evaluation,
-        )
-
-        self.derivation2 = NixDerivation.objects.create(
-            attribute="package2",
-            derivation_path="/nix/store/package2.drv",
-            name="package2-1.0",
-            metadata=self.meta2,
-            system="x86_64-linux",
-            parent_evaluation=self.evaluation,
-        )
-
-        # Create suggestion and link both derivations
-        self.suggestion = CVEDerivationClusterProposal.objects.create(
-            status=CVEDerivationClusterProposal.Status.PENDING,
-            cve_id=self.cve_record.pk,
-        )
-        DerivationClusterProposalLink.objects.create(
-            proposal=self.suggestion,
-            derivation=self.derivation1,
-            provenance_flags=ProvenanceFlags.PACKAGE_NAME_MATCH,
-        )
-        DerivationClusterProposalLink.objects.create(
-            proposal=self.suggestion,
-            derivation=self.derivation2,
-            provenance_flags=ProvenanceFlags.PACKAGE_NAME_MATCH,
-        )
-
-        # Cache the suggestion to populate the packages payload
-        cache_new_suggestions(self.suggestion)
-        self.suggestion.refresh_from_db()
-
-    def test_restore_package(self) -> None:
-        """Test removing a package from a suggestion in pending status (editable)"""
-        # Request to keep only derivation1 (remove derivation2)
-        url = reverse("webview:suggestions_view")
-        response = self.client.post(
-            url,
-            {
-                "suggestion_id": self.suggestion.pk,
-                "attribute": ["package1"],
-            },
-        )
-        self.assertEqual(response.status_code, 200)
-
-        # Verify package2 has been removed from the cached payload
-        self.suggestion.refresh_from_db()
-        cached_packages = self.suggestion.cached.payload["packages"]
-        self.assertIn("package1", cached_packages)
-        self.assertNotIn("package2", cached_packages)
-
-        # Restore package2 by including both derivation IDs again
-        restore_response = self.client.post(
-            url,
-            {
-                "suggestion_id": self.suggestion.pk,
-                "attribute": ["package1", "package2"],
-            },
-        )
-        self.assertEqual(restore_response.status_code, 200)
-
-        # Refresh and verify both packages are present again in the cached payload
-        self.suggestion.refresh_from_db()
-        cached_packages = self.suggestion.cached.payload["packages"]
-        self.assertIn("package1", cached_packages)
-        self.assertIn("package2", cached_packages)
+    expect(matches.get_by_text("package1")).to_be_visible()
+    expect(matches.get_by_text("package2")).to_be_visible()
 
 
 class AddMaintainerViewTests(TestCase):
