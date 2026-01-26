@@ -1,4 +1,5 @@
 from collections.abc import Callable, Generator
+from contextlib import AbstractContextManager
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -1017,166 +1018,66 @@ def test_multiple_maintainer_edits_are_batched_in_activity_log(
     expect(added_maintainers).to_be_visible()
 
 
-class MaintainersEditActivityLogTests(TestCase):
-    def setUp(self) -> None:
-        # Create user and log in
-        self.user = User.objects.create_user(username="admin", password="pw")
-        self.user.is_staff = True
-        self.user.save()
+def test_maintainer_edits_by_different_users_not_batched(
+    live_server: LiveServer,
+    logged_in_as: Callable[..., AbstractContextManager[Page]],
+    make_user: Callable[..., User],
+    committer: User,
+    cached_suggestion: CVEDerivationClusterProposal,
+    make_maintainer_from_user: Callable[..., NixMaintainer],
+    no_js: bool,
+) -> None:
+    """Test that maintainer edits by different users are not batched together"""
+    if no_js:
+        pytest.xfail("Not implemented")
 
-        # Create a GitHub social account for the user
-        SocialAccount.objects.get_or_create(
-            user=self.user,
-            provider="github",
-            uid="123456",
-            extra_data={"login": "admin"},
-        )
+    user1 = make_user(username="user1", is_staff=True, uid="666")
+    user2 = make_user(username="user2", is_staff=True, uid="999")
 
-        self.client = Client()
-        self.client.login(username="admin", password="pw")
+    maintainer1 = make_maintainer_from_user(user1)
+    maintainer2 = make_maintainer_from_user(user2)
 
-        # Create CVE and related objects
-        self.assigner = Organization.objects.create(uuid=1, short_name="foo")
-        self.cve_record = CveRecord.objects.create(
-            cve_id="CVE-2025-0001",
-            assigner=self.assigner,
+    with logged_in_as(user1) as as_user1:
+        as_user1.goto(live_server.url + reverse("webview:suggestions_view"))
+        suggestion = as_user1.locator(f"#suggestion-{cached_suggestion.pk}")
+        maintainers_list = suggestion.locator(
+            f"#maintainers-list-{cached_suggestion.pk}"
         )
-        self.description = Description.objects.create(value="Test description")
-        self.metric = Metric.objects.create(format="cvssV3_1", raw_cvss_json={})
-        self.affected_product = AffectedProduct.objects.create(
-            package_name="dummy-package"
-        )
-        self.affected_product.versions.add(
-            Version.objects.create(status=Version.Status.AFFECTED, version="1.0")
-        )
-        self.cve_container = self.cve_record.container.create(
-            provider=self.assigner,
-            title="Dummy Title",
-        )
-        self.cve_container.affected.add(self.affected_product)
-        self.cve_container.descriptions.add(self.description)
-        self.cve_container.metrics.add(self.metric)
+        name = maintainers_list.locator("input")
+        name.fill(maintainer1.github)
+        add = maintainers_list.get_by_role("button", name="Add")
+        add.click()
 
-        # Create maintainers
-        self.existing_maintainer = NixMaintainer.objects.create(
-            github_id=123,
-            github="existinguser",
-            name="Existing User",
-            email="existing@example.com",
+    with logged_in_as(user2) as as_user2:
+        as_user2.goto(live_server.url + reverse("webview:suggestions_view"))
+        suggestion = as_user2.locator(f"#suggestion-{cached_suggestion.pk}")
+        maintainers_list = suggestion.locator(
+            f"#maintainers-list-{cached_suggestion.pk}"
         )
+        name = maintainers_list.locator("input")
+        name.fill(maintainer2.github)
+        add = maintainers_list.get_by_role("button", name="Add")
+        add.click()
+        remove = maintainers_list.get_by_role("button", name="Remove")
+        # There's already one maintainer in the `cached_suggestion`'s derivaiton 'by default
+        expect(remove).to_have_count(3)
 
-        self.other_maintainer = NixMaintainer.objects.create(
-            github_id=456,
-            github="otheruser",
-            name="Other User",
-            email="other@example.com",
+        as_user2.reload()
+
+        activity_log = suggestion.locator(
+            f"#suggestion-activity-log-{cached_suggestion.pk}"
         )
-
-        self.third_maintainer = NixMaintainer.objects.create(
-            github_id=789,
-            github="thirduser",
-            name="Third User",
-            email="third@example.com",
+        expect(activity_log).to_be_visible()
+        activity_log.click()
+        added_maintainer1 = (
+            activity_log.filter(has_text=user1.username)
+            .filter(has_text="added maintainer")
+            .filter(has_text=maintainer1.github)
         )
-
-        # Create metadata and derivation
-        self.meta = NixDerivationMeta.objects.create(
-            description="Dummy derivation",
-            insecure=False,
-            available=True,
-            broken=False,
-            unfree=False,
-            unsupported=False,
+        expect(added_maintainer1).to_be_visible()
+        added_maintainer2 = (
+            activity_log.filter(has_text=user2.username)
+            .filter(has_text="added maintainer")
+            .filter(has_text=maintainer2.github)
         )
-        self.meta.maintainers.add(self.existing_maintainer)
-
-        # Create evaluation and derivation
-        self.evaluation = NixEvaluation.objects.create(
-            channel=NixChannel.objects.create(
-                staging_branch="release-24.05",
-                channel_branch="nixos-24.05",
-                head_sha1_commit="deadbeef",
-                state=NixChannel.ChannelState.STABLE,
-                release_version="24.05",
-                repository="https://github.com/NixOS/nixpkgs",
-            ),
-            commit_sha1="deadbeef",
-            state=NixEvaluation.EvaluationState.COMPLETED,
-        )
-
-        self.derivation = NixDerivation.objects.create(
-            attribute="dummypackage",
-            derivation_path="/nix/store/dummy.drv",
-            name="dummy-package-1.0",
-            metadata=self.meta,
-            system="x86_64-linux",
-            parent_evaluation=self.evaluation,
-        )
-
-        # Create suggestion and link derivation
-        self.suggestion = CVEDerivationClusterProposal.objects.create(
-            status=CVEDerivationClusterProposal.Status.ACCEPTED,
-            cve_id=self.cve_record.pk,
-        )
-        DerivationClusterProposalLink.objects.create(
-            proposal=self.suggestion,
-            derivation=self.derivation,
-            provenance_flags=ProvenanceFlags.PACKAGE_NAME_MATCH,
-        )
-
-        # Cache the suggestion
-        cache_new_suggestions(self.suggestion)
-        self.suggestion.refresh_from_db()
-
-    def test_maintainer_edits_by_different_users_not_batched(self) -> None:
-        """Test that maintainer edits by different users are not batched together"""
-        # Create another user
-        other_user = User.objects.create_user(username="other", password="pw")
-        other_user.is_staff = True
-        other_user.save()
-
-        SocialAccount.objects.get_or_create(
-            user=other_user,
-            provider="github",
-            uid="789012",
-            extra_data={"login": "other"},
-        )
-
-        # First user adds a maintainer
-        self.client.post(
-            reverse("webview:add_maintainer"),
-            {
-                "suggestion_id": self.suggestion.pk,
-                "new_maintainer_github_handle": "otheruser",
-            },
-        )
-
-        # Second user adds a different maintainer
-        other_client = Client()
-        other_client.login(username="other", password="pw")
-        other_client.post(
-            reverse("webview:add_maintainer"),
-            {
-                "suggestion_id": self.suggestion.pk,
-                "new_maintainer_github_handle": "thirduser",
-            },
-        )
-
-        # Check that activity log data is properly sent to the template context
-        response = self.client.get(reverse("webview:drafts_view"))
-        suggestions = response.context["object_list"]
-        our_suggestion = next(
-            (s for s in suggestions if s.proposal_id == self.suggestion.pk), None
-        )
-        self.assertIsNotNone(our_suggestion)
-        assert our_suggestion is not None  # Needed for type checking
-
-        self.assertGreaterEqual(len(our_suggestion.activity_log), 2)
-        context_maintainer_events = [
-            e
-            for e in our_suggestion.activity_log
-            if hasattr(e, "action") and e.action.startswith("maintainers.")
-        ]
-        context_usernames = {event.username for event in context_maintainer_events}
-        self.assertIn("admin", context_usernames)
-        self.assertIn("other", context_usernames)
+        expect(added_maintainer2).to_be_visible()
