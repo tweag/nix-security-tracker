@@ -972,6 +972,51 @@ def test_maintainer_restoration_activity_log_cancels(
         expect(activity_log).to_have_count(0)
 
 
+def test_multiple_maintainer_edits_are_batched_in_activity_log(
+    live_server: LiveServer,
+    as_staff: Page,
+    staff: User,
+    committer: User,
+    cached_suggestion: CVEDerivationClusterProposal,
+    make_maintainer_from_user: Callable[..., NixMaintainer],
+    no_js: bool,
+) -> None:
+    """Test that multiple maintainer edits by the same user are batched together"""
+    if no_js:
+        pytest.xfail("Not implemented")
+    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
+    maintainers_list = suggestion.locator(f"#maintainers-list-{cached_suggestion.pk}")
+    maintainer1 = make_maintainer_from_user(staff)
+    maintainer2 = make_maintainer_from_user(committer)
+    name = maintainers_list.locator("input")
+    name.fill(maintainer1.github)
+    add = maintainers_list.get_by_role("button", name="Add")
+    add.click()
+    remove = maintainers_list.get_by_role("button", name="Remove")
+    # There's already one maintainer in the `cached_suggestion`'s derivaiton 'by default
+    expect(remove).to_have_count(2)
+    name.fill(maintainer2.github)
+    add.click()
+    expect(remove).to_have_count(3)
+
+    # FIXME(@fricklerhandwerk): Activity log should be updated automatically
+    as_staff.reload()
+
+    activity_log = suggestion.locator(
+        f"#suggestion-activity-log-{cached_suggestion.pk}"
+    )
+    expect(activity_log).to_be_visible()
+    activity_log.click()
+    # FIXME(@fricklerhandwerk): We may want to not collapse events that are further apart than some threshold.
+    added_maintainers = (
+        activity_log.filter(has_text=staff.username)
+        .filter(has_text="added")
+        .filter(has_text="2 maintainers")
+    )
+    expect(added_maintainers).to_be_visible()
+
+
 class MaintainersEditActivityLogTests(TestCase):
     def setUp(self) -> None:
         # Create user and log in
@@ -1082,42 +1127,6 @@ class MaintainersEditActivityLogTests(TestCase):
         # Cache the suggestion
         cache_new_suggestions(self.suggestion)
         self.suggestion.refresh_from_db()
-
-    def test_multiple_maintainer_edits_are_batched_in_activity_log(self) -> None:
-        """Test that multiple maintainer edits by the same user are batched together"""
-        # Add two maintainers consecutively
-        self.client.post(
-            reverse("webview:add_maintainer"),
-            {
-                "suggestion_id": self.suggestion.pk,
-                "new_maintainer_github_handle": "otheruser",
-            },
-        )
-        self.client.post(
-            reverse("webview:add_maintainer"),
-            {
-                "suggestion_id": self.suggestion.pk,
-                "new_maintainer_github_handle": "thirduser",
-            },
-        )
-
-        # Check that activity log data is properly sent to the template context
-        response = self.client.get(reverse("webview:drafts_view"))
-        suggestions = response.context["object_list"]
-        our_suggestion = next(
-            (s for s in suggestions if s.proposal_id == self.suggestion.pk), None
-        )
-        self.assertIsNotNone(our_suggestion)
-        assert our_suggestion is not None  # Needed for type checking
-
-        # Verify both additions are batched into a single log entry
-        self.assertEqual(len(our_suggestion.activity_log), 1)
-        log_entry = our_suggestion.activity_log[0]
-        self.assertEqual(log_entry.action, "maintainers.add")
-        self.assertEqual(len(log_entry.maintainers), 2)
-        github_handles = [m["github"] for m in log_entry.maintainers]
-        self.assertIn("otheruser", github_handles)
-        self.assertIn("thirduser", github_handles)
 
     def test_maintainer_edits_by_different_users_not_batched(self) -> None:
         """Test that maintainer edits by different users are not batched together"""
