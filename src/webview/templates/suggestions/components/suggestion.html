@@ -16,7 +16,7 @@
           <div>(<a href="{% url 'webview:suggestion:dismissed_suggestions' %}">browse all</a>)</div>
         {% elif data.suggestion.status == "accepted" %}
           <div class="bold">Accepted</div>
-          <div>(<a href="{% url 'webview:suggestion:draft_suggestions' %}">browse all</a>)</div>
+          <div>(<a href="{% url 'webview:suggestion:accepted_suggestions' %}">browse all</a>)</div>
         {% elif data.suggestion.status == "published" %}
           <div class="bold">Published</div>
           <div>(<a href="{% url 'webview:suggestion:published_suggestions' %}">browse all</a>)</div>

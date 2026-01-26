@@ -91,7 +91,7 @@ class SuggestionBaseView(LoginRequiredMixin, TemplateView, ABC):
             # Check if it's one of our list views
             list_url_names = [
                 "untriaged_suggestions",
-                "draft_suggestions",
+                "accepted_suggestions",
                 "dismissed_suggestions",
                 "published_suggestions",
             ]

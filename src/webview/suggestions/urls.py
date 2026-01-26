@@ -27,7 +27,9 @@ urlpatterns = [
         UntriagedSuggestionsView.as_view(),
         name="untriaged_suggestions",
     ),
-    path("list/drafts/", AcceptedSuggestionsView.as_view(), name="draft_suggestions"),
+    path(
+        "list/accepted/", AcceptedSuggestionsView.as_view(), name="accepted_suggestions"
+    ),
     path(
         "list/dismissed/",
         RejectedSuggestionsView.as_view(),
