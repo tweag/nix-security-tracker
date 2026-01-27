@@ -87,7 +87,7 @@ def fetch_from_monitoring() -> dict[str, MonitoredChannel]:
         # https://github.com/NixOS/infra/blob/795508213eb35eee099b1b8d12dd46a9f7b03697/build/pluto/prometheus/exporters/channel.nix#L4-L6
         # channel structure:
         # https://github.com/NixOS/infra/blob/795508213eb35eee099b1b8d12dd46a9f7b03697/channels.nix
-        "https://monitoring.nixos.org/prometheus/api/v1/query?query=channel_revision"
+        settings.CHANNEL_MONITORING_URL
     )
     resp.raise_for_status()
     return aggregate_by_channels(resp.json()["data"]["result"])
