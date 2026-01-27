@@ -126,5 +126,5 @@ rec {
       '';
     };
 
-  tests = pkgs.callPackage ./nix/tests.nix { };
+  tests = pkgs.callPackage ./nix/tests { inherit module; };
 }

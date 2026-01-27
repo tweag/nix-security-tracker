@@ -1,4 +1,8 @@
-{ lib, pkgs }:
+{
+  lib,
+  pkgs,
+  module,
+}:
 let
   # TODO: specify project/service name globally
   application = "web-security-tracker";
@@ -59,7 +63,7 @@ let
 in
 lib.mapAttrs (name: test: pkgs.testers.runNixOSTest (test // { inherit name defaults; })) {
   basic = {
-    nodes.server = _: { imports = [ ./web-security-tracker.nix ]; };
+    nodes.server = _: { imports = [ module ]; };
     testScript = ''
       server.wait_for_unit("${application}-server.service")
       server.wait_for_unit("${application}-worker.service")
