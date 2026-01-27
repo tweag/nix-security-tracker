@@ -6,18 +6,25 @@
 let
   # TODO: specify project/service name globally
   application = "web-security-tracker";
-  defaults =
+  defaults = {
+    documentation.enable = lib.mkDefault false;
+
+    virtualisation = {
+      memorySize = 2048;
+      cores = 2;
+    };
+  };
+in
+pkgs.testers.runNixOSTest {
+  name = "default";
+  inherit defaults;
+  nodes.server =
     { config, ... }:
     let
       cfg = config.services.${application};
     in
     {
-      documentation.enable = lib.mkDefault false;
-
-      virtualisation = {
-        memorySize = 2048;
-        cores = 2;
-      };
+      imports = [ module ];
 
       services.postgresql.ensureUsers = [
         {
@@ -60,43 +67,38 @@ let
           };
       };
     };
-in
-lib.mapAttrs (name: test: pkgs.testers.runNixOSTest (test // { inherit name defaults; })) {
-  basic = {
-    nodes.server = _: { imports = [ module ]; };
-    testScript = ''
-      server.wait_for_unit("${application}-server.service")
-      server.wait_for_unit("${application}-worker.service")
+  testScript = ''
+    server.wait_for_unit("${application}-server.service")
+    server.wait_for_unit("${application}-worker.service")
 
-      with subtest("Application tests"):
-        ${
-          ""
-          /*
-            XXX(@fricklerhandwerk): `pytest` searches in the working directory.
-            In this environment it can't discover what's needed on its own.
-            It's easiest to list the modules under test explicitly, which are found through `$PYTHONPATH`.
-          */
-        }server.succeed("wst-manage test -- --pyargs shared")
-        ${
-          ""
-          /*
-            XXX(@fricklerhandwerk): We must test modules in separate invocations.
-            Importing fixtures from one module in another doesn't work in one invocation of `pytest`.
-            This is because `conftest.py` files are discovered from the provided module names and registered globally.
-          */
-        }server.succeed("wst-manage test -- --pyargs webview")
+    with subtest("Application tests"):
+      ${
+        ""
+        /*
+          XXX(@fricklerhandwerk): `pytest` searches in the working directory.
+          In this environment it can't discover what's needed on its own.
+          It's easiest to list the modules under test explicitly, which are found through `$PYTHONPATH`.
+        */
+      }server.succeed("wst-manage test -- --pyargs shared")
+      ${
+        ""
+        /*
+          XXX(@fricklerhandwerk): We must test modules in separate invocations.
+          Importing fixtures from one module in another doesn't work in one invocation of `pytest`.
+          This is because `conftest.py` files are discovered from the provided module names and registered globally.
+        */
+      }server.succeed("wst-manage test -- --pyargs webview")
 
-      with subtest("Check that stylesheet is served"):
-        machine.succeed("curl --fail -H 'Host: example.org' http://localhost/static/reset.css")
-        machine.succeed("curl --fail -H 'Host: example.org' http://localhost/static/font.css")
-        machine.succeed("curl --fail -H 'Host: example.org' http://localhost/static/colors.css")
-        machine.succeed("curl --fail -H 'Host: example.org' http://localhost/static/utility.css")
-        machine.succeed("curl --fail -H 'Host: example.org' http://localhost/static/cvss-tags.css")
-        machine.succeed("curl --fail -H 'Host: example.org' http://localhost/static/page-layout.css")
-        machine.succeed("curl --fail -H 'Host: example.org' http://localhost/static/icons/style.css")
+    with subtest("Check that stylesheet is served"):
+      machine.succeed("curl --fail -H 'Host: example.org' http://localhost/static/reset.css")
+      machine.succeed("curl --fail -H 'Host: example.org' http://localhost/static/font.css")
+      machine.succeed("curl --fail -H 'Host: example.org' http://localhost/static/colors.css")
+      machine.succeed("curl --fail -H 'Host: example.org' http://localhost/static/utility.css")
+      machine.succeed("curl --fail -H 'Host: example.org' http://localhost/static/cvss-tags.css")
+      machine.succeed("curl --fail -H 'Host: example.org' http://localhost/static/page-layout.css")
+      machine.succeed("curl --fail -H 'Host: example.org' http://localhost/static/icons/style.css")
 
-      with subtest("Check that admin interface is served"):
-        server.succeed("curl --fail -L -H 'Host: example.org' http://localhost/admin")
-    '';
-  };
+    with subtest("Check that admin interface is served"):
+      server.succeed("curl --fail -L -H 'Host: example.org' http://localhost/admin")
+  '';
 }
