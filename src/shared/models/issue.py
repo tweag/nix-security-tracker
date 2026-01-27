@@ -1,13 +1,16 @@
 import logging
+from enum import STRICT, IntFlag, auto
 from typing import Any
 
-from django.db import models
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils.translation import gettext_lazy as _
 
 from shared.models.cve import text_length
 from shared.models.linkage import CVEDerivationClusterProposal
+from shared.models.nix_evaluation import TimeStampMixin
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +33,7 @@ class NixpkgsIssue(models.Model):
     """The Nixpkgs version of a cve."""
 
     created = models.DateField(auto_now_add=True)
-    code = models.CharField(max_length=len("NIXPKGS-YYYY-") + 19)
+    code = models.CharField(max_length=len("NIXPKGS-YYYY-") + 19, unique=True)
 
     suggestion = models.OneToOneField(
         CVEDerivationClusterProposal, on_delete=models.PROTECT
@@ -82,21 +85,72 @@ def generate_code(
     sender: type[NixpkgsIssue], instance: NixpkgsIssue, created: bool, **kwargs: Any
 ) -> None:
     if created:
-        number = sender.objects.filter(
-            created__year=instance.created.year, pk__lte=instance.pk
-        ).count()
-        instance.code = f"NIXPKGS-{str(instance.created.year)}-{str(number).zfill(4)}"
-        instance.save()
+        for attempt in range(1, 11):
+            number = (
+                sender.objects.filter(
+                    created__year=instance.created.year,
+                ).count()
+                + attempt
+            )
+            instance.code = (
+                f"NIXPKGS-{str(instance.created.year)}-{str(number).zfill(4)}"
+            )
+            try:
+                instance.save()
+                return
+            except IntegrityError:
+                continue
+        raise RuntimeError(
+            "Failed to generate unique issue code for '%s'",
+            instance.suggestion.cve.cve_id,
+        )
 
 
-class NixpkgsEvent(models.Model):
-    class EventType(models.TextChoices):
-        ISSUED = "I", _("issue opened")
-        PR_OPENED = "P", _("PR opened")
-        PR_MERGED = "M", _("PR merged")
+class EventType(IntFlag, boundary=STRICT):
+    ISSUE = auto()
+    PULL_REQUEST = auto()
+    OPENED = auto()
+    CLOSED = auto()
+    COMPLETED = auto()
+    NOT_PLANNED = auto()
+    DUPLICATE = auto()
+    MERGED = auto()
 
-    issue = models.ForeignKey(NixpkgsIssue, on_delete=models.CASCADE)
-    reference = models.TextField()
+    @classmethod
+    def valid(cls, value: int) -> bool:
+        flags = cls(value)
+
+        if cls.OPENED in flags:
+            return value in (cls.OPENED | cls.ISSUE, cls.OPENED | cls.PULL_REQUEST)
+
+        if cls.CLOSED in flags:
+            if cls.ISSUE in flags:
+                return value in (
+                    cls.CLOSED | cls.ISSUE | cls.COMPLETED,
+                    cls.CLOSED | cls.ISSUE | cls.NOT_PLANNED,
+                    cls.CLOSED | cls.ISSUE | cls.DUPLICATE,
+                )
+            if cls.PULL_REQUEST in flags:
+                return value in (
+                    cls.CLOSED | cls.PULL_REQUEST,
+                    cls.CLOSED | cls.PULL_REQUEST | cls.MERGED,
+                )
+            return False
+
+        return False
+
+    @classmethod
+    def validator(cls, value: int) -> None:
+        if not cls.valid(value):
+            raise ValidationError(f"Invalid event type: 0b{value:b}")
+
+
+class NixpkgsEvent(TimeStampMixin):
+    issue = models.ForeignKey(
+        NixpkgsIssue, on_delete=models.CASCADE, related_name="events"
+    )
+    event_type = models.IntegerField(validators=[EventType.validator])
+    url = models.URLField()
 
 
 class NixpkgsAdvisory(models.Model):

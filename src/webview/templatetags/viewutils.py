@@ -3,6 +3,8 @@ import logging
 from collections.abc import ItemsView
 from typing import Any, TypedDict
 
+from cvss import CVSS3
+from cvss.constants3 import METRICS_ABBREVIATIONS
 from django import template
 from django.template.context import Context
 
@@ -138,8 +140,18 @@ def severity_badge(metrics: list[dict]) -> dict:
     For now we return the first metric that has a sane looking raw JSON field.
     """
     for m in metrics:
-        if "raw_cvss_json" in m and "baseSeverity" in m.get("raw_cvss_json", {}):
-            return {"metric": m["raw_cvss_json"]}
+        if "raw_cvss_json" in m and "vectorString" in m.get("raw_cvss_json", {}):
+            parsed = CVSS3(m["raw_cvss_json"]["vectorString"])
+            return {
+                "vectorString": m["raw_cvss_json"]["vectorString"],
+                "version": m["raw_cvss_json"]["version"],
+                "metrics": {
+                    # XXX(@fricklerhandwerk): Yes, the *value* description is also indexed by *key*!
+                    f"{METRICS_ABBREVIATIONS[k]} ({k})": f"{parsed.get_value_description(k)} ({v})"
+                    for k, v in parsed.metrics.items()
+                    if not k.startswith("M")  # Don't display modified metrics
+                },
+            }
     return {}
 
 
@@ -181,12 +193,14 @@ def issue(
     context: Context,
     issue: NixpkgsIssue,
     suggestion_context: SuggestionContext,
+    github_issue: str | None,
     show_permalink: bool = False,
 ) -> dict:
     return {
         "issue": issue,
         "show_permalink": show_permalink,
         "suggestion_context": suggestion_context,
+        "github_issue": github_issue,
         "page_obj": context.get("page_obj", None),
         "status_filter": "published",  # Needed in context for the suggestion component
         "user": context["user"],

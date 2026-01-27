@@ -20,7 +20,6 @@ def get_gh(per_page: int = 30) -> Github:
     gh_auth = Auth.AppAuth(
         settings.GH_CLIENT_ID, settings.GH_APP_PRIVATE_KEY
     ).get_installation_auth(settings.GH_APP_INSTALLATION_ID)
-    logger.info("Successfully authenticated with GitHub.")
 
     return Github(auth=gh_auth, per_page=per_page)
 
@@ -55,22 +54,15 @@ def create_gh_issue(
             return f"`@{maintainer}`"
 
     def cvss_details() -> str:
-        severity = severity_badge(cached_suggestion.payload["metrics"])
-        if severity:
-            metric = severity["metric"]
+        metric = severity_badge(cached_suggestion.payload["metrics"])
+        if metric:
+            metrics = "\n".join([f"- {k}: {v}" for k, v in metric["metrics"].items()])
             return f"""
 <details>
 <summary>CVSS {metric["vectorString"]}</summary>
 
 - CVSS version: {metric["version"]}
-- Attack vector (AV): {metric["attackVector"]}
-- Attack complexity (AC): {metric["attackComplexity"]}
-- Privileges required (PR): {metric["privilegesRequired"]}
-- User interaction (UI): {metric["userInteraction"]}
-- Scope (S): {metric["scope"]}
-- Confidentiality impact (C): {metric["confidentialityImpact"]}
-- Integrity impact (I): {metric["integrityImpact"]}
-- Availability impact (A): {metric["availabilityImpact"]}
+{metrics}
 </details>"""
         else:
             return ""
