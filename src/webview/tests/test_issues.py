@@ -50,13 +50,13 @@ def test_publish_gh_issue_empty_title(
     )
     cache_new_suggestions(accepted_suggestion)
 
-    as_staff.goto(live_server.url + reverse("webview:drafts_view"))
+    as_staff.goto(live_server.url + reverse("webview:suggestion:accepted_suggestions"))
     suggestion = as_staff.locator(f"#suggestion-{accepted_suggestion.cached.pk}")
     publish = suggestion.get_by_role("button", name="Publish issue")
 
     # FIXME(@fricklerhandwerk): Mock Github's `create_issue()` here, not our own procedure! [ref:todo-github-connection]
     # Then we can test in-context that the right arguments have been passed, using `mock.assert_called_with()`.
-    with patch("webview.views.create_gh_issue") as mock:
+    with patch("webview.suggestions.views.status.create_gh_issue") as mock:
         mock.side_effect = lambda *args, **kwargs: create_gh_issue(
             *args,
             github=MockGithub(expected_issue_title=expected_issue_title),  # type: ignore

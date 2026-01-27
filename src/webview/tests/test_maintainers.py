@@ -16,7 +16,7 @@ def test_add_maintainer_widget_present_when_logged_in(
     cached_suggestion: CVEDerivationClusterProposal,
 ) -> None:
     """Test that logged in user can see the add user form"""
-    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    as_staff.goto(live_server.url + reverse("webview:suggestion:untriaged_suggestions"))
     suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
     add_user_text_field = suggestion.get_by_placeholder("GitHub username")
     add_user_submit_button = suggestion.get_by_role("button", name="Add")
@@ -30,7 +30,7 @@ def test_add_maintainer_widget_absent_when_logged_out(
     cached_suggestion: CVEDerivationClusterProposal,
 ) -> None:
     """Test that the add user form isn't present when logged out"""
-    page.goto(live_server.url + reverse("webview:suggestions_view"))
+    page.goto(live_server.url + reverse("webview:suggestion:untriaged_suggestions"))
     suggestion = page.locator(f"#suggestion-{cached_suggestion.pk}")
     add_user_text_field = suggestion.get_by_placeholder("GitHub username")
     add_user_submit_button = suggestion.get_by_role("button", name="Add")
@@ -50,7 +50,9 @@ def test_add_existing_maintainer_returns_error(
             "No-javascript support is not implemented for the 'add maintainer' feature"
         )
     else:
-        as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+        as_staff.goto(
+            live_server.url + reverse("webview:suggestion:untriaged_suggestions")
+        )
         suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
         add_user_text_field = suggestion.get_by_placeholder("GitHub username")
         add_user_submit_button = suggestion.get_by_role("button", name="Add")
@@ -82,7 +84,9 @@ def test_add_new_maintainer_already_in_db_succeeds(
             name="Alice DeBob",
             email="alice@somewhere.com",
         )
-        as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+        as_staff.goto(
+            live_server.url + reverse("webview:suggestion:untriaged_suggestions")
+        )
         suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
         add_user_text_field = suggestion.get_by_placeholder("GitHub username")
         add_user_submit_button = suggestion.get_by_role("button", name="Add")
@@ -112,7 +116,9 @@ def test_add_new_maintainer_from_github_succeeds(
             "name": "Alice DeBob",
             "email": "alice@somewhere.com",
         }
-        as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+        as_staff.goto(
+            live_server.url + reverse("webview:suggestion:untriaged_suggestions")
+        )
         suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
         add_user_text_field = suggestion.get_by_placeholder("GitHub username")
         add_user_submit_button = suggestion.get_by_role("button", name="Add")
@@ -137,7 +143,9 @@ def test_add_maintainer_from_invalid_github_handle_returns_error(
     else:
         mock_fetch = mocker.patch("webview.views.fetch_user_info")
         mock_fetch.return_value = None
-        as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+        as_staff.goto(
+            live_server.url + reverse("webview:suggestion:untriaged_suggestions")
+        )
         suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
         add_user_text_field = suggestion.get_by_placeholder("GitHub username")
         add_user_submit_button = suggestion.get_by_role("button", name="Add")

@@ -283,18 +283,28 @@ def package_list(
     }
 
 
-@register.inclusion_tag("suggestions/components/maintainer.html")
+@register.inclusion_tag("suggestions/components/maintainer.html", takes_context=True)
 def maintainer(
+    context: Context,
     data: MaintainerContext,
 ) -> dict:
-    return {"data": data}
+    return {
+        "data": data,
+        "user": context["user"],
+    }
 
 
-@register.inclusion_tag("suggestions/components/maintainers_list.html")
+@register.inclusion_tag(
+    "suggestions/components/maintainers_list.html", takes_context=True
+)
 def maintainer_list(
+    context: Context,
     data: MaintainerListContext,
 ) -> dict:
-    return {"data": data}
+    return {
+        "data": data,
+        "user": context["user"],
+    }
 
 
 @register.inclusion_tag("suggestions/components/maintainer_add.html")

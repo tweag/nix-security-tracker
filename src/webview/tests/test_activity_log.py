@@ -28,7 +28,7 @@ def test_maintainer_addition_creates_activity_log_entry(
     if no_js:
         pytest.xfail("Not implemented")
     maintainer = make_maintainer_from_user(committer)
-    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    as_staff.goto(live_server.url + reverse("webview:suggestion:untriaged_suggestions"))
     suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
     maintainers_list = suggestion.locator(f"#maintainers-list-{cached_suggestion.pk}")
     maintainers_list.locator("input").fill(maintainer.github)
@@ -65,7 +65,7 @@ def test_maintainer_removal_creates_activity_log_entry(
     """Test that removing a maintainer creates an activity log entry"""
     if no_js:
         pytest.xfail("Not implemented")
-    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    as_staff.goto(live_server.url + reverse("webview:suggestion:untriaged_suggestions"))
     suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
     maintainers_list = suggestion.locator(f"#maintainers-list-{cached_suggestion.pk}")
     maintainer_name, *_ = cached_suggestion.derivations.all().values_list(
@@ -113,7 +113,7 @@ def test_maintainer_restoration_activity_log_cancels(
     """Test that restoring a removed maintainer within time window cancels both events"""
     if no_js:
         pytest.xfail("Not implemented")
-    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    as_staff.goto(live_server.url + reverse("webview:suggestion:untriaged_suggestions"))
     suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
     maintainers_list = suggestion.locator(f"#maintainers-list-{cached_suggestion.pk}")
     maintainer_name, *_ = cached_suggestion.derivations.all().values_list(
@@ -172,7 +172,7 @@ def test_multiple_maintainer_edits_are_batched_in_activity_log(
     """Test that multiple maintainer edits by the same user are batched together"""
     if no_js:
         pytest.xfail("Not implemented")
-    as_staff.goto(live_server.url + reverse("webview:suggestions_view"))
+    as_staff.goto(live_server.url + reverse("webview:suggestion:untriaged_suggestions"))
     suggestion = as_staff.locator(f"#suggestion-{cached_suggestion.pk}")
     maintainers_list = suggestion.locator(f"#maintainers-list-{cached_suggestion.pk}")
     maintainer1 = make_maintainer_from_user(staff)
@@ -225,7 +225,9 @@ def test_maintainer_edits_by_different_users_not_batched(
     maintainer2 = make_maintainer_from_user(user2)
 
     with logged_in_as(user1) as as_user1:
-        as_user1.goto(live_server.url + reverse("webview:suggestions_view"))
+        as_user1.goto(
+            live_server.url + reverse("webview:suggestion:untriaged_suggestions")
+        )
         suggestion = as_user1.locator(f"#suggestion-{cached_suggestion.pk}")
         maintainers_list = suggestion.locator(
             f"#maintainers-list-{cached_suggestion.pk}"
@@ -236,7 +238,9 @@ def test_maintainer_edits_by_different_users_not_batched(
         add.click()
 
     with logged_in_as(user2) as as_user2:
-        as_user2.goto(live_server.url + reverse("webview:suggestions_view"))
+        as_user2.goto(
+            live_server.url + reverse("webview:suggestion:untriaged_suggestions")
+        )
         suggestion = as_user2.locator(f"#suggestion-{cached_suggestion.pk}")
         maintainers_list = suggestion.locator(
             f"#maintainers-list-{cached_suggestion.pk}"

@@ -8,7 +8,7 @@
     <div class="column dividers">
       {% for attribute, pdata in data.active.items %}
         <div class="row gap">
-          {% if data.editable %}
+          {% if user|is_maintainer_or_admin and data.editable %}
             <form
               class="contents"
               method="post"
@@ -46,7 +46,7 @@
       <div class="column dividers">
         {% for attribute, pdata in data.ignored.items %}
           <div class="row gap">
-            {% if data.editable and user|is_maintainer_or_admin %}
+            {% if user|is_maintainer_or_admin and data.editable %}
             <form
               class="contents"
               method="post"

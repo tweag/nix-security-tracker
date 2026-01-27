@@ -2,7 +2,6 @@ from abc import ABC
 from urllib.parse import urlparse
 
 from django.contrib import messages
-from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import resolve
@@ -42,7 +41,7 @@ def get_suggestion_context(
     )
 
 
-class SuggestionBaseView(LoginRequiredMixin, TemplateView, ABC):
+class SuggestionBaseView(TemplateView, ABC):
     """Base view for all suggestion-related views with common functionality."""
 
     def _handle_error(

@@ -1,6 +1,6 @@
 {% load viewutils %}
 
-<article class="rounded-box row centered spread gap" hx-target="this">
+<article id="suggestion-{{ data.suggestion.pk }} class="rounded-box row centered spread gap" hx-target="this">
   <div class="row gap-small centered">
     {% status_icon data.suggestion.status %}
     <h2>
@@ -12,7 +12,7 @@
     </h2>
   </div>
   <div class="row centered gap">
-    <a href="{% url 'webview:suggestion:detail' suggestion_id=data.suggestion.pk %}">View</a>
+    <a role="link" href="{% url 'webview:suggestion:detail' suggestion_id=data.suggestion.pk %}">View</a>
     {% if data.undo_status_target %}
     <form
       class="contents"
@@ -33,7 +33,7 @@
     </form>
     {% endif %}
     {% if data.issue_link %}
-    <div class="inline-row gap-small baseline"><i class="icon-github"></i><a href="{{ data.issue_link }}">GitHub issue</a></div>
+    <div class="inline-row gap-small baseline"><i class="icon-github"></i><a role="link" href="{{ data.issue_link }}">GitHub issue</a></div>
     {% endif %}
   </div>
 </article>
