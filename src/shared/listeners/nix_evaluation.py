@@ -242,8 +242,9 @@ async def evaluation_entrypoint(
                     )
                 else:
                     logger.info(
-                        "Processed %d derivations in real-time in %f seconds",
+                        "Processed %d derivations from %s in %f seconds",
                         count,
+                        evaluation,
                         elapsed,
                     )
                     await NixEvaluation.objects.filter(id=evaluation.pk).aupdate(
