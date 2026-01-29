@@ -1,6 +1,5 @@
 import asyncio
 import sys
-from argparse import ArgumentParser
 from collections.abc import Coroutine
 from dataclasses import dataclass
 from pprint import pprint
@@ -102,22 +101,12 @@ async def wait_for_parallel_fetches(
 class Command(BaseCommand):
     help = "Register Nix channels"
 
-    def add_arguments(self, parser: ArgumentParser) -> None:
-        parser.add_argument(
-            "-r",
-            "--repository",
-            type=str,
-            help="Repository for those specific Nix channels",
-            default=settings.GIT_CLONE_URL,
-        )
-
     def handle(self, *args: Any, **kwargs: Any) -> str | None:
         fresh_channels = fetch_from_monitoring()
-        defaults = {"repository": kwargs["repository"]}
         for channel in fresh_channels.values():
             channel_branch = channel.name
             staging_branch = staging_from_branch(channel.name)
-            branch_info = defaults | {
+            branch_info = {
                 "staging_branch": staging_branch,
                 "state": state_from_status(channel.status),
                 "head_sha1_commit": channel.revision,
