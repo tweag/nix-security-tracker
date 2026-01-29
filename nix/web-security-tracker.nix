@@ -308,7 +308,8 @@ in
           script = ''
             wst-manage listen --recover \
               --channels \
-                shared.channels.NixChannelChannel \
+                shared.channels.NixChannelInsertChannel \
+                shared.channels.NixChannelUpdateChannel \
                 shared.channels.ContainerChannel \
                 shared.channels.CVEDerivationClusterProposalCacheChannel \
                 shared.channels.CVEDerivationClusterProposalNotificationChannel \
