@@ -1,6 +1,6 @@
 {% load viewutils %}
 
-<article id="suggestion-{{ data.suggestion.pk }} class="rounded-box row centered spread gap" hx-target="this">
+<article id="suggestion-{{ data.suggestion.pk }}" class="rounded-box row centered spread gap" hx-target="this">
   <div class="row gap-small centered">
     {% status_icon data.suggestion.status %}
     <h2>

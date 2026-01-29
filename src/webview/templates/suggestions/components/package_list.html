@@ -5,9 +5,9 @@
   <!-- Active packages -->
   <div class="column gap">
     <h2 class="heading dimmed">Matching in nixpkgs</h2>
-    <div class="column dividers">
+    <div id="suggestion-{{data.suggestion_id}}-active-packages" class="column dividers">
       {% for attribute, pdata in data.active.items %}
-        <div class="row gap">
+      <div class="package-{{attribute}} row gap">
           {% if user|is_maintainer_or_admin and data.editable %}
             <form
               class="contents"
@@ -43,9 +43,9 @@
       <summary class="heading dimmed">
         Ignored packages ({{ data.ignored|length }})
       </summary>
-      <div class="column dividers">
+      <div id="suggestion-{{ data.suggestion_id }}-ignored-packages" class="column dividers">
         {% for attribute, pdata in data.ignored.items %}
-          <div class="row gap">
+          <div class="package-{{attribute}} row gap">
             {% if user|is_maintainer_or_admin and data.editable %}
             <form
               class="contents"

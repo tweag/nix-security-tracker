@@ -7,6 +7,7 @@ from shared.github import create_gh_issue
 from shared.models import (
     NixpkgsIssue,
 )
+from shared.models.issue import EventType, NixpkgsEvent
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
 )
@@ -80,6 +81,11 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
                             tracker_issue_link,
                             new_comment,
                         ).html_url
+                        NixpkgsEvent.objects.create(
+                            issue=tracker_issue,
+                            event_type=EventType.ISSUE | EventType.OPENED,
+                            url=github_issue_link,
+                        )
                         suggestion.status = (
                             CVEDerivationClusterProposal.Status.PUBLISHED
                         )

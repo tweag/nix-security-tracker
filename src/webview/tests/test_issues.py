@@ -63,9 +63,9 @@ def test_publish_gh_issue_empty_title(
             **kwargs,
         )
         publish.click()
-        # XXX(@fricklerhandwerk): Checking the mock call too early would run into a deadlock exception.
-        # And only `networkidle` seems to do the trick here.
-        as_staff.wait_for_load_state("networkidle")
+        if not no_js:
+            link = as_staff.get_by_role("link", name="View")
+            expect(link).to_be_visible()
         mock.assert_called()
 
     if no_js:
@@ -78,7 +78,6 @@ def test_publish_gh_issue_empty_title(
     if no_js:
         as_staff.goto(live_server.url + reverse("webview:issue_list"))
     else:
-        link = as_staff.get_by_role("link", name="View")
         link.click()
 
     expect(suggestion).to_be_visible()

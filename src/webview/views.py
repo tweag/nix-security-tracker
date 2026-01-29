@@ -69,7 +69,7 @@ class NixpkgsIssueView(DetailView):
             event_type=EventType.ISSUE | EventType.OPENED,
         ).first()
         context["github_issue"] = (
-            github_issue_opened.url if github_issue_opened else None,
+            github_issue_opened.url if github_issue_opened else None
         )
 
         return context

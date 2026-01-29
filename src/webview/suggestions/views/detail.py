@@ -1,8 +1,11 @@
 from typing import Any
 
-from django.http import Http404
-from django.shortcuts import get_object_or_404
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import redirect
+from django.urls import reverse
+from django.views.generic import DetailView
 
+from shared.models.issue import NixpkgsIssue
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
 )
@@ -10,24 +13,23 @@ from shared.models.linkage import (
 from .base import SuggestionBaseView, get_suggestion_context
 
 
-class SuggestionDetailView(SuggestionBaseView):
+class SuggestionDetailView(DetailView, SuggestionBaseView):
     """Individual suggestion detail page."""
 
+    model = CVEDerivationClusterProposal
     template_name = "suggestions/suggestion_detail.html"
+    pk_url_kwarg = "suggestion_id"
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
-        suggestion_id_input = kwargs.get("suggestion_id")  # Could be None if missing
+        context.update({"suggestion_context": get_suggestion_context(self.object)})
+        return context
 
-        # Validate provided suggestion id
-        if suggestion_id_input is None:
-            raise Http404("Suggestion ID is required")
-        try:
-            suggestion_id = int(suggestion_id_input)
-            suggestion = get_object_or_404(
-                CVEDerivationClusterProposal, id=suggestion_id
+    def get(self, request: HttpRequest, suggestion_id: int) -> HttpResponse:
+        self.object = self.get_object()
+        if self.object.status == CVEDerivationClusterProposal.Status.PUBLISHED:
+            issue = NixpkgsIssue.objects.get(suggestion=self.object)
+            return redirect(
+                reverse("webview:issue_detail", kwargs={"code": issue.code})
             )
-            context.update({"suggestion_context": get_suggestion_context(suggestion)})
-            return context
-        except (ValueError, TypeError):  # FIXME(@florentc): also catch db error
-            raise Http404("Invalid suggestion ID")
+        return super().get(request, suggestion_id)
