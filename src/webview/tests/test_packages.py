@@ -1,7 +1,6 @@
 from collections.abc import Callable
 
 import pytest
-from django.contrib.auth.models import User
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 from pytest_django.live_server_helper import LiveServer
