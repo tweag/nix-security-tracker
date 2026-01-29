@@ -313,7 +313,7 @@ class AddMaintainerView(SuggestionContentEditBaseView):
         if not maintainer:
             gh_user = fetch_user_info(new_maintainer_github_handle)
             if gh_user:
-                maintainer = NixMaintainer.objects.update_or_create(
+                maintainer, created = NixMaintainer.objects.update_or_create(
                     github_id=gh_user["id"],
                     defaults={
                         "github": gh_user["login"],
