@@ -11,7 +11,7 @@
     <div class="column gap">
       <!-- Active maintainers -->
       {% if data.active %}
-        <ul class="column gap-small">
+        <ul id="maintainers-list-{{ data.suggestion_id }}-active" class="column gap-small">
           {% for maintainer_context in data.active %}
             <li class="maintainer-container">
               {% maintainer maintainer_context %}
@@ -24,7 +24,7 @@
       {% if data.ignored %}
         <details class="column gap-small">
           <summary class="heading dimmed">Ignored maintainers ({{ data.ignored|length }})</summary>
-          <ul class="column gap-small">
+          <ul id="maintainers-list-{{ data.suggestion_id }}-ignored" class="column gap-small">
             {% for maintainer_context in data.ignored %}
               <li class="maintainer-container">
                 {% maintainer maintainer_context %}
@@ -38,7 +38,7 @@
       {% if data.additional %}
         <div class="column gap-small">
           <h3 class="heading dimmed">Additional maintainers</h3>
-          <ul class="column gap-small">
+          <ul id="maintainers-list-{{ data.suggestion_id }}-added" class="column gap-small">
             {% for maintainer_context in data.additional %}
               <li class="maintainer-container">
                 {% maintainer maintainer_context %}
