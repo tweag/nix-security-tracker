@@ -16,7 +16,7 @@ urlpatterns = [
     path("", HomeView.as_view(), name="home"),
     path("notifications/", include("webview.notifications.urls")),
     path("subscriptions/", include("webview.subscriptions.urls")),
-    path("suggestion/", include("webview.suggestions.urls")),
+    path("suggestions/", include("webview.suggestions.urls")),
     path("issues/", NixpkgsIssueListView.as_view(), name="issue_list"),
     re_path(
         r"^issues/(?P<code>NIXPKGS-[0-9]{4}-[0-9]{4,19})$",
