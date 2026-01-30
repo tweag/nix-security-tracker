@@ -36,7 +36,7 @@ def get_maintainer_list_context(
 
     # Access categorized maintainers from cached payload dictionary
     categorized_maintainers = suggestion.cached.payload["categorized_maintainers"]
-    editable = suggestion.editable
+    editable = suggestion.is_editable
 
     # Create MaintainerContext objects for each category
     active_contexts = [
