@@ -23,58 +23,58 @@ urlpatterns = [
     path("by-id/<int:suggestion_id>/", SuggestionDetailView.as_view(), name="detail"),
     # Lists
     path(
-        "list/untriaged/",
+        "untriaged/",
         UntriagedSuggestionsView.as_view(),
         name="untriaged_suggestions",
     ),
     path(
-        "list/accepted/", AcceptedSuggestionsView.as_view(), name="accepted_suggestions"
+        "accepted/", AcceptedSuggestionsView.as_view(), name="accepted_suggestions"
     ),
     path(
-        "list/dismissed/",
+        "dismissed/",
         RejectedSuggestionsView.as_view(),
         name="dismissed_suggestions",
     ),
     path(
-        "list/published/",
+        "published/",
         PublishedSuggestionsView.as_view(),
         name="published_suggestions",
     ),
     # Status change operation
     path(
-        "<int:suggestion_id>/status",
+        "by-id/<int:suggestion_id>/status",
         UpdateSuggestionStatusView.as_view(),
         name="update_status",
     ),
     # Package operations
     path(
-        "<int:suggestion_id>/packages/<str:package_attr>/ignore/",
+        "by-id/<int:suggestion_id>/packages/<str:package_attr>/ignore/",
         IgnorePackageView.as_view(),
         name="ignore_package",
     ),
     path(
-        "<int:suggestion_id>/packages/<str:package_attr>/restore/",
+        "by-id/<int:suggestion_id>/packages/<str:package_attr>/restore/",
         RestorePackageView.as_view(),
         name="restore_package",
     ),
     # Maintainers operations
     path(
-        "<int:suggestion_id>/maintainers/<int:github_id>/ignore/",
+        "by-id/<int:suggestion_id>/maintainers/<int:github_id>/ignore/",
         IgnoreMaintainerView.as_view(),
         name="ignore_maintainer",
     ),
     path(
-        "<int:suggestion_id>/maintainers/<int:github_id>/delete/",
+        "by-id/<int:suggestion_id>/maintainers/<int:github_id>/delete/",
         DeleteMaintainerView.as_view(),
         name="delete_maintainer",
     ),
     path(
-        "<int:suggestion_id>/maintainers/<int:github_id>/restore/",
+        "by-id/<int:suggestion_id>/maintainers/<int:github_id>/restore/",
         RestoreMaintainerView.as_view(),
         name="restore_maintainer",
     ),
     path(
-        "<int:suggestion_id>/maintainers/add/",
+        "by-id/<int:suggestion_id>/maintainers/add/",
         AddMaintainerView.as_view(),
         name="add_maintainer",
     ),
