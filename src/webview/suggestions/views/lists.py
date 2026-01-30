@@ -33,6 +33,7 @@ class SuggestionListView(SuggestionBaseView, ABC):
 
         # Convert suggestions to SuggestionContext objects for the current page
         suggestion_contexts = []
+        # FIXME(@fricklerhandwerk): This is very slow, it should batch all related queries.
         for suggestion in page_obj.object_list:
             suggestion_context = get_suggestion_context(suggestion)
             suggestion_context.show_status = (
