@@ -128,6 +128,23 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
                     issue_link=github_issue_link,
                     undo_status_target=undo_status_target,
                 )
+        elif new_status == "published":
+            # NOTE(@florentc): This treats the case where we are in detail view
+            # for a suggestion and we publish it. In that case, with htmx, we
+            # don't want to replace the component in place because what we want
+            # to display from now on in a issue, not a suggestion. We therefore
+            # trigger a reload of the page on the client side, which will it
+            # turn redirect to the issue detail page.
+            # This is weird pattern break until we figure out what we want
+            # exactly regarding suggestion lifecycle on one side, and issue
+            # lifecycle on the other
+            if request.headers.get("HX-Request"):
+                # For HTMX requests, use HX-Redirect header to trigger client-side redirect
+                response = HttpResponse()
+                response["HX-Redirect"] = self._get_origin_url(request) or reverse(
+                    "webview:issue_list"
+                )
+                return response
 
         if request.headers.get("HX-Request"):
             return self.render_to_response({"data": suggestion_context})
