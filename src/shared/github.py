@@ -130,7 +130,6 @@ def create_gh_issue(
 {comment}
 {fence_backticks}"""
         else:
-            logger.error("####### 6 #######")
             return ""
 
     repo = github.get_repo(f"{settings.GH_ORGANIZATION}/{settings.GH_ISSUES_REPO}")
