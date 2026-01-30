@@ -78,6 +78,7 @@ def test_publish_gh_issue_empty_title(
     if no_js:
         as_staff.goto(live_server.url + reverse("webview:issue_list"))
     else:
+        link = as_staff.get_by_role("link", name="View")
         link.click()
 
     expect(suggestion).to_be_visible()

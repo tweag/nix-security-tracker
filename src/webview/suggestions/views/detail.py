@@ -22,7 +22,7 @@ class SuggestionDetailView(DetailView, SuggestionBaseView):
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
-        context.update({"suggestion_context": get_suggestion_context(self.object)})
+        context.update({"suggestion_context": get_suggestion_context(self.object)})  # type: ignore
         return context
 
     def get(self, request: HttpRequest, suggestion_id: int) -> HttpResponse:
