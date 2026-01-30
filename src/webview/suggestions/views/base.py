@@ -122,10 +122,7 @@ class SuggestionContentEditBaseView(SuggestionBaseView, ABC):
         suggestion_context = get_suggestion_context(suggestion)
 
         # Validate that the suggestion status allows package editing
-        if suggestion.status not in [
-            CVEDerivationClusterProposal.Status.PENDING,
-            CVEDerivationClusterProposal.Status.ACCEPTED,
-        ]:
+        if not suggestion.is_editable:
             raise self.ForbiddenOperationError(
                 self._handle_error(
                     request,
