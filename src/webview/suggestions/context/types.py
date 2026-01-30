@@ -60,11 +60,6 @@ class MaintainerListContext:
     suggestion_id: int
     maintainer_add_context: MaintainerAddContext
 
-    def set_editable(self, editable: bool) -> None:
-        self.editable = editable
-        for maintainer_context in self.active + self.ignored + self.additional:
-            maintainer_context.editable = editable
-
 
 # Suggestions
 

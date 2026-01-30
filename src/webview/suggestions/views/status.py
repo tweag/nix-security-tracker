@@ -11,9 +11,6 @@ from shared.models.issue import EventType, NixpkgsEvent
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
 )
-from webview.suggestions.context.builders import (
-    is_suggestion_editable,
-)
 from webview.suggestions.context.types import SuggestionStubContext
 
 from .base import (
@@ -106,12 +103,14 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
         suggestion_context.activity_log = fetch_activity_log(suggestion.pk)
 
         # Refresh packages and maintainers edit status
-        suggestion_context.package_list_context.editable = is_suggestion_editable(
-            suggestion
-        )
-        suggestion_context.maintainer_list_context.set_editable(
-            is_suggestion_editable(suggestion)
-        )
+        suggestion_context.package_list_context.editable = suggestion.is_editable
+
+        maintainers = suggestion_context.maintainer_list_context
+        maintainers.editable = suggestion.is_editable
+        for maintainer_context in (
+            maintainers.active + maintainers.ignored + maintainers.additional
+        ):
+            maintainer_context.editable = suggestion.is_editable
 
         if self._is_origin_url_a_list(request):
             # We don't display the status in lists (they are "by status" lists already)

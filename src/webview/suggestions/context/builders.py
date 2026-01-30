@@ -8,14 +8,6 @@ from webview.suggestions.context.types import (
 )
 
 
-def is_suggestion_editable(suggestion: CVEDerivationClusterProposal) -> bool:
-    """Whether packages and maintainers can be edited depending on the suggestion status"""
-    return suggestion.status in [
-        CVEDerivationClusterProposal.Status.PENDING,
-        CVEDerivationClusterProposal.Status.ACCEPTED,
-    ]
-
-
 def get_package_list_context(
     suggestion: CVEDerivationClusterProposal,
 ) -> PackageListContext:
@@ -25,13 +17,11 @@ def get_package_list_context(
     ignored_packages = {
         k: v for k, v in all_packages.items() if k not in active_packages
     }
-    # Determine if packages are editable
-    packages_editable = is_suggestion_editable(suggestion)
 
     return PackageListContext(
         active=active_packages,
         ignored=ignored_packages,
-        editable=packages_editable,
+        editable=suggestion.is_editable,
         suggestion_id=suggestion.pk,
     )
 
@@ -46,15 +36,13 @@ def get_maintainer_list_context(
 
     # Access categorized maintainers from cached payload dictionary
     categorized_maintainers = suggestion.cached.payload["categorized_maintainers"]
-
-    # Determine if maintainers are editable
-    maintainers_editable = is_suggestion_editable(suggestion)
+    editable = suggestion.editable
 
     # Create MaintainerContext objects for each category
     active_contexts = [
         MaintainerContext(
             maintainer=maintainer,
-            editable=maintainers_editable,
+            editable=editable,
             status=MaintainerStatus.IGNORABLE,
             suggestion_id=suggestion.pk,
         )
@@ -64,7 +52,7 @@ def get_maintainer_list_context(
     ignored_contexts = [
         MaintainerContext(
             maintainer=maintainer,
-            editable=maintainers_editable,
+            editable=editable,
             status=MaintainerStatus.RESTORABLE,
             suggestion_id=suggestion.pk,
         )
@@ -74,7 +62,7 @@ def get_maintainer_list_context(
     additional_contexts = [
         MaintainerContext(
             maintainer=maintainer,
-            editable=maintainers_editable,
+            editable=editable,
             status=MaintainerStatus.DELETABLE,
             suggestion_id=suggestion.pk,
         )
@@ -85,7 +73,7 @@ def get_maintainer_list_context(
         active=active_contexts,
         ignored=ignored_contexts,
         additional=additional_contexts,
-        editable=maintainers_editable,
+        editable=editable,
         suggestion_id=suggestion.pk,
         maintainer_add_context=MaintainerAddContext(
             suggestion.pk, maintainer_add_error_message
