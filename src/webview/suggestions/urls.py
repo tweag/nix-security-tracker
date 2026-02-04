@@ -5,6 +5,7 @@ from .views.lists import (
     AcceptedSuggestionsView,
     PublishedSuggestionsView,
     RejectedSuggestionsView,
+    SuggestionsByPackageView,
     UntriagedSuggestionsView,
 )
 from .views.maintainers import (
@@ -42,6 +43,11 @@ urlpatterns = [
         "published/",
         PublishedSuggestionsView.as_view(),
         name="published_suggestions",
+    ),
+    path(
+        "by-package/<str:package_name>",
+        SuggestionsByPackageView.as_view(),
+        name="suggestions_by_package",
     ),
     # Status change operation
     path(

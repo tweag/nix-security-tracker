@@ -3,7 +3,11 @@
 
 {% block content %}
 
-{% if status_filter == "pending" %}
+{% if package_filter is not None %}
+
+<h1 class="page-title row gap-small centered">Suggestions with package {{package_filter}}</h1>
+
+{% elif status_filter == "pending" %}
 
 <h1 class="page-title row gap-small centered">{% status_icon "pending" %}Automatically generated suggestions</h1>
 <div class="prose">
@@ -33,6 +37,9 @@
 {% endif %}
 
 <div class="column gap">
+  {% if suggestion_contexts|length == 0 %}
+  <p>No suggestions</p>
+  {% endif %}
   {% for suggestion_context in suggestion_contexts %}
     {% suggestion suggestion_context %}
   {% endfor %}
