@@ -29,9 +29,6 @@ class SuggestionListView(SuggestionBaseView, ABC):
             query_filters &= Q(status=self.status_filter)
         if self.package_filter is not None:
             query_filters &= Q(cached__payload__packages__has_key=self.package_filter)
-            # We exclude published suggestions from the search because we
-            # prefer to consider those as part of another concept: issues
-            query_filters &= ~Q(status=CVEDerivationClusterProposal.Status.PUBLISHED)
         suggestions = CVEDerivationClusterProposal.objects.filter(
             query_filters
         ).order_by("-updated_at", "-created_at")
@@ -98,3 +95,7 @@ class AcceptedSuggestionsByPackageView(SuggestionsByPackageView):
 
 class RejectedSuggestionsByPackageView(SuggestionsByPackageView):
     status_filter = CVEDerivationClusterProposal.Status.REJECTED
+
+
+class PublishedSuggestionsByPackageView(SuggestionsByPackageView):
+    status_filter = CVEDerivationClusterProposal.Status.PUBLISHED

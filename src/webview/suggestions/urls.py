@@ -4,6 +4,7 @@ from .views.detail import SuggestionDetailByCveView, SuggestionDetailView
 from .views.lists import (
     AcceptedSuggestionsByPackageView,
     AcceptedSuggestionsView,
+    PublishedSuggestionsByPackageView,
     PublishedSuggestionsView,
     RejectedSuggestionsByPackageView,
     RejectedSuggestionsView,
@@ -67,6 +68,11 @@ urlpatterns = [
         "by-package/<str:package_name>/dismissed",
         RejectedSuggestionsByPackageView.as_view(),
         name="dismissed_suggestions_by_package",
+    ),
+    path(
+        "by-package/<str:package_name>/published",
+        PublishedSuggestionsByPackageView.as_view(),
+        name="published_suggestions_by_package",
     ),
     # Status change operation
     path(
