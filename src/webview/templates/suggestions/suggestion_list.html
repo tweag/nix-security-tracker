@@ -6,7 +6,7 @@
 <div class="column gap">
   {% if package_filter is not None %}
 
-  <div>
+  <div id="search-panel">
     <h1 class="page-title row gap-small centered"><i class="icon-search"></i>Suggestions search</h1>
     <div class="column gap-small">
       <div class="rounded-box {% if suggestion_contexts|length == 0 %}hl-red{% else %}hl-green{% endif %} column gap-small">
