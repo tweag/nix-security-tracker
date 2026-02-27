@@ -7,7 +7,7 @@ from django.db.models.query import QuerySet
 from django.http import Http404
 from django.views.generic import ListView
 
-from shared.auth import can_publish_github_issue
+from shared.auth import can_edit_suggestion
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
 )
@@ -61,7 +61,7 @@ class SuggestionListView(ListView, ABC):
 
         # Convert suggestions to SuggestionContext objects for the current page
         suggestion_contexts = []
-        can_edit = can_publish_github_issue(self.request.user)
+        can_edit = can_edit_suggestion(self.request.user)
         # FIXME(@fricklerhandwerk): This is very slow (scales with number of events in the activity log), it should batch all related queries and do the wiring in Python.
         for suggestion in page_obj.object_list:
             suggestion_context = get_suggestion_context(suggestion, can_edit=can_edit)

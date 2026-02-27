@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import resolve
 from django.views.generic import TemplateView
 
-from shared.auth import can_publish_github_issue
+from shared.auth import can_edit_suggestion
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
 )
@@ -106,12 +106,13 @@ class SuggestionContentEditBaseView(SuggestionBaseView, ABC):
     def _check_access_rights_and_get_suggestion(
         self, request: HttpRequest, suggestion_id: int
     ) -> tuple[CVEDerivationClusterProposal, SuggestionContext]:
-        if not request.user or not can_publish_github_issue(request.user):
+        can_edit = can_edit_suggestion(self.request.user)
+
+        if not request.user or not can_edit:
             raise self.ForbiddenOperationError(HttpResponseForbidden())
 
         # Get suggestion context
         suggestion = fetch_suggestion(suggestion_id)
-        can_edit = can_publish_github_issue(self.request.user)
         suggestion_context = get_suggestion_context(suggestion, can_edit=can_edit)
 
         # Validate that the suggestion status allows package editing
