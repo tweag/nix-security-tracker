@@ -138,4 +138,8 @@ def test_exclusively_hosted_service_creates_rejected_proposal(
     assert result is True
     proposal = CVEDerivationClusterProposal.objects.get(cve=container.cve)
     assert proposal.status == CVEDerivationClusterProposal.Status.REJECTED
+    assert (
+        proposal.rejection_reason
+        == CVEDerivationClusterProposal.RejectionReason.EXCLUSIVELY_HOSTED_SERVICE
+    )
     assert proposal.derivations.count() == 0

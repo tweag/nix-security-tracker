@@ -113,6 +113,7 @@ def build_new_links(container: Container) -> bool:
         CVEDerivationClusterProposal.objects.create(
             cve=container.cve,
             status=CVEDerivationClusterProposal.Status.REJECTED,
+            rejection_reason=CVEDerivationClusterProposal.RejectionReason.EXCLUSIVELY_HOSTED_SERVICE,
         )
         return True
 
