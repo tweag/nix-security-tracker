@@ -76,6 +76,8 @@
         {% endif %}
       {% else %}
         <textarea
+          id="comment-{{ data.suggestion.pk }}"
+          hx-preserve
           class="rounded-box monospace highlight-nonempty"
           name="comment"
           maxlength="1000"
