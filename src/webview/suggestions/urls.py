@@ -1,5 +1,9 @@
 from django.urls import path
 
+from shared.models.linkage import (
+    CVEDerivationClusterProposal,
+)
+
 from .views.detail import SuggestionDetailByCveView, SuggestionDetailView
 from .views.lists import (
     SuggestionListView,
@@ -26,17 +30,23 @@ urlpatterns = [
     # Lists
     path(
         "untriaged/",
-        SuggestionListView.as_view(status_filter="pending"),
+        SuggestionListView.as_view(
+            status_filter=CVEDerivationClusterProposal.Status.PENDING
+        ),
         name="untriaged_suggestions",
     ),
     path(
         "accepted/",
-        SuggestionListView.as_view(status_filter="accepted"),
+        SuggestionListView.as_view(
+            status_filter=CVEDerivationClusterProposal.Status.ACCEPTED
+        ),
         name="accepted_suggestions",
     ),
     path(
         "dismissed/",
-        SuggestionListView.as_view(status_filter="rejected"),
+        SuggestionListView.as_view(
+            status_filter=CVEDerivationClusterProposal.Status.REJECTED
+        ),
         name="dismissed_suggestions",
     ),
     path(
