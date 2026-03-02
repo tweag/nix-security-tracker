@@ -53,7 +53,6 @@ in
       openssh.authorizedKeys.keyFiles = with keys; [
         fricklerhandwerk
         erethon
-        florentc
         security-tracker-gh-actions
       ];
       # We're using both keys and keyFiles here in order to keep some alignment
