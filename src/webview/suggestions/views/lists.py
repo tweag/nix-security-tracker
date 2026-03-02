@@ -20,7 +20,7 @@ class SuggestionListView(ListView, ABC):
 
     template_name = "suggestions/suggestion_list.html"
     paginate_by = 10
-    status_filter = None
+    status_filter: CVEDerivationClusterProposal.Status | None = None
     package_filter: str | None = None  # To be defined in concrete classes
 
     def get_queryset(self) -> QuerySet[CVEDerivationClusterProposal]:
