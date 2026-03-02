@@ -9,6 +9,16 @@ from shared.logs.events import (
 from shared.logs.fetchers import fetch_suggestion_events
 from shared.models.linkage import CVEDerivationClusterProposal
 
+# CVEs
+
+
+@dataclass
+class Reference:
+    url: str
+    name: str
+    tags: list[str]
+
+
 # Packages
 
 
@@ -85,6 +95,7 @@ class SuggestionContext:
         self.suggestion_stub_context: SuggestionStubContext | None = None
         self.update_package_list_context(can_edit=can_edit)
         self.update_maintainer_list_context(can_edit=can_edit)
+        self.update_references()
         # FIXME(@fricklerhandwerk): Constructor should take pre-fetched events in argument
         self.fetch_activity_log()
         self.error_message: str | None = None
@@ -165,6 +176,19 @@ class SuggestionContext:
                 self.suggestion.pk, maintainer_add_error_message
             ),
         )
+
+    def update_references(self) -> None:
+        refs: list[Reference] = []
+        for container in self.suggestion.cve.container.all():
+            for ref in container.references.all():
+                refs.append(
+                    Reference(
+                        url=ref.url,
+                        name=ref.name,
+                        tags=[tag for tag in ref.tags.all()],
+                    )
+                )
+        self.references = refs
 
     def fetch_activity_log(self) -> None:
         raw_events = fetch_suggestion_events(self.suggestion.pk)

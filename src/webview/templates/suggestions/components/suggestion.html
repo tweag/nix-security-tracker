@@ -47,6 +47,10 @@
       <p>{{ data.suggestion.cached.payload.description }}</p>
     </details>
 
+    {% if data.references %}
+      {% include "../../components/cve_references.html" with references=data.references %}
+    {% endif %}
+
     <div class="rounded-box column gap">
       <h2 class="heading dimmed">Affected products</h2>
       {% affected_products data.suggestion.cached.payload.affected_products %}

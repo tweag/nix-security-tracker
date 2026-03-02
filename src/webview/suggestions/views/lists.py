@@ -44,6 +44,7 @@ class SuggestionListView(ListView, ABC):
             CVEDerivationClusterProposal.objects.select_related(
                 "cached",
             )
+            .prefetch_related("cve__container__references__tags")
             .filter(query_filters)
             .order_by("-updated_at", "-created_at")
         )
