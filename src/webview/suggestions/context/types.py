@@ -78,9 +78,11 @@ class SuggestionContext:
         self,
         suggestion: CVEDerivationClusterProposal,
         can_edit: bool,
+        is_compact: bool,
     ) -> None:
         self.show_status: bool = True
         self.can_edit: bool = can_edit
+        self.is_compact: bool = is_compact
         self.suggestion: CVEDerivationClusterProposal = suggestion
         self.suggestion_stub_context: SuggestionStubContext | None = None
         self.update_package_list_context(can_edit=can_edit)
@@ -161,6 +163,12 @@ class SuggestionContext:
             can_edit=can_edit,
             suggestion_id=self.suggestion.pk,
             # FIXME(@fricklerhandwerk): It's really opaque what this is for.
+            # NOTE(@florentc): This is simply the context, meaning the data
+            # necessary to render the template, for the "add maintainer"
+            # widget. This follows the xxxxxx_context naming convention. The
+            # widget requires the suggestion id to point to the right action
+            # endpoint, and the optional error message to render next to it for
+            # feedback.
             maintainer_add_context=MaintainerAddContext(
                 self.suggestion.pk, maintainer_add_error_message
             ),

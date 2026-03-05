@@ -216,6 +216,10 @@
   width: 100%;
 }
 
+.justify-right {
+  justify-content: flex-end;
+}
+
 .spread {
   justify-content: space-between;
 }

@@ -21,10 +21,12 @@ def fetch_suggestion(suggestion_id: int) -> CVEDerivationClusterProposal:
 def get_suggestion_context(
     suggestion: CVEDerivationClusterProposal,
     can_edit: bool,
+    is_compact: bool = False,
 ) -> SuggestionContext:
     return SuggestionContext(
         suggestion=suggestion,
         can_edit=can_edit,
+        is_compact=is_compact,
     )
 
 

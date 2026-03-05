@@ -50,6 +50,7 @@ class PackageContext(TypedDict):
 
 class AffectedContext(TypedDict):
     affected: list[CachedSuggestion.AffectedProduct]
+    is_compact: bool
 
 
 class SuggestionActivityLog(TypedDict):
@@ -196,8 +197,12 @@ def nixpkgs_package(attribute_name: str, pdata: Package) -> PackageContext:
 @register.inclusion_tag("components/affected_products.html")
 def affected_products(
     affected: list[CachedSuggestion.AffectedProduct],
+    is_compact: bool = False,
 ) -> AffectedContext:
-    return {"affected": affected}
+    return {
+        "affected": affected,
+        "is_compact": is_compact,
+    }
 
 
 @register.inclusion_tag("components/suggestion_activity_log.html")
@@ -301,3 +306,17 @@ def gh_issues_url() -> str:
     labels = " ".join(f"label:{label!r}" for label in settings.GH_ISSUES_LABELS)
     query = f"is:issue state:open {labels}".strip()
     return f"{base}?{urlencode({'q': query})}"
+
+
+@register.simple_tag(takes_context=True)
+def toggle_param(context: Context, param_name: str, param_value: str = "") -> str:
+    """Toggle a query parameter while preserving others."""
+    request = context["request"]
+    params = request.GET.copy()
+
+    if param_name in params:
+        del params[param_name]
+    else:
+        params[param_name] = param_value
+
+    return f"?{params.urlencode()}"
