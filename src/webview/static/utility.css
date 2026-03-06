@@ -119,6 +119,7 @@
  * .condensed - Apply condensed font
  * .uppercase - Force uppercase
  * .dimmed - Dimmed gray text color
+ * .no-line-breaks - Prevent line breaks
  */
 
 .bold {
@@ -139,6 +140,10 @@
 
 .dimmed {
   color: var(--gray);
+}
+
+.no-line-breaks {
+  white-space: nowrap;
 }
 
 /* Layout
@@ -274,11 +279,19 @@
  *
  * .rounded-box - Bordered container with padding and rounded corners.
  *                Includes overflow: auto for locally scrollable content.
+ * .rounded-box-compact - Same with small padding (same as buttons) to be used for inline boxes next to buttons for instance.
  */
 
 .rounded-box {
   border: 1px solid var(--gray);
   padding: 1em;
+  border-radius: 0.4em;
+  overflow: auto;
+}
+
+.rounded-box-compact {
+  border: 1px solid var(--gray);
+  padding: 0.3em;
   border-radius: 0.4em;
   overflow: auto;
 }

@@ -30,6 +30,7 @@ class SuggestionStubContext:
     issue_link: str | None
     undo_status_target: str | None  # FIXME(@florentc): change to the real enum type
     show_affected_product: bool = False
+    is_compact: bool = False
 
 
 # Maintainers

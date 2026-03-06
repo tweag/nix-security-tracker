@@ -33,16 +33,21 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
         if not request.user or not can_edit:
             return HttpResponseForbidden()
 
-        # Get suggestion context
-        suggestion = fetch_suggestion(suggestion_id)
-        suggestion_context = get_suggestion_context(suggestion, can_edit=can_edit)
-
         # Get form data
         new_status = request.POST.get("new_status")
         new_comment = request.POST.get("comment", "").strip()
+        is_compact = (
+            request.POST.get("is_compact") == "true"
+        )  # To maintain compact/detailed during live reload
         undo_status_change = request.POST.get(
             "undo_status_change"
         )  # This is set if the status change comes from clicking "Undo"
+
+        # Get suggestion context
+        suggestion = fetch_suggestion(suggestion_id)
+        suggestion_context = get_suggestion_context(
+            suggestion, can_edit=can_edit, is_compact=is_compact
+        )
 
         # Validate status change
         if not new_status:
@@ -94,6 +99,8 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
                     return self._handle_error(
                         request, suggestion_context, "Unable to publish this suggestion"
                     )
+            elif new_status == "pending":
+                suggestion.status = CVEDerivationClusterProposal.Status.PENDING
 
         # Update comment if provided, unless this is an "undo" status change in which no new comment is expected
         if new_comment and not undo_status_change:
@@ -128,6 +135,7 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
                     suggestion,
                     issue_link=github_issue_link,
                     undo_status_target=undo_status_target,
+                    is_compact=is_compact,
                 )
         elif new_status == "published":
             # NOTE(@florentc): This treats the case where we are in detail view
