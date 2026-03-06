@@ -60,7 +60,8 @@
       {% endif %}
 
       {% if data.references %}
-        {% include "../../components/cve_references.html" with references=data.references %}
+        {% include "../../components/cve_references.html" with references=data.references is_compact=data.is_compact %}
+        {% if data.is_compact %}<hr class="divider"></hr>{% endif %}
       {% endif %}
 
       {% if data.is_compact %}
