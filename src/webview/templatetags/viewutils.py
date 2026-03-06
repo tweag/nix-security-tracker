@@ -1,5 +1,4 @@
 import datetime
-import logging
 from collections.abc import ItemsView
 from typing import Any, TypedDict
 from urllib.parse import quote, urlencode
@@ -10,7 +9,7 @@ from django import template
 from django.conf import settings
 from django.template.context import Context
 
-from shared.listeners.cache_suggestions import CachedSuggestion, parse_drv_name
+from shared.listeners.cache_suggestions import CachedSuggestion
 from shared.logs.batches import FoldedEventType
 from shared.models.issue import NixpkgsIssue
 from shared.models.linkage import (
@@ -27,8 +26,6 @@ from webview.suggestions.context.types import (
 )
 
 register = template.Library()
-
-logger = logging.getLogger(__name__)
 
 
 @register.filter
@@ -80,18 +77,6 @@ class PackageSubscriptionsContext(TypedDict):
 class AutoSubscribeContext(TypedDict):
     auto_subscribe_enabled: bool
     error_message: str | None
-
-
-@register.filter
-def getitem(dictionary: dict, key: str) -> Any | None:
-    return dictionary.get(key)
-
-
-@register.filter
-def getdrvname(drv: dict) -> str:
-    hash = drv["drv_path"].split("-")[0].split("/")[-1]
-    name = drv["drv_name"]
-    return f"{name} {hash[:8]}"
 
 
 @register.inclusion_tag("subscriptions/components/packages.html")
@@ -162,12 +147,6 @@ def iso(date: datetime.datetime) -> str:
     if isinstance(date, str):
         date = datetime.datetime.fromisoformat(date)
     return date.replace(microsecond=0).isoformat()
-
-
-@register.filter
-def versioned_package_name(package_entry: dict[str, Any]) -> str:
-    _, version = parse_drv_name(package_entry["name"])
-    return f"pkgs.{package_entry['attribute']} {version}"
 
 
 @register.inclusion_tag("components/issue.html", takes_context=True)
