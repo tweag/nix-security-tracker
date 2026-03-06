@@ -94,6 +94,8 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
                     return self._handle_error(
                         request, suggestion_context, "Unable to publish this suggestion"
                     )
+            elif new_status == "pending":
+                suggestion.status = CVEDerivationClusterProposal.Status.PENDING
 
         # Update comment if provided, unless this is an "undo" status change in which no new comment is expected
         if new_comment and not undo_status_change:
