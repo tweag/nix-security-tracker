@@ -24,24 +24,6 @@
   margin: 1em 0;
 }
 
-.small {
-  font-size: 0.75rem;
-}
-
-.tag {
-  border: solid 2px var(--background);
-  border-radius: 0.4em;
-  padding: 0.2rem 0.4rem;
-  outline-width: 2px;
-  word-break: normal;
-  display: inline-block;
-}
-
-.fill-gray {
-  color: var(--background);
-  background-color: var(--gray);
-}
-
 /* Buttons
  *
  * .btn - Base button style to be used on every standard button
@@ -110,6 +92,27 @@
   outline-style: solid;
 }
 
+/* Tags
+ *
+ * .tag - Base tag style to be used on every tag
+ * .tag-gray - Gray tag variant
+ *
+ * Usage: Combine .tag with one of the color variants
+ * Example: <span class="tag tag-gray">Keyword</button>
+ */
+
+.tag {
+  border-radius: 1000px;
+  padding: 0em 0.4em;
+  word-break: normal;
+}
+
+.tag-gray {
+  color: black;
+  border: 1px solid var(--gray);
+  background-color: var(--light-gray);
+}
+
 /* Titles
  *
  * .page-title - Only for the main title of a page
@@ -137,6 +140,7 @@
  * .condensed - Apply condensed font
  * .uppercase - Force uppercase
  * .dimmed - Dimmed gray text color
+ * .no-line-breaks - Prevent line breaks
  */
 
 .bold {
@@ -157,6 +161,10 @@
 
 .dimmed {
   color: var(--gray);
+}
+
+.no-line-breaks {
+  white-space: nowrap;
 }
 
 /* Layout
@@ -183,12 +191,17 @@
  * .gap-small - Small gap between items
  * .dividers - Display a separation line between items (handles gaps, don't use .gap or .gap-small)
  *
+ * Horizontal separator line:
+ * .divider - On an <hr> element: display a horizontal line to separate content.
+ *            To be used in a column + (small-)gap container.
+ *
  * Sizing:
  * .full-width - Force to use all available space (width: 100%)
  * .grow - Make an item grow in a container
  * .spread - Force items to be spread across available space
  *           For instance 2 elements on a .row .spread .full-width will be respectively on the far left and far right.
  * .wrap - Allow items to wrap for responsivity. This is how responsivity is to be implemented rather than through breakpoints.
+ *
  */
 
 .row {
@@ -234,6 +247,10 @@
   width: 100%;
 }
 
+.justify-right {
+  justify-content: flex-end;
+}
+
 .spread {
   justify-content: space-between;
 }
@@ -270,6 +287,13 @@
   border-bottom: none;
 }
 
+.divider {
+  width: 100%;
+  height: 1px;
+  background-color: var(--gray);
+  border: none;
+}
+
 /* Size */
 
 .w-12 {
@@ -288,11 +312,19 @@
  *
  * .rounded-box - Bordered container with padding and rounded corners.
  *                Includes overflow: auto for locally scrollable content.
+ * .rounded-box-compact - Same with small padding (same as buttons) to be used for inline boxes next to buttons for instance.
  */
 
 .rounded-box {
   border: 1px solid var(--gray);
   padding: 1em;
+  border-radius: 0.4em;
+  overflow: auto;
+}
+
+.rounded-box-compact {
+  border: 1px solid var(--gray);
+  padding: 0.3em;
   border-radius: 0.4em;
   overflow: auto;
 }
