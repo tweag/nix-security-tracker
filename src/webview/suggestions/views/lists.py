@@ -20,7 +20,7 @@ class SuggestionListView(ListView, ABC):
 
     template_name = "suggestions/suggestion_list.html"
     paginate_by = 10
-    status_filter = None
+    status_filter: CVEDerivationClusterProposal.Status | None = None
     package_filter: str | None = None  # To be defined in concrete classes
 
     @property
@@ -53,6 +53,7 @@ class SuggestionListView(ListView, ABC):
             CVEDerivationClusterProposal.objects.select_related(
                 "cached",
             )
+            .prefetch_related("cve__container__references__tags")
             .filter(query_filters)
             .order_by("-updated_at", "-created_at")
         )

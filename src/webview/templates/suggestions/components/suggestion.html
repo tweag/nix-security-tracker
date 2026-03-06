@@ -59,6 +59,10 @@
       </details>
       {% endif %}
 
+      {% if data.references %}
+        {% include "../../components/cve_references.html" with references=data.references %}
+      {% endif %}
+
       {% if data.is_compact %}
         {% affected_products data.suggestion.cached.payload.affected_products is_compact=True %}
       {% else %}
