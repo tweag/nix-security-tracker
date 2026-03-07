@@ -100,7 +100,7 @@ class SuggestionContentEditBaseView(SuggestionBaseView, ABC):
         """Raised when access is denied for content editing."""
 
         def __init__(self, response: HttpResponse) -> None:
-            self.error = response
+            self.response = response
 
     # FIXME(@fricklerhandwerk): This conflates access control with database queries and bypasses the standard Django mechanism of overriding the respective view methods.
     # The main problem here is that it results in very inefficient queries, as we can't express fetching related data in one go.
