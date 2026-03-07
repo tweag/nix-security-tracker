@@ -1,7 +1,7 @@
 import logging
 import re
 import typing
-from typing import Any, cast
+from typing import Any
 
 from django.core.validators import RegexValidator
 from django.db.models import Prefetch
@@ -15,7 +15,6 @@ if typing.TYPE_CHECKING:
 
 from django.db.models.manager import BaseManager
 from django.db.models.query import QuerySet
-from django.shortcuts import get_object_or_404
 from django.views.generic import DetailView, ListView, TemplateView
 
 from shared.models import (
@@ -35,6 +34,8 @@ class HomeView(TemplateView):
 class NixpkgsIssueView(DetailView):
     template_name = "issue_detail.html"
     model = NixpkgsIssue
+    slug_field = "code"
+    slug_url_kwarg = "code"
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -44,15 +45,19 @@ class NixpkgsIssueView(DetailView):
         else:
             raise TypeError("Expected RegexValidator for CveRecord.cve_id")
 
-    def get_object(self, queryset: QuerySet | None = None) -> NixpkgsIssue:
-        issue = cast(
-            NixpkgsIssue, get_object_or_404(self.model, code=self.kwargs.get("code"))
+    def get_queryset(self) -> QuerySet[NixpkgsIssue]:
+        return (
+            super()
+            .get_queryset()
+            .prefetch_related(
+                "suggestion__cached",
+                "suggestion__cve__container__references__tags",
+            )
         )
-        return issue
 
     def get_context_data(self, **kwargs: Any) -> Any:
         context = super().get_context_data(**kwargs)
-        issue = self.get_object()
+        issue = self.object
 
         # Fetch suggestion_context
         context["suggestion_context"] = get_suggestion_context(
@@ -80,6 +85,8 @@ class NixpkgsIssueListView(ListView):
         issues = (
             NixpkgsIssue.objects.all()
             .prefetch_related(
+                "suggestion__cached",
+                "suggestion__cve__container__references__tags",
                 Prefetch(
                     "events",
                     queryset=NixpkgsEvent.objects.filter(
@@ -101,6 +108,7 @@ class NixpkgsIssueListView(ListView):
         for issue in context["object_list"]:
             # FIXME(@fricklerhandwerk): We're assigning an object field that doesn't exist.
             # The horrible thing is that it still works, because somewhere in the template processing it does the equivalent of `object.__dict__` and there the key shows up again.
+            # FIXME(@fricklerhandwerk): That call runs queries as a side effect, but the data should be prefetched.
             issue.suggestion_context = get_suggestion_context(
                 issue.suggestion, can_edit=False
             )
