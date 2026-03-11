@@ -10,7 +10,7 @@
   {% if data.notification.message %}
     {{ data.notification.message|linebreaks }}
   {% elif data.notification.suggestion %}
-    {% include  "../../suggestions/components/suggestion_stub.html" with data=data.notification %}
+    {% suggestion_stub data=data.suggestion_stub_context %}
     <div class="rounded-box column">
       <h2 class="heading dimmed">Affected products</h2>
       {% affected_products data.notification.suggestion.cached.payload.affected_products %}

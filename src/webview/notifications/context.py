@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from webview.models import Notification, Profile
+from webview.suggestions.context.types import SuggestionStubContext
 
 
 @dataclass
@@ -10,6 +11,7 @@ class NotificationContext:
         int | None
     )  # For no-js compatibility in multi-page notification center
     notification: Notification
+    suggestion_stub_context: SuggestionStubContext
     matching_subscribed_packages: dict
     matching_maintained_packages: dict
 
@@ -23,6 +25,9 @@ class NotificationContext:
         self.notification = notification
         self.new_unread_count = new_unread_count
         self.current_page = current_page
+        self.suggestion_stub_context = SuggestionStubContext(
+            suggestion=notification.suggestion, issue_link=None, undo_status_target=None
+        )
         self.matching_subscribed_packages = self._get_matching_subscribed_packages(
             user_profile
         )

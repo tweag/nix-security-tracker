@@ -230,16 +230,12 @@ def suggestion(
     }
 
 
-@register.inclusion_tag(
-    "suggestions/components/suggestion_stub.html", takes_context=True
-)
+@register.inclusion_tag("suggestions/components/suggestion_stub.html")
 def suggestion_stub(
-    context: Context,
     data: SuggestionStubContext,
 ) -> dict:
     return {
         "data": data,
-        "user": context["user"],
     }
 
 
