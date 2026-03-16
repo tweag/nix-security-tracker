@@ -359,14 +359,35 @@ def make_maintainer_notification(
 
 @pytest.fixture
 def make_package_notification(
-    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
     make_maintainer_from_user: Callable[..., NixMaintainer],
     make_drv: Callable[..., NixDerivation],
 ) -> Callable[..., list[Notification]]:
     def wrapped(
         drv: NixDerivation,
     ) -> list[Notification]:
-        suggestion = make_suggestion(drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH})
+        suggestion = make_cached_suggestion(
+            drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH}
+        )
         return create_package_subscription_notifications(suggestion)
+
+    return wrapped
+
+
+@pytest.fixture
+def make_package_subscription(
+    user: User,
+    drv: NixDerivation,
+) -> Callable[..., User]:
+    def wrapped(
+        user: User = user,
+        package_name: str = drv.attribute,
+    ) -> User:
+        profile = user.profile
+        if package_name not in profile.package_subscriptions:
+            profile.package_subscriptions.append(package_name)
+            profile.save(update_fields=["package_subscriptions"])
+
+        return user
 
     return wrapped

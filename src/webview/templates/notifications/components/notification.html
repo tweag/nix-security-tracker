@@ -16,7 +16,7 @@
       {% affected_products data.notification.suggestion.cached.payload.affected_products %}
     </div>
     {% if data.matching_subscribed_packages %}
-      <div class="rounded-box column">
+      <div class="rounded-box column" id="notification-{{ data.notification.id }}-matching-subscribed-packages">
         <h2 class="heading dimmed">Matching packages you follow</h2>
         <div class="column dividers">
           {% for attribute, pdata in data.matching_subscribed_packages.items %}
@@ -26,7 +26,7 @@
       </div>
     {% endif %}
     {% if data.matching_maintained_packages %}
-      <div class="rounded-box column">
+      <div class="rounded-box column" id="notification-{{ data.notification.id }}-matching-maintained-packages">
         <h2 class="heading dimmed">Matching packages you maintain</h2>
         <div class="column dividers">
           {% for attribute, pdata in data.matching_maintained_packages.items %}
