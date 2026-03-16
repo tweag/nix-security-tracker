@@ -230,6 +230,27 @@ manage migrate
 
 This is the default Django workflow.
 
+## `pgpubsub` listener registration pattern
+
+The application uses [`django-pgpubsub`](https://github.com/PaulGilmartin/django-pgpubsub) to react to database changes asynchronously.
+Listeners are defined as functions decorated with `@pgpubsub.post_insert_listener`, `@pgpubsub.post_update_listener` etc., and are primarily located in the [`src/shared/listeners/`](src/shared/listeners/) directory.
+
+To ensure your listener is proactively registered when the Django application starts, its containing module must be imported.
+We use the following pattern:
+
+1. Create or edit a listener module in [`src/shared/listeners/`](src/shared/listeners/) (E.g., `src/shared/listeners/my_new_listener.py`).
+2. Import the module inside [`src/shared/listeners/__init__.py`](src/shared/listeners/__init__.py) so it's loaded as part of the package:
+
+   ```python
+   # inside src/shared/listeners/__init__.py
+   import shared.listeners.my_new_listener  # noqa
+   ```
+
+3. [`src/shared/apps.py`](src/shared/apps.py) triggers these imports in its `ready()` method by importing `shared.listeners`, registering all listeners upon app initialization.
+
+> [!WARNING]
+> If you create a new listener module but forget to add its import to [`src/shared/listeners/__init__.py`](src/shared/listeners/__init__.py), your listener will fail to run silently!
+
 ## Manual ingestion
 
 ### CVEs
