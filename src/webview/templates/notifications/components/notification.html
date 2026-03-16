@@ -35,6 +35,13 @@
         </div>
       </div>
     {% endif %}
+    {% if not data.matching_maintained_packages and not data.matching_subscribed_packages %}
+    <div class="rounded-box {% if not data.notification.is_read %}hl-red{% endif %} prose">
+        <h2 class="heading">This notification may be obsolete</h2>
+        <p>It is about a suggestion that no longer matches packages you are subscribed to or maintain.</p>
+        <p>The suggestion was initially matched to packages you either follow or maintain but at some point somebody set these packages as irrelevant. You may remove this notification directly or refer to the "Ignored packages" section of <a href="{% url 'webview:suggestion:detail' suggestion_id=data.notification.suggestion.pk %}">the suggestion</a> if you want to double check.</p>
+      </div>
+    {% endif %}
   {% endif %}
   <form method="post" action="{% url 'webview:notifications:toggle_read' data.notification.id %}" class="row-reverse" hx-indicator="find button">
     {% csrf_token %}
