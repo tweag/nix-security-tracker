@@ -15,7 +15,7 @@ from shared.models.issue import NixpkgsIssue
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
 )
-from webview.models import Notification
+from webview.notifications.context import NotificationContext
 from webview.suggestions.context.types import (
     MaintainerAddContext,
     MaintainerContext,
@@ -54,14 +54,6 @@ class SuggestionActivityLog(TypedDict):
     suggestion: CVEDerivationClusterProposal
     activity_log: list[FoldedEventType]
     oob_update: bool
-
-
-class NotificationContext(TypedDict):
-    notification: Notification
-    current_page: (
-        int | None
-    )  # For no-js compatibility in multi-page notification center
-    new_unread_count: int | None  # For oob update of unread notifications counter
 
 
 class NotificationsBadgeContext(TypedDict):
@@ -103,14 +95,10 @@ def auto_subscribe_toggle(
 
 @register.inclusion_tag("notifications/components/notification.html")
 def notification(
-    notification: Notification,
-    current_page: int | None = None,
-    new_unread_count: int | None = None,
-) -> NotificationContext:
+    data: NotificationContext,
+) -> dict:
     return {
-        "notification": notification,
-        "current_page": current_page,
-        "new_unread_count": new_unread_count,
+        "data": data,
     }
 
 
@@ -221,16 +209,12 @@ def suggestion(
     }
 
 
-@register.inclusion_tag(
-    "suggestions/components/suggestion_stub.html", takes_context=True
-)
+@register.inclusion_tag("suggestions/components/suggestion_stub.html")
 def suggestion_stub(
-    context: Context,
     data: SuggestionStubContext,
 ) -> dict:
     return {
         "data": data,
-        "user": context["user"],
     }
 
 
