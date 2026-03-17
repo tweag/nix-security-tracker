@@ -65,7 +65,6 @@ class ToggleNotificationReadView(LoginRequiredMixin, TemplateView):
 
         if request.headers.get("HX-Request"):
             return self.render_to_response(
-                # {"notification": notification, "new_unread_count": new_unread_count}
                 {
                     "data": NotificationContext(
                         notification=notification,

@@ -372,22 +372,3 @@ def make_package_notification(
         return create_package_subscription_notifications(suggestion)
 
     return wrapped
-
-
-@pytest.fixture
-def make_package_subscription(
-    user: User,
-    drv: NixDerivation,
-) -> Callable[..., User]:
-    def wrapped(
-        user: User = user,
-        package_name: str = drv.attribute,
-    ) -> User:
-        profile = user.profile
-        if package_name not in profile.package_subscriptions:
-            profile.package_subscriptions.append(package_name)
-            profile.save(update_fields=["package_subscriptions"])
-
-        return user
-
-    return wrapped

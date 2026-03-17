@@ -73,7 +73,7 @@ class SuggestionNotification(Notification):
         # We should then also show (maybe in the equivalent of the text message) what state that match is now in (e.g. ingored, ideally for which reason).
         # Maybe even garbage-collect the notification if it got obsolete and wasn't yet served or otherwise exposed to the user.
         # FIXME(@fricklerhandwerk): User-facing text should be generated from structured data in templates.
-        return f"{self.suggestion.cve.cve_id} was automatically matched to packages of interest for you"
+        return f"{self.suggestion.cve.cve_id} was automatically matched to packages you subscribed to"
 
 
 class Profile(models.Model):
@@ -131,6 +131,18 @@ class Profile(models.Model):
             read.delete()
 
         return count
+
+    def subscribe_to_package(self, package: str) -> None:
+        """Add a package to the subscribed packages."""
+        if package not in self.package_subscriptions:
+            self.package_subscriptions.append(package)
+            self.package_subscriptions.sort()
+            self.save(update_fields=["package_subscriptions"])
+
+    def unsubscribe_from_package(self, package: str) -> None:
+        """Remove a package from the subscribed packages."""
+        self.package_subscriptions.remove(package)
+        self.save(update_fields=["package_subscriptions"])
 
 
 @receiver(post_save, sender=User)

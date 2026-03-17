@@ -77,8 +77,8 @@ class NotificationContext:
         # Filter packages where the user is a maintainer
         # NOTE(@florentc): We populate this list regardless of whether the user
         # has enabled "notify about packages I maintain". In case the user is
-        # notified about another package, it is still relevant info to show
-        # them they also maintain some related packages.
+        # notified about a package they otherwise subscribe to, it is still
+        # relevant to show them they also maintain some related packages.
         matching_packages = {
             attr: pdata
             for attr, pdata in suggestion_packages.items()

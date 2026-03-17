@@ -7,7 +7,6 @@ from django.urls import reverse
 from playwright.sync_api import Page, expect
 from pytest_django.live_server_helper import LiveServer
 
-from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.nix_evaluation import NixDerivation, NixMaintainer
 from webview.models import Notification
 
@@ -227,7 +226,6 @@ def test_matching_maintained_packages_displayed(
     make_drv: Callable[..., NixDerivation],
     make_maintainer_from_user: Callable[..., NixMaintainer],
     make_package_notification: Callable[..., list[Notification]],
-    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
 ) -> None:
     """
     Check that notifications shows matching packages the user maintains
@@ -249,12 +247,11 @@ def test_matching_subscribed_packages_displayed(
     as_staff: Page,
     drv: NixDerivation,
     make_package_notification: Callable[..., list[Notification]],
-    make_package_subscription: Callable[..., User],
 ) -> None:
     """
     Check that notifications shows matching packages the user has subscribed to
     """
-    make_package_subscription(user=staff, package_name=drv.attribute)
+    staff.profile.subscribe_to_package(drv.attribute)
     db_notification, *_ = make_package_notification(drv)
 
     as_staff.goto(live_server.url + reverse("webview:notifications:center"))
