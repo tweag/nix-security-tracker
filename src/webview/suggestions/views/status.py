@@ -4,6 +4,7 @@ from django.urls import reverse
 
 from shared.auth import can_edit_suggestion
 from shared.github import create_gh_issue
+from shared.logs.fetchers import fetch_suggestion_events
 from shared.models import (
     NixpkgsIssue,
 )
@@ -45,8 +46,12 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
 
         # Get suggestion context
         suggestion = fetch_suggestion(suggestion_id)
+        events = fetch_suggestion_events([suggestion.pk])
         suggestion_context = get_suggestion_context(
-            suggestion, can_edit=can_edit, is_compact=is_compact
+            suggestion,
+            can_edit=can_edit,
+            pre_fetched_events=events[suggestion.pk],
+            is_compact=is_compact,
         )
 
         # Validate status change

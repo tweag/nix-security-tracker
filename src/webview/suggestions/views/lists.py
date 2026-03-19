@@ -8,6 +8,7 @@ from django.http import Http404
 from django.views.generic import ListView
 
 from shared.auth import can_edit_suggestion
+from shared.logs.fetchers import fetch_suggestion_events
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
 )
@@ -73,10 +74,14 @@ class SuggestionListView(ListView, ABC):
         suggestion_contexts = []
         can_edit = can_edit_suggestion(self.request.user)
         is_compact = self.is_compact
-        # FIXME(@fricklerhandwerk): This is very slow (scales with number of events in the activity log), it should batch all related queries and do the wiring in Python.
+        suggestion_ids = [s.pk for s in page_obj.object_list]
+        events_by_suggestion = fetch_suggestion_events(suggestion_ids)
         for suggestion in page_obj.object_list:
             suggestion_context = get_suggestion_context(
-                suggestion, can_edit=can_edit, is_compact=is_compact
+                suggestion,
+                can_edit=can_edit,
+                is_compact=is_compact,
+                pre_fetched_events=events_by_suggestion[suggestion.pk],
             )
             suggestion_context.show_status = (
                 self.status_filter

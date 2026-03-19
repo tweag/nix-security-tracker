@@ -8,6 +8,8 @@ from django.urls import resolve
 from django.views.generic import TemplateView
 
 from shared.auth import can_edit_suggestion
+from shared.logs.events import RawEventType
+from shared.logs.fetchers import fetch_suggestion_events
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
 )
@@ -21,11 +23,13 @@ def fetch_suggestion(suggestion_id: int) -> CVEDerivationClusterProposal:
 def get_suggestion_context(
     suggestion: CVEDerivationClusterProposal,
     can_edit: bool,
+    pre_fetched_events: list[RawEventType],
     is_compact: bool = False,
 ) -> SuggestionContext:
     return SuggestionContext(
         suggestion=suggestion,
         can_edit=can_edit,
+        pre_fetched_events=pre_fetched_events,
         is_compact=is_compact,
     )
 
@@ -115,7 +119,10 @@ class SuggestionContentEditBaseView(SuggestionBaseView, ABC):
 
         # Get suggestion context
         suggestion = fetch_suggestion(suggestion_id)
-        suggestion_context = get_suggestion_context(suggestion, can_edit=can_edit)
+        events = fetch_suggestion_events([suggestion.pk])
+        suggestion_context = get_suggestion_context(
+            suggestion, can_edit=can_edit, pre_fetched_events=events[suggestion.pk]
+        )
 
         # Validate that the suggestion status allows package editing
         if not suggestion.is_editable:
