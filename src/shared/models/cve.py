@@ -189,7 +189,6 @@ class Metric(models.Model):
     scope = models.CharField(
         max_length=text_length(Scopes), choices=Scopes.choices, null=True, default=None
     )
-    # FIXME: add integrity on between 0.0 and 10.0
     base_score = models.FloatField(null=True, default=None)
     vector_string = models.CharField(max_length=128, null=True, default=None)
 
@@ -241,6 +240,14 @@ class Metric(models.Model):
         null=True,
         default=None,
     )
+
+    class Meta:  # type: ignore[override]
+        constraints = [
+            models.CheckConstraint(
+                check=Q(base_score__gte=0.0, base_score__lte=10.0),
+                name="metric_base_score_range",
+            )
+        ]
 
 
 class Event(models.Model):
