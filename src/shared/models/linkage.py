@@ -33,6 +33,10 @@ class CVEDerivationClusterProposal(TimeStampMixin):
             "exclusively_hosted_service",
             _("exclusively hosted service"),
         )
+        NOT_IN_NIXPKGS = (
+            "not_in_nixpkgs",
+            _("not in nixpkgs"),
+        )
 
     cached: "shared.models.cached.CachedSuggestions"
 
@@ -58,12 +62,14 @@ class CVEDerivationClusterProposal(TimeStampMixin):
         ),
     )
 
+    # Absence of rejection reason either means the suggestion is not is REJECTED status,
+    # or that the rejection reason is provided in the free form comment section (implying it's non empty)
     rejection_reason = models.CharField(
         max_length=126,
         choices=RejectionReason.choices,
         null=True,
         blank=True,
-        help_text=_("Machine-generated reason for automatic rejection"),
+        help_text=_("Reason for rejection (automatic or manual)"),
     )
 
     @property
