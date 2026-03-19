@@ -166,6 +166,12 @@ Assuming you have a local checkout of this repository at `~/src/nix-security-tra
 }
 ```
 
+To replicate this on a traditional Unix-like system:
+
+- Inspect the [local database configuration](./nix/dev-setup.nix)
+- Read the documentation on the respective module options for the general idea, e.g. [`services.postgresql.ensureDatabases`](https://search.nixos.org/options?query=postgresql.ensureDatabases)
+- Search the linked module source for the option names for implementation details, e.g. [`postgresql.nix`](https://github.com/NixOS/nixpkgs/blob/master/nixos/modules/services/databases/postgresql.nix)
+
 ### Start the service
 
 The service is comprised of the Django server and workers for ingesting CVEs and derivations.
@@ -176,6 +182,8 @@ Run everything with:
 ```bash
 hivemind
 ```
+
+<!-- FIXME(@fricklerhandwerk): Add instructions for manually obtaining CVEs and derivations. -->
 
 ### Resetting the database
 
