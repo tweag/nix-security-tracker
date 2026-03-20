@@ -83,18 +83,11 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
                         suggestion_context,
                         "You must provide a dismissal comment",
                     )
-            elif (
-                rejection_reason
-                == CVEDerivationClusterProposal.RejectionReason.EXCLUSIVELY_HOSTED_SERVICE
-            ):
-                suggestion.rejection_reason = CVEDerivationClusterProposal.RejectionReason.EXCLUSIVELY_HOSTED_SERVICE
-            elif (
-                rejection_reason
-                == CVEDerivationClusterProposal.RejectionReason.NOT_IN_NIXPKGS
-            ):
-                suggestion.rejection_reason = (
-                    CVEDerivationClusterProposal.RejectionReason.NOT_IN_NIXPKGS
-                )
+            elif rejection_reason in [
+                CVEDerivationClusterProposal.RejectionReason.EXCLUSIVELY_HOSTED_SERVICE,
+                CVEDerivationClusterProposal.RejectionReason.NOT_IN_NIXPKGS,
+            ]:
+                suggestion.rejection_reason = rejection_reason
             else:
                 return self._handle_error(
                     request, suggestion_context, "Invalid dismissal reason"

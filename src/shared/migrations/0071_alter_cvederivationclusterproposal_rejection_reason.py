@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='cvederivationclusterproposal',
             name='rejection_reason',
-            field=models.CharField(blank=True, choices=[('exclusively_hosted_service', 'exclusively hosted service'), ('not_in_nixpkgs', 'not in nixpkgs')], help_text='Reason for rejection (automatic or manual)', max_length=126, null=True),
+            field=models.CharField(blank=True, choices=[('exclusively_hosted_service', 'exclusively hosted service'), ('not_in_nixpkgs', 'not in Nixpkgs')], help_text='Reason for rejection (automatic or manual)', max_length=126, null=True),
         ),
     ]

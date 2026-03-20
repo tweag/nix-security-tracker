@@ -38,7 +38,7 @@ class CVEDerivationClusterProposal(TimeStampMixin):
         )
         NOT_IN_NIXPKGS = (
             "not_in_nixpkgs",
-            _("not in nixpkgs"),
+            _("not in Nixpkgs"),
         )
 
     cached: "shared.models.cached.CachedSuggestions"
