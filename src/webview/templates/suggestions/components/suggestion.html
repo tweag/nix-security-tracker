@@ -102,16 +102,7 @@
       {% if data.is_compact and data.can_edit and data.suggestion.status != "published" %}
         <div class="row gap-small centered">
           {% if data.suggestion.status == "pending" or data.suggestion.status == "accepted" %}
-            <div class="row centered">
-              <button type="submit" name="new_status" value="rejected" class="status-change-button btn btn-red row gap-small centered">
-                {% status_icon "rejected" %}
-                Dismiss
-              </button>
-              <select name="rejection_reason" class="rounded-box-compact">
-                <option value="">With comment</option>
-                <option value="not_in_nixpkgs">Not in nixpkgs</option>
-              </select>
-            </div>
+          {% include "./dismiss_button.html" %}
           {% endif %}
           
           <textarea
@@ -160,16 +151,7 @@
                 {% status_icon "accepted" %}
                 Accept
               </button>
-              <div class="row gap-small centered">
-                <button type="submit" name="new_status" value="rejected" class="status-change-button btn btn-red row gap-small centered">
-                  {% status_icon "rejected" %}
-                  Dismiss
-                </button>
-                <select name="rejection_reason" class="rounded-box-compact">
-                  <option value="">With comment</option>
-                  <option value="not_in_nixpkgs">Not in nixpkgs</option>
-                </select>
-              </div>
+              {% include "./dismiss_button.html" %}
             {% elif data.suggestion.status == "rejected" %}
               <button type="submit" name="new_status" value="accepted" class="status-change-button btn btn-green row gap-small centered">
                 {% status_icon "accepted" %}
@@ -180,16 +162,7 @@
                 {% status_icon "published" %}
                 Publish issue
               </button>
-              <div class="row gap-small centered">
-                <button type="submit" name="new_status" value="rejected" class="status-change-button btn btn-red row gap-small centered">
-                  {% status_icon "rejected" %}
-                  Dismiss
-                </button>
-                <select name="rejection_reason" class="rounded-box-compact">
-                  <option value="">With comment</option>
-                  <option value="not_in_nixpkgs">Not in nixpkgs</option>
-                </select>
-              </div>
+              {% include "./dismiss_button.html" %}
             {% endif %}
           </div>
         {% endif %}
