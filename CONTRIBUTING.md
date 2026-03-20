@@ -169,7 +169,7 @@ Assuming you have a local checkout of this repository at `~/src/nix-security-tra
 ### Start the service
 
 The service is comprised of the Django server and workers for ingesting CVEs and derivations.
-What needs to be run is defined in the [`Procfile`](../Procfile) managed by [hivemind](https://github.com/DarthSim/hivemind).
+What needs to be run is defined in the [`Procfile`](./Procfile) managed by [hivemind](https://github.com/DarthSim/hivemind).
 
 Run everything with:
 
