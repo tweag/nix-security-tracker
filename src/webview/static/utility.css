@@ -108,7 +108,7 @@
  * Usage: Use join with join-items children which have utility classes you would have used normally
  * Advice: Use rounded-box-compact on text inputs and such
  * Example:
- * <div class="row centered join join-green">
+ * <div class="row join join-green">
  *   <input type="text" name="package_name" class="rounded-box-compact join-item">
  *   <button type="submit" class="btn btn-green join-item">Subscribe</button>
  * </div>
@@ -144,18 +144,19 @@
 
 .join > .btn.htmx-request {
   animation: none;
-  outline-style: none;
+  outline-width: 0;
 }
 
 .join > .btn.htmx-request:hover {
-  outline-style: none;
+  outline-width: 0;
 }
 
 .join > .join-item {
+  outline: none;
   border-radius: 0;
 }
 
-.join > .join-item:focus {
+.join > :not(.btn) .join-item:focus {
   outline: none;
   border: 1px solid;
 }

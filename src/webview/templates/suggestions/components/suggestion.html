@@ -145,7 +145,7 @@
         {% endif %}
 
         {% if data.can_edit and data.suggestion.status != "published" %}
-          <div class="row-reverse spread">
+          <div class="row-reverse centered spread">
             {% if data.suggestion.status == "pending" %}
               <button type="submit" name="new_status" value="accepted" class="status-change-button btn btn-green row gap-small centered">
                 {% status_icon "accepted" %}
