@@ -16,7 +16,10 @@ def text_length(choices: type[models.TextChoices]) -> int:
     return max(map(len, choices.values))
 
 
-@pghistory.track(fields=["status"])
+@pghistory.track(
+    fields=["status", "rejection_reason"],
+    model_name="CVEDerivationClusterProposalStatusEvent",
+)
 class CVEDerivationClusterProposal(TimeStampMixin):
     """
     A proposal to link a CVE to a set of derivations.
