@@ -8,7 +8,7 @@
     <div class="column {% if data.is_compact %}gap-small{% else %}gap{% endif %}">
 
       {% if data.show_status or data.suggestion.status == "rejected" and data.suggestion.rejection_reason %}
-        <div class="row gap-small centered">
+        <div id="suggestion-{{ data.suggestion.cached.payload.pk }}-status" class="row gap-small centered">
           {% status_icon data.suggestion.status %}
           {% if data.suggestion.status == "pending" %}
             <div class="bold">Untriaged</div>

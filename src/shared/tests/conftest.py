@@ -245,9 +245,11 @@ def make_suggestion(
             drv: ProvenanceFlags.PACKAGE_NAME_MATCH
         },
         status: CVEDerivationClusterProposal.Status = CVEDerivationClusterProposal.Status.PENDING,
+        rejection_reason: CVEDerivationClusterProposal.RejectionReason | None = None,
     ) -> CVEDerivationClusterProposal:
         suggestion = CVEDerivationClusterProposal.objects.create(
             status=status,
+            rejection_reason=rejection_reason,
             cve=container.cve,
         )
 
