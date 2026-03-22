@@ -99,7 +99,7 @@
       {% csrf_token %}
       <input type="hidden" name="is_compact" value="{% if data.is_compact %}true{% else %}false{% endif %}">
       
-      {% if data.is_compact and data.can_edit and data.suggestion.status != "published" %}
+      {% if data.is_compact and data.user_can_edit and data.suggestion.status != "published" %}
         <div class="row gap-small centered">
           {% if data.suggestion.status == "pending" or data.suggestion.status == "accepted" %}
           {% include "./dismiss_button.html" %}
@@ -128,7 +128,7 @@
           {% endif %}
         </div>
       {% else %}
-        {% if not data.can_edit or data.suggestion.status == "published" %}
+        {% if not data.user_can_edit or data.suggestion.status == "published" %}
           {% if data.suggestion.comment %}
             <pre class="rounded-box monospace highlight-nonempty">{{ data.suggestion.comment|default:"" }}</pre>
           {% endif %}
@@ -144,7 +144,7 @@
           >{{ data.suggestion.comment|default:"" }}</textarea>
         {% endif %}
 
-        {% if data.can_edit and data.suggestion.status != "published" %}
+        {% if data.user_can_edit and data.suggestion.status != "published" %}
           <div class="row-reverse centered spread">
             {% if data.suggestion.status == "pending" %}
               <button type="submit" name="new_status" value="accepted" class="status-change-button btn btn-green row gap-small centered">
