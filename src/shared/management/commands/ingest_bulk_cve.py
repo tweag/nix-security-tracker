@@ -127,6 +127,4 @@ class Command(BaseCommand):
                     print(".", end="")
 
             logger.info(f"Saving the ingestion valid up to {v_date}")
-            CveIngestion.objects.create(
-                valid_to=date.fromisoformat(v_date), delta=False
-            )
+            CveIngestion.objects.create(valid_to=v_date, delta=False)
