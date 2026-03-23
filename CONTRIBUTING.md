@@ -17,6 +17,7 @@ Service definitions are in [`nix/configuration.nix`](nix/configuration.nix).
 
 Application logic lives in the [`src/`](src/) directory.
 From here, it follows standard Django patterns:
+
 - [`src/project/`](src/project/): global project configuration
 - [`src/shared/`](src/shared/): [application](https://docs.djangoproject.com/en/6.0/ref/applications/) with data models and business logic
 - [`src/webview/`](src/webview/): application for the web frontend
@@ -63,7 +64,6 @@ To minimise turnaround time for getting your contribution merged:
   Otherwise, easy parts that could be merged on their own get blocked by the harder ones that need multiple iterations to get right.
 
 - Use the commit message title to describe the change such that its merit can be evaluated.
-
   - Good: `fix: race condition during ingestion`
   - Bad: `fix: add with transaction.atomic() in ingestion.py`
 
