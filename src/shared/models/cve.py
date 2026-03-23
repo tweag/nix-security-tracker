@@ -1,3 +1,5 @@
+import functools
+
 from django.contrib.postgres.indexes import BTreeIndex, GinIndex
 from django.contrib.postgres.search import SearchVectorField
 from django.core.validators import RegexValidator
@@ -281,10 +283,24 @@ class Platform(models.Model):
 
 # TODO Maybe change this to VersionConstraint one day?
 class Version(models.Model):
+    @functools.total_ordering
     class Status(models.TextChoices):
         AFFECTED = "affected", _("affected")
         UNAFFECTED = "unaffected", _("unaffected")
         UNKNOWN = "unknown", _("unknown")
+
+        @property
+        def _rank(self) -> int:
+            return {
+                self.UNAFFECTED: 0,
+                self.UNKNOWN: 1,
+                self.AFFECTED: 2,
+            }[self]
+
+        def __lt__(self, other: object) -> bool:
+            if not isinstance(other, Version.Status):
+                return NotImplemented
+            return self._rank < other._rank
 
     status = models.CharField(
         max_length=126, choices=Status.choices, default=Status.UNKNOWN
