@@ -13,6 +13,14 @@ It contains general contribution information, and lists resources to help you ge
 
 Other directories in this repository have additional `README.md` files with more specific information relevant to their sibling files.
 
+Service definitions are in [`nix/configuration.nix`](nix/configuration.nix).
+
+Application logic lives in the [`src/`](src/) directory.
+From here, it follows standard Django patterns:
+- [`src/project/`](src/project/): global project configuration
+- [`src/shared/`](src/shared/): [application](https://docs.djangoproject.com/en/6.0/ref/applications/) with data models and business logic
+- [`src/webview/`](src/webview/): application for the web frontend
+
 # Hacking
 
 The service is implemented in Python using [Django](https://www.djangoproject.com/).
