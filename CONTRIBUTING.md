@@ -39,7 +39,8 @@ nix-shell
 
 This will provide most of tools necessary to run the service locally.
 
-Set up [`nix-direnv`](https://github.com/nix-community/nix-direnv) on your system and run `direnv allow` to enter the development environment automatically when entering the project directory.
+> [!NOTE]
+> Set up [`nix-direnv`](https://github.com/nix-community/nix-direnv) on your system and run `direnv allow` to enter the development environment automatically when entering the project directory.
 
 List all available [management commands](https://docs.djangoproject.com/en/6.0/ref/django-admin/):
 
