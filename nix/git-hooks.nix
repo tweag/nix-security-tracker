@@ -1,26 +1,23 @@
 { lib, pkgs, ... }:
-{
+rec {
   src = ../.;
   default_stages = [
     "manual"
     "pre-push"
   ];
+  excludes = [
+    "\\.min.css$"
+    "npins"
+    "migrations"
+    "grafana-dashboard.json"
+  ];
   hooks =
     let
-      # XXX(@fricklerhandwerk): these need to be tacked onto the `pre-commit` configuration file,
-      # which seems to ignore per-tool configuration
-      excludes = [
-        "\\.min.css$"
-        "\\.html$"
-        "npins"
-        "migrations"
-        "grafana-dashboard.json"
-      ];
       # XXX(@fricklerhandwerk): due to implementation details of pre-commit.nix this is
       # required for running in CI when building the hooks as a derivation
       stages = [ "manual" ];
     in
-    lib.mapAttrs (_: v: v // { inherit excludes stages; }) {
+    lib.mapAttrs (_: v: v // { inherit stages; }) {
       # Nix setup
       nixfmt-rfc-style.enable = true;
       statix = {
@@ -60,6 +57,7 @@
       # Global setup
       prettier = {
         enable = true;
+        excludes = [ "\\.html$" ];
       };
 
       lychee = {
@@ -67,6 +65,7 @@
         name = "lychee";
         entry = "${pkgs.lib.getExe pkgs.lychee} --offline --no-progress";
         files = "\\.md$";
+        excludes = [ "\\.html$" ];
       };
 
       vale =
@@ -93,8 +92,19 @@
               - SSH
           '';
 
+          terms = pkgs.writeText "Terms.yml" ''
+            extends: existence
+            message: "Use 'Nixpkgs security tracker' instead of '%s'"
+            level: error
+            nonword: true
+            raw:
+              - 'Nixpkgs Security Tracker'
+          '';
+
           styles-dir = pkgs.runCommand "vale-styles" { } ''
             mkdir -p $out/default
+            mkdir -p $out/config/vocabularies # This must exist for Vale to run.
+            cp ${terms} $out/default/Terms.yml
             cp ${sentence-case} $out/default/SentenceCase.yml
           '';
 
@@ -104,13 +114,16 @@
 
             [*.md]
             BasedOnStyles = default
+
+            [*.html]
+            BasedOnStyles = default
           '';
         in
         {
           enable = true;
           name = "vale";
           entry = "${pkgs.lib.getExe pkgs.vale} --config=${vale-config}";
-          files = "\\.md$";
+          files = "\\.(md|html)$";
         };
     };
 }

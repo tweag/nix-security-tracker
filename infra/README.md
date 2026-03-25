@@ -1,6 +1,6 @@
 # Nixpkgs security tracker infrastructure
 
-This directory contains the infrastructure configuration for the Nixpkgs Security Tracker.
+This directory contains the infrastructure configuration for the Nixpkgs security tracker.
 This includes both the NixOS configuration as well as the Terraform/OpenTofu files to spin up the resources.
 
 ## Hetzner Cloud
