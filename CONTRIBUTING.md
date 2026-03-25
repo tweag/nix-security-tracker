@@ -118,9 +118,69 @@ We use these tagged comments inspired by and loosely following [PEP 450](https:/
 Always add your GitHub handle in parentheses -- `(@<author>)` -- so it's clear who had an opinion and may still have one during review.
 Code may move around, so [`git blame`](https://git-scm.com/docs/git-blame) won't be useful to track comment authorship.
 
+## Working with the database
+
+You will need a local instance of the database to run tests and experiment manually.
+
+### Set up a local database
+
+Currently only [PostgreSQL](https://www.postgresql.org/) is supported as a database.
+Assuming you have a local checkout of this repository at `~/src/nix-security-tracker`, in your NixOS configuration, add the following entry to `imports` and rebuild your system:
+
+```nix
+{ ... }:
+{
+  imports = [
+    (import ~/src/nix-security-tracker { }).dev-setup
+  ];
+
+  nix-security-tracker-dev-environment = {
+    enable = true;
+    # The user you run the backend application as, so that you can access the local database
+    user = "myuser";
+  };
+}
+```
+
+To replicate this on a traditional Unix-like system:
+
+- Inspect the [local database configuration](./nix/dev-setup.nix)
+- Read the documentation on the respective module options for the general idea, e.g. [`services.postgresql.ensureDatabases`](https://search.nixos.org/options?query=postgresql.ensureDatabases)
+- Search the linked module source for the option names for implementation details, e.g. [`postgresql.nix`](https://github.com/NixOS/nixpkgs/blob/master/nixos/modules/services/databases/postgresql.nix)
+
+### Start the service
+
+The service is comprised of the Django server and workers for ingesting CVEs and derivations.
+What needs to be run is defined in the [`Procfile`](./Procfile) managed by [hivemind](https://github.com/DarthSim/hivemind).
+
+Run everything with:
+
+```bash
+hivemind
+```
+
+<!-- FIXME(@fricklerhandwerk): Add instructions for manually obtaining CVEs and derivations. -->
+
+### Resetting the database
+
+In order to start over you need SSH [access to the staging environment](./infra/README.md#adding-ssh-keys).
+Tools for the following are available in the development shell.
+Delete the database and recreate it, then restore it from a dump, and (just in case the dump is behind the code) run migrations:
+
+```bash
+dropdb nix-security-tracker
+ssh root@tracker-staging.security.nixos.org "sudo -u postgres pg_dump --create nix-security-tracker | zstd" | zstdcat | pv | psql
+manage migrate
+```
+
 ## Setting up credentials
 
-The service connects to GitHub on startup, in order to manage permissions according to GitHub team membership in the configured organisation.
+The service connects to GitHub for certain operations:
+
+- Managing permissions according to GitHub team membership in the configured organisation
+- Publishing vulnerabilities as GitHub issues
+
+This requires setting up GitHub credentials.
 
 <details><summary>Create a Django secret key</summary>
 
@@ -194,61 +254,6 @@ To configure the GitHub app and the webhook in the GitHub organisation settings:
     - Select **Memberships**.
 
 </details>
-
-## Working with the database
-
-You will need a local instance of the database to run tests and experiment manually.
-
-### Set up a local database
-
-Currently only [PostgreSQL](https://www.postgresql.org/) is supported as a database.
-Assuming you have a local checkout of this repository at `~/src/nix-security-tracker`, in your NixOS configuration, add the following entry to `imports` and rebuild your system:
-
-```nix
-{ ... }:
-{
-  imports = [
-    (import ~/src/nix-security-tracker { }).dev-setup
-  ];
-
-  nix-security-tracker-dev-environment = {
-    enable = true;
-    # The user you run the backend application as, so that you can access the local database
-    user = "myuser";
-  };
-}
-```
-
-To replicate this on a traditional Unix-like system:
-
-- Inspect the [local database configuration](./nix/dev-setup.nix)
-- Read the documentation on the respective module options for the general idea, e.g. [`services.postgresql.ensureDatabases`](https://search.nixos.org/options?query=postgresql.ensureDatabases)
-- Search the linked module source for the option names for implementation details, e.g. [`postgresql.nix`](https://github.com/NixOS/nixpkgs/blob/master/nixos/modules/services/databases/postgresql.nix)
-
-### Start the service
-
-The service is comprised of the Django server and workers for ingesting CVEs and derivations.
-What needs to be run is defined in the [`Procfile`](./Procfile) managed by [hivemind](https://github.com/DarthSim/hivemind).
-
-Run everything with:
-
-```bash
-hivemind
-```
-
-<!-- FIXME(@fricklerhandwerk): Add instructions for manually obtaining CVEs and derivations. -->
-
-### Resetting the database
-
-In order to start over you need SSH [access to the staging environment](./infra/README.md#adding-ssh-keys).
-Tools for the following are available in the development shell.
-Delete the database and recreate it, then restore it from a dump, and (just in case the dump is behind the code) run migrations:
-
-```bash
-dropdb nix-security-tracker
-ssh root@tracker-staging.security.nixos.org "sudo -u postgres pg_dump --create nix-security-tracker | zstd" | zstdcat | pv | psql
-manage migrate
-```
 
 ## Running the service in a container
 
