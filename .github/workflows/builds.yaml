@@ -1,6 +1,7 @@
 name: Builds
 on:
   pull_request:
+  merge_group:
   push:
     branches: main
   # allow "manual" triggering from automatic PRs
