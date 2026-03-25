@@ -54,11 +54,28 @@ rec {
           entry = lib.mkForce (builtins.toString wrappedPyright);
         };
 
-      # Global setup
       prettier = {
         enable = true;
         excludes = [ "\\.html$" ];
       };
+
+      djlint =
+        let
+          djlint-config =
+            with builtins;
+            toFile "djlint.json" (toJSON {
+              indent = 2;
+              preserve_blank_lines = true;
+              # FIXME(@fricklerhandwerk): Put all user-visible text on separate lines and enable this.
+              # preserve_leading_space = true;
+            });
+        in
+        {
+          enable = true;
+          name = "djlint";
+          entry = "${with pkgs; lib.getExe djlint} --reformat --quiet --configuration=${djlint-config}";
+          files = "\\.html$";
+        };
 
       lychee = {
         enable = true;
