@@ -1,4 +1,4 @@
-# Nixpkgs Security Tracker
+# Nixpkgs security tracker
 
 The **Nixpkgs Security Tracker** is a web service for managing information on vulnerabilities in software distributed through Nixpkgs.
 

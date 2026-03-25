@@ -1,4 +1,4 @@
-# Contributing Guide
+# Contributing guide
 
 This document is for anyone wanting to contribute to the implementation of the security tracker.
 
@@ -374,7 +374,7 @@ The CSS is organized into multiple CSS files, in `src/webview/static`, that are 
 
 Icons rely on a custom icomoon webfont and class definitions to be used with the `<i>` tag. Consult [src/webview/static/icons/README.md] for details.
 
-## Adding New Styles
+## Adding new styles
 
 Adding new styles should be a last resort:
 
