@@ -163,16 +163,51 @@ To replicate this on a traditional Unix-like system:
 
 ### Start the service
 
-The service is comprised of the Django server and workers for ingesting CVEs and derivations.
-What needs to be run is defined in the [`Procfile`](./Procfile) managed by [hivemind](https://github.com/DarthSim/hivemind).
+> ![NOTE]
+> For a quick start, create dummy credentials:
+>
+> ```console
+> dummy-credentials
+> ```
+>
+> Logging in and publishing issues requires [setting up credentials](#setting-up-credentials).
 
-Run everything with:
+Run the server:
 
-```bash
-hivemind
+```console
+manage runserver
 ```
 
-<!-- FIXME(@fricklerhandwerk): Add instructions for manually obtaining CVEs and derivations. -->
+### Ingest Nixpkgs metadata
+
+Fetch the tips of all [channel branches](https://nix.dev/concepts/faq#channel-branches):
+
+```console
+manage fetch_all_channels
+```
+
+Select a ``head_sha1_commit` from the output and run evaluation on that:
+
+```console
+manage run_evaluation <commit>
+```
+
+### Start matching listeners and ingest CVEs for matching
+
+Matching CVEs against Nixpkgs metadata is triggered by `pgpubsub` notifications internally as CVEs are ingested.
+To test this dataflow locally, start the listeners:
+
+```console
+manage listen -v3 --recover
+```
+
+Ingest some CVEs:
+
+```console
+manage ingest_bulk_cve --subset 500
+```
+
+This should produce untriaged matches.
 
 ### Resetting the database
 
@@ -337,20 +372,7 @@ We use the following pattern:
 > [!WARNING]
 > If you create a new listener module but forget to add its import to [`src/shared/listeners/__init__.py`](src/shared/listeners/__init__.py), your listener will fail to run silently!
 
-## Manual ingestion
-
-### CVEs
-
-Add 100 CVE entries to the database:
-
-```console
-manage ingest_bulk_cve --subset 100
-```
-
-This will take a few minutes on an average machine.
-Not passing `--subset N` will take about an hour and produce ~500 MB of data.
-
-### Caching suggestions
+## Re-caching suggestions
 
 Suggestion contents are displayed from a cache to avoid latency from complex database queries.
 
