@@ -31,3 +31,13 @@ Please see the [**Contributing Guide**](CONTRIBUTING.md) for more information on
   Continued development of the Nixpkgs security tracker funded via [Tweag](https://www.tweag.io/), as part of a larger effort to improve robustness of the Nix ecosystem.
 
   The [NixOS security team](https://nixos.org/community/teams/security/) started productive use, publishing and addressing numerous [security issues](https://github.com/NixOS/nixpkgs/issues?q=is%3Aissue%20state%3Aopen%20label%3A%221.severity%3A%20security%22%20author%3Aapp%2Fnixpkgs-security-tracker).
+
+## Acknowledgements
+
+This contribution to critical IT infrastructure would not be possible without the financial support of:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/supporters/SovereignTechAgency-white.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./docs/supporters/SovereignTechAgency-black.svg">
+  <img alt="Sovereign Tech Agency" style="width: 10rem;" src="/docs/supporters/SovereignTechAgency-black.svg">
+</picture>

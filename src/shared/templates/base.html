@@ -107,17 +107,16 @@
 
     <footer>
       <p>
-        <a href="https://github.com/NixOS/nix-security-tracker">Nixpkgs security tracker</a> is part of a project funded by the
-        <a href="https://sovereigntechfund.de/en/">Sovereign Tech Fund</a>.
+        Nixpkgs security tracker is part of <a href="https://nixos.org/community/teams/security/">NixOS security infrastructure</a>.
       </p>
       <p>
-        Running revision
+        <a href="https://github.com/NixOS/nix-security-tracker">Source code</a>, running revision
         {% if production %}
           <a href="https://github.com/NixOS/nix-security-tracker/commit/{{ git_revision }}">
-            {{ git_revision|slice:":20" }}
+            {{ git_revision | slice:":8" }}
           </a>
         {% else %}
-           {{ git_revision }} (development)
+           {{ git_revision | slice:":8" }} (development)
         {% endif %}
       </p>
     </footer>
