@@ -36,6 +36,10 @@ class CVEDerivationClusterProposal(TimeStampMixin):
             "not_in_nixpkgs",
             _("not in Nixpkgs"),
         )
+        HARDWARE_ONLY_CPE = (
+            "hardware_only_cpe",
+            _("hardware only"),
+        )
 
     cached: "shared.models.cached.CachedSuggestions"
 
