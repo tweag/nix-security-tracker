@@ -95,7 +95,7 @@ To minimise turnaround time for getting your contribution merged:
 
 - Don't rewrite history, address review comments in new commits.
 
-  The pull request should still amount to a small change and can be squash-merged.
+  The pull request should still amount to a small change, and commits can be squashed before merging.
 
 - Run `nix-shell --run format` and `nix-build -A tests` before pushing.
 
