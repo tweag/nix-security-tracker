@@ -76,13 +76,12 @@ def make_container(db: None) -> Callable[..., Container]:
             tag_objs: dict[str, Tag] = {}
             for tag in tags:
                 tag_objs[tag], _ = Tag.objects.get_or_create(value=tag)
-            refs.append(
-                Reference.objects.create(
-                    url=link,
-                    name=text,
-                    tags=tag_objs.values(),
-                )
+            ref = Reference.objects.create(
+                url=link,
+                name=text,
             )
+            ref.tags.set(tag_objs.values())
+            refs.append(ref)
         container.references.set(refs)
         container.affected.add(affected)
         if description is not None:

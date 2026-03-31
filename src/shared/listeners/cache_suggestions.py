@@ -13,11 +13,12 @@ from pydantic import BaseModel, field_serializer
 from shared.channels import CVEDerivationClusterProposalCacheChannel
 from shared.models import NixDerivation, NixMaintainer
 from shared.models.cached import CachedSuggestions
-from shared.models.cve import AffectedProduct, Metric, Version
+from shared.models.cve import AffectedProduct, Metric, Reference, Version
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
     MaintainersEdit,
     PackageEdit,
+    ReferenceOverlay,
 )
 from shared.models.nix_evaluation import get_major_channel
 
@@ -93,7 +94,22 @@ class CachedSuggestion(BaseModel):
             "CachedSuggestion.Maintainer"
         ]  # Additional maintainers (not part of original maintainers)
 
+    class CategorizedReferences(BaseModel):
+        # FIXME(@florentc): Having to redefine a pydantic model instead of
+        # using the Django model is annoying. We should find a better solution
+        # for this and the rest in CachedSuggestion (e.g. packages, maintainers).
+        class Reference(BaseModel):
+            id: int
+            url: str
+            name: str
+            tags: list[str]
+
+        original: list[Reference]  # References initially present at suggestion creation
+        active: list[Reference]  # Non ignored references
+        ignored: list[Reference]  # Ignored references
+
     categorized_maintainers: CategorizedMaintainers
+    categorized_references: CategorizedReferences
 
 
 def apply_package_edits(
@@ -216,6 +232,9 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
         packages=packages,
         metrics=[to_dict(m) for m in prefetched_metrics],
         categorized_maintainers=categorize_maintainers(packages, maintainers_edits),
+        categorized_references=categorize_references(
+            suggestion.references, list(suggestion.reference_overlays.all())
+        ),
     )
 
     _, created = CachedSuggestions.objects.update_or_create(
@@ -409,6 +428,47 @@ def maintainers_list(
             maintainers.append(m)
 
     return maintainers
+
+
+def categorize_references(
+    references: list[Reference],
+    reference_overlay: list[ReferenceOverlay],
+) -> CachedSuggestion.CategorizedReferences:
+    """
+    Categorize references associated to a suggestion.
+    Assumes the references list has no duplicates.
+    """
+
+    original_references = [
+        CachedSuggestion.CategorizedReferences.Reference(
+            id=ref.id,
+            url=ref.url,
+            name=ref.name,
+            tags=[
+                tag.value for tag in ref.tags.all()
+            ],  # Assuming tags is a many-to-many field
+        )
+        for ref in references
+    ]
+
+    ignored_reference_ids = {
+        edit.reference.id
+        for edit in reference_overlay
+        if edit.type == ReferenceOverlay.Type.IGNORED
+    }
+
+    active_references = [
+        ref for ref in original_references if ref.id not in ignored_reference_ids
+    ]
+    ignored_references = [
+        ref for ref in original_references if ref.id in ignored_reference_ids
+    ]
+
+    return CachedSuggestion.CategorizedReferences(
+        original=original_references,
+        active=active_references,
+        ignored=ignored_references,
+    )
 
 
 def categorize_maintainers(

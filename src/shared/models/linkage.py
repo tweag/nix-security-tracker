@@ -8,7 +8,7 @@ from django.dispatch import receiver
 from django.utils.translation import gettext_lazy as _
 
 import shared.models.cached
-from shared.models.cve import CveRecord
+from shared.models.cve import CveRecord, Reference
 from shared.models.nix_evaluation import NixDerivation, NixMaintainer, TimeStampMixin
 
 
@@ -81,6 +81,11 @@ class CVEDerivationClusterProposal(TimeStampMixin):
             CVEDerivationClusterProposal.Status.PENDING,
             CVEDerivationClusterProposal.Status.ACCEPTED,
         ]
+
+    @property
+    def references(self) -> list[Reference]:
+        """Get all unique references from all containers of the CVE attached to this suggestion."""
+        return list(Reference.objects.filter(container__cve=self.cve).distinct())
 
     def ignore_package(self, package: str) -> None:
         edit, created = self.package_edits.get_or_create(
@@ -160,6 +165,38 @@ class PackageEdit(models.Model):
         ]
 
 
+@pghistory.track(
+    pghistory.ManualEvent("reference.restore"),
+    pghistory.ManualEvent("reference.ignore"),
+)
+class ReferenceOverlay(models.Model):
+    """
+    A single manual overlay of the list of references of a suggestion.
+    """
+
+    class Type(models.TextChoices):
+        IGNORED = "ignored", _("ignored")
+        # ADDITIONAL reserved for future use if needed
+
+    type = models.CharField(max_length=126, choices=Type.choices)
+    reference = models.ForeignKey(Reference, on_delete=models.CASCADE)
+    suggestion = models.ForeignKey(
+        CVEDerivationClusterProposal,
+        related_name="reference_overlays",
+        on_delete=models.CASCADE,
+    )
+
+    class Meta:  # type: ignore[override]
+        constraints = [
+            # Ensures that a reference can only be added or removed once per
+            # suggestion.
+            models.UniqueConstraint(
+                fields=["suggestion", "reference"],
+                name="unique_reference_overlay_per_suggestion",
+            )
+        ]
+
+
 @receiver(post_save, sender=PackageEdit)
 def track_package_edit_save(
     sender: type[PackageEdit],
@@ -218,6 +255,44 @@ def track_maintainers_edit_delete(
         obj=instance,
         label=label,
     )
+
+
+@receiver(post_save, sender=ReferenceOverlay)
+def track_reference_overlay_save(
+    sender: type[ReferenceOverlay],
+    instance: ReferenceOverlay,
+    created: bool,
+    **kwargs: Any,
+) -> None:
+    if created:
+        if instance.type == ReferenceOverlay.Type.IGNORED:
+            pghistory.create_event(
+                obj=instance,
+                label="reference.ignore",
+            )
+        # TODO(@florentc): Adapt when ReferenceOverlay supports more than IGNORED
+        # if instance.type == ReferenceOverlay.Type.ADDITIONAL:
+        #     pghistory.create_event(
+        #         obj=instance,
+        #         label="reference.additional",
+        #     )
+
+
+@receiver(post_delete, sender=ReferenceOverlay)
+def track_reference_overlay_delete(
+    sender: type[ReferenceOverlay], instance: ReferenceOverlay, **kwargs: Any
+) -> None:
+    if instance.type == ReferenceOverlay.Type.IGNORED:
+        pghistory.create_event(
+            obj=instance,
+            label="reference.restore",
+        )
+    # TODO(@florentc): Adapt when ReferenceOverlay supports more than IGNORED
+    # if instance.type == ReferenceOverlay.Type.ADDITIONAL:
+    #     pghistory.create_event(
+    #         obj=instance,
+    #         label="reference.delete",
+    #     )
 
 
 class ProvenanceFlags(IntFlag, boundary=STRICT):

@@ -19,12 +19,15 @@ from shared.logs.events import (
     RawEventType,
     RawMaintainerEvent,
     RawPackageEvent,
+    RawReferenceEvent,
     RawStatusEvent,
+    Reference,
 )
 from shared.models import (
     CVEDerivationClusterProposalStatusEvent,  # type: ignore
     MaintainersEditEvent,  # type: ignore
     PackageEditEvent,  # type: ignore
+    ReferenceOverlayEvent,  # type: ignore
 )
 from shared.models.linkage import CVEDerivationClusterProposal
 
@@ -112,6 +115,26 @@ def fetch_suggestion_events(
                 username=m_event.username,
                 action=m_event.pgh_label,
                 maintainer=cast(Maintainer, model_to_dict(m_event.maintainer)),
+            )
+        )
+
+    reference_qs = _annotate_username(
+        ReferenceOverlayEvent.objects.select_related("pgh_context", "reference").filter(
+            suggestion_id__in=suggestion_ids
+        )
+    )
+    for m_event in reference_qs.iterator():
+        result[m_event.suggestion_id].append(
+            RawReferenceEvent(
+                suggestion_id=m_event.suggestion_id,
+                timestamp=m_event.pgh_created_at,
+                username=m_event.username,
+                action=m_event.pgh_label,
+                reference=Reference(
+                    id=m_event.reference.id,
+                    url=m_event.reference.url,
+                    name=m_event.reference.name,
+                ),
             )
         )
 

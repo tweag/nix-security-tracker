@@ -42,6 +42,27 @@
                 </ul>
               </details>
             {% endif %}
+          {% elif "reference." in log_entry.action %}
+            {# Reference update entries #}
+            {% if ".restore" in log_entry.action %}
+              restored
+            {% else %}
+              ignored
+            {% endif %}
+            {% if log_entry.references|length == 1 %}
+              reference <a href="{{ log_entry.references.0.url }}">{{ log_entry.references.0.name | default:log_entry.references.0.url | truncatechars:10 }}</a>
+            {% else %}
+              <details>
+                <summary>{{ log_entry.references|length }} references</summary>
+                <ul>
+                  {% for reference in log_entry.references %}
+                    <li>
+                      <a href="{{ reference.url }}">{{ reference.name | default:reference.url | truncatechars:40 }}</a>
+                    </li>
+                  {% endfor %}
+                </ul>
+              </details>
+            {% endif %}
           {% elif "maintainers." in log_entry.action %}
             {# Maintainers edit entry #}
             {% if ".add" in log_entry.action %}
@@ -84,6 +105,12 @@
               <i class="icon-folder-plus"></i>
             {% else %}
               <i class="icon-folder-minus"></i>
+            {% endif %}
+          {% elif "reference." in log_entry.action %}
+            {% if ".add" in log_entry.action %}
+              <i class="icon-chain"></i>
+            {% else %}
+              <i class="icon-chain-broken"></i>
             {% endif %}
           {% elif "maintainers." in log_entry.action %}
             {% if ".add" in log_entry.action %}
