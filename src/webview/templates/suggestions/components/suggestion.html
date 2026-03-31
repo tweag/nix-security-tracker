@@ -61,8 +61,8 @@
         </details>
       {% endif %}
 
-      {% if data.references %}
-        {% include "../../components/cve_references.html" with references=data.references is_compact=data.is_compact %}
+      {% if data.reference_list_context.active or data.reference_list_context.ignored %}
+        {% reference_list data.reference_list_context %}
         {% if data.is_compact %}
           <hr class="divider">
         </hr>
