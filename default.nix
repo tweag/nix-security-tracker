@@ -51,6 +51,7 @@ rec {
       paths = [
         deploy
         pkgs.npins
+        pkgs.zizmor
       ];
     };
 
