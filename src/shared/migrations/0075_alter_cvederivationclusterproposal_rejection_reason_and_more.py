@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('shared', '0074_alter_cvederivationclusterproposal_rejection_reason_and_more'),
+        ('shared', '0074_nixpkgsissue_use_timestamp_mixin'),
     ]
 
     operations = [
