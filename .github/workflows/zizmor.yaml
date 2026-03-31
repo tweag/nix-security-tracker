@@ -11,16 +11,18 @@ on:
     paths:
       - ".github/**"
       - npins/sources.json
-  workflow_dispatch:
 
 permissions: {}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   zizmor:
     name: Run zizmor against GitHub Action workflows
     runs-on: ubuntu-latest
     permissions:
-      security-events: write
+      security-events: write # Needed to be able to push the zizmor results to CodeQL
     steps:
       - name: Clone repository
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
