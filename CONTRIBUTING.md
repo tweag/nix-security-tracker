@@ -99,6 +99,9 @@ To minimise turnaround time for getting your contribution merged:
 
 - Run `nix-shell --run format` and `nix-build -A tests` before pushing.
 
+If you want to accept fixups by maintainers, [make your fork writeable](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/allowing-changes-to-a-pull-request-branch-created-from-a-fork#enabling-repository-maintainer-permissions-on-existing-pull-requests).
+This allows for last-minute changes or resolving merge conflicts without your involvement.
+
 ## Tagged comments
 
 We use these tagged comments inspired by and loosely following [PEP 450](https://peps.python.org/pep-0350/#mnemonics):
