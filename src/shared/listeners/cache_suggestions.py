@@ -25,6 +25,14 @@ from shared.models.nix_evaluation import get_major_channel
 logger = logging.getLogger(__name__)
 
 
+# ============================================================================
+# ⚠️ IMPORTANT: CACHE SCHEMA VERSIONING
+#
+# When modifying this schema, you MUST bump
+# CachedSuggestions.CURRENT_SCHEMA_VERSION.
+#
+# Otherwise cached data may become inconsistent.
+# ============================================================================
 class CachedSuggestion(BaseModel):
     class AffectedProduct(BaseModel):
         version_constraints: set[tuple[str, str]] = set()
@@ -239,7 +247,10 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
 
     _, created = CachedSuggestions.objects.update_or_create(
         proposal_id=suggestion.pk,
-        defaults={"payload": only_relevant_data.model_dump(mode="json")},
+        defaults={
+            "payload": only_relevant_data.model_dump(mode="json"),
+            "schema_version": CachedSuggestions.CURRENT_SCHEMA_VERSION,
+        },
     )
 
     if created:
