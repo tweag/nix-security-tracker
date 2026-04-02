@@ -130,7 +130,7 @@ def apply_package_overlays(
     to_skip = {
         edit.package_attribute
         for edit in edits
-        if edit.edit_type == MaintainerOverlay.Type.REMOVE
+        if edit.edit_type == PackageOverlay.Type.REMOVE
     }
 
     return {attr: data for attr, data in packages.items() if attr not in to_skip}
