@@ -131,7 +131,8 @@ def test_ignore_multiple_packages(
 
     # Ignore bravo
     active.locator(".package-bravo").get_by_role("button", name="Ignore").click()
-    ignored.click()
+    expect(active.get_by_text("bravo")).not_to_be_visible()
+    container.get_by_text("Ignored packages").click()
     expect(ignored.get_by_text("alpha")).to_be_visible()
     expect(ignored.get_by_text("bravo")).to_be_visible()
     expect(active.get_by_text("charlie")).to_be_visible()
@@ -172,6 +173,7 @@ def test_restore_one_of_multiple_ignored_packages(
     active.locator(".package-alpha").get_by_role("button", name="Ignore").click()
     container.get_by_text(re.compile("Ignored packages")).click()
     active.locator(".package-bravo").get_by_role("button", name="Ignore").click()
+    expect(active.get_by_text("bravo")).not_to_be_visible()
 
     # Restore only alpha
     ignored.click()
@@ -209,6 +211,7 @@ def test_ignored_packages_persist_across_page_load(
 
     # Ignore bravo
     active.locator(".package-bravo").get_by_role("button", name="Ignore").click()
+    expect(active.get_by_text("bravo")).not_to_be_visible()
 
     # Navigate away and back
     as_staff.goto(detail_url)
