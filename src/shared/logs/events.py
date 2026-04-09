@@ -116,9 +116,8 @@ class RawMaintainerEvent(RawEvent):
         return False
 
 
-# NOTE(@florentc): A true reference has tags but this is just to keep track in the user displayed activity log
+# NOTE(@florentc): A true deduplicated reference has tags but this is just to keep track in the user displayed activity log
 class Reference(TypedDict):
-    id: int
     url: str
     name: str
 
@@ -137,7 +136,7 @@ class RawReferenceEvent(RawEvent):
             return False
 
         if isinstance(other, RawReferenceEvent):
-            return self.reference["id"] == other.reference["id"] and {
+            return self.reference["url"] == other.reference["url"] and {
                 self.action,
                 other.action,
             } == {
