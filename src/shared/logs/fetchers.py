@@ -27,7 +27,7 @@ from shared.models import (
     CVEDerivationClusterProposalStatusEvent,  # type: ignore
     MaintainerOverlayEvent,  # type: ignore
     PackageOverlayEvent,  # type: ignore
-    ReferenceOverlayEvent,  # type: ignore
+    ReferenceUrlOverlayEvent,  # type: ignore
 )
 from shared.models.linkage import CVEDerivationClusterProposal
 
@@ -119,7 +119,7 @@ def fetch_suggestion_events(
         )
 
     reference_qs = _annotate_username(
-        ReferenceOverlayEvent.objects.select_related("pgh_context", "reference").filter(
+        ReferenceUrlOverlayEvent.objects.select_related("pgh_context").filter(
             suggestion_id__in=suggestion_ids
         )
     )
@@ -131,9 +131,8 @@ def fetch_suggestion_events(
                 username=m_event.username,
                 action=m_event.pgh_label,
                 reference=Reference(
-                    id=m_event.reference.id,
-                    url=m_event.reference.url,
-                    name=m_event.reference.name,
+                    url=m_event.reference_url,
+                    name=m_event.deduplicated_name,
                 ),
             )
         )
