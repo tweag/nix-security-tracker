@@ -102,16 +102,16 @@ class CVEDerivationClusterProposal(TimeStampMixin):
     def ignore_package(self, package: str) -> None:
         edit, created = self.package_overlays.get_or_create(
             package_attribute=package,
-            defaults={"edit_type": PackageOverlay.Type.IGNORED},
+            defaults={"overlay_type": PackageOverlay.Type.IGNORED},
         )
-        if not created and edit.edit_type != PackageOverlay.Type.IGNORED:
-            edit.edit_type = PackageOverlay.Type.IGNORED
+        if not created and edit.overlay_type != PackageOverlay.Type.IGNORED:
+            edit.overlay_type = PackageOverlay.Type.IGNORED
             edit.save()
 
     def restore_package(self, package: str) -> None:
         self.package_overlays.filter(
             package_attribute=package,
-            edit_type=PackageOverlay.Type.IGNORED,
+            overlay_type=PackageOverlay.Type.IGNORED,
         ).delete()
 
 
@@ -130,8 +130,7 @@ class MaintainerOverlay(models.Model):
         ADDITIONAL = "additional", _("additional")
         IGNORED = "ignored", _("ignored")
 
-    # FIXME (@adekoder): To rename this field from edit_type to type
-    edit_type = models.CharField(max_length=126, choices=Type.choices)
+    overlay_type = models.CharField(max_length=126, choices=Type.choices)
     maintainer = models.ForeignKey(NixMaintainer, on_delete=models.CASCADE)
     suggestion = models.ForeignKey(
         CVEDerivationClusterProposal,
@@ -163,8 +162,7 @@ class PackageOverlay(models.Model):
         IGNORED = "ignored", _("ignored")
         # ADDITIONAL reserved for future use if needed
 
-    # FIXME (@adekoder): To rename this field from edit_type to overlay_type
-    edit_type = models.CharField(max_length=126, choices=Type.choices)
+    overlay_type = models.CharField(max_length=126, choices=Type.choices)
     package_attribute = models.CharField(max_length=255)
     suggestion = models.ForeignKey(
         CVEDerivationClusterProposal,
@@ -247,7 +245,7 @@ def track_maintainer_overlay_save(
     if created:
         label = (
             "maintainer.add"
-            if instance.edit_type == MaintainerOverlay.Type.ADDITIONAL
+            if instance.overlay_type == MaintainerOverlay.Type.ADDITIONAL
             else "maintainer.ignore"
         )
         pghistory.create_event(
@@ -262,7 +260,7 @@ def track_maintainer_overlay_delete(
 ) -> None:
     label = (
         "maintainer.delete"
-        if instance.edit_type == MaintainerOverlay.Type.ADDITIONAL
+        if instance.overlay_type == MaintainerOverlay.Type.ADDITIONAL
         else "maintainer.restore"
     )
     pghistory.create_event(
