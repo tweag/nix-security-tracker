@@ -178,6 +178,7 @@ def test_restore_one_of_multiple_ignored_packages(
     # Restore only alpha
     ignored.click()
     ignored.locator(".package-alpha").get_by_role("button", name="Restore").click()
+    expect(ignored.get_by_text("alpha")).not_to_be_visible()
 
     ignored.click()
     expect(active.get_by_text("alpha")).to_be_visible()
