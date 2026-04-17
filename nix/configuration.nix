@@ -86,7 +86,7 @@ let
 in
 {
   options.services.nix-security-tracker = {
-    enable = mkEnableOption "web security tracker for Nixpkgs and similar monorepo";
+    enable = mkEnableOption "web security tracker for Nixpkgs and similar monorepos";
 
     package = mkPackageOption pkgs "nix-security-tracker" { };
     production = mkOption {
@@ -363,7 +363,7 @@ in
         };
 
         nix-security-tracker-fetch-all-channels = {
-          description = "Web security tracker - refresh all channels and start nixpkgs evaluation";
+          description = "Web security tracker - fetch channel branches to trigger evaluation";
 
           after = [
             "network.target"
@@ -386,7 +386,7 @@ in
         };
 
         nix-security-tracker-delta = {
-          description = "Web security tracker catch up with CVEs";
+          description = "Web security tracker - catch up with CVEs";
           after = [
             "network.target"
             "postgresql.service"
