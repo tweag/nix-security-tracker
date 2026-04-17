@@ -319,6 +319,25 @@ in
           '';
         };
 
+        nix-security-tracker-caching = {
+          description = "Web security tracker - cache regeneration";
+          after = [
+            "network.target"
+            "postgresql.service"
+            "nix-security-tracker-migrations.service"
+          ];
+          requires = [
+            "postgresql.service"
+            "nix-security-tracker-migrations.service"
+          ];
+          wantedBy = [ "multi-user.target" ];
+
+          serviceConfig.Type = "oneshot";
+          script = ''
+            wst-manage regenerate_cached_suggestions
+          '';
+        };
+
         nix-security-tracker-worker = {
           description = "Web security tracker - background job processor";
           after = [
