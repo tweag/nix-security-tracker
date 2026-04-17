@@ -245,20 +245,19 @@ in
         };
       in
       mapAttrs (_: recursiveUpdate defaults) {
-        nix-security-tracker-server = {
-          description = "A web security tracker ASGI server";
+        nix-security-tracker-migrations = {
+          description = "Web security tracker - database migrations";
           after = [
             "network.target"
             "postgresql.service"
           ];
           requires = [ "postgresql.service" ];
           wantedBy = [ "multi-user.target" ];
-          serviceConfig = {
-            Restart = cfg.restart;
-            TimeoutStartSec = lib.mkDefault "10m";
-          };
-          preStart = ''
-            # Auto-migrate on first run or if the package has changed
+
+          serviceConfig.Type = "oneshot";
+
+          # Auto-migrate on first run or if the package has changed
+          script = ''
             versionFile="/var/lib/nix-security-tracker/package-version"
             if [[ $(cat "$versionFile" 2>/dev/null) != ${cfg.package} ]]; then
               wst-manage migrate --no-input
@@ -266,6 +265,23 @@ in
               echo ${cfg.package} > "$versionFile"
             fi
           '';
+        };
+        nix-security-tracker-server = {
+          description = "Web security tracker ASGI server";
+          after = [
+            "network.target"
+            "postgresql.service"
+            "nix-security-tracker-migrations.service"
+          ];
+          requires = [
+            "postgresql.service"
+            "nix-security-tracker-migrations.service"
+          ];
+          wantedBy = [ "multi-user.target" ];
+          serviceConfig = {
+            Restart = cfg.restart;
+            TimeoutStartSec = lib.mkDefault "10m";
+          };
           script =
             let
               networking =
@@ -284,9 +300,12 @@ in
           after = [
             "network.target"
             "postgresql.service"
-            "nix-security-tracker-server.service"
+            "nix-security-tracker-worker.service"
           ];
-          requires = [ "postgresql.service" ];
+          requires = [
+            "postgresql.service"
+            "nix-security-tracker-worker.service"
+          ];
           wantedBy = [ "multi-user.target" ];
 
           script = ''
@@ -305,9 +324,12 @@ in
           after = [
             "network.target"
             "postgresql.service"
-            "nix-security-tracker-server.service"
+            "nix-security-tracker-migrations.service"
           ];
-          requires = [ "postgresql.service" ];
+          requires = [
+            "postgresql.service"
+            "nix-security-tracker-migrations.service"
+          ];
           wantedBy = [ "multi-user.target" ];
 
           script = ''
@@ -327,9 +349,12 @@ in
           after = [
             "network.target"
             "postgresql.service"
-            "nix-security-tracker-server.service"
+            "nix-security-tracker-worker.service"
           ];
-          requires = [ "postgresql.service" ];
+          requires = [
+            "postgresql.service"
+            "nix-security-tracker-worker.service"
+          ];
 
           serviceConfig.Type = "oneshot";
 
@@ -346,9 +371,12 @@ in
           after = [
             "network.target"
             "postgresql.service"
-            "nix-security-tracker-server.service"
+            "nix-security-tracker-worker.service"
           ];
-          requires = [ "postgresql.service" ];
+          requires = [
+            "postgresql.service"
+            "nix-security-tracker-worker.service"
+          ];
           serviceConfig.Type = "oneshot";
 
           script = ''
