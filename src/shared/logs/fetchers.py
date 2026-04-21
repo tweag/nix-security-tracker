@@ -16,6 +16,7 @@ from pghistory.models import EventQuerySet
 
 from shared.logs.events import (
     Maintainer,
+    RawCreationEvent,
     RawEventType,
     RawMaintainerEvent,
     RawPackageEvent,
@@ -64,6 +65,24 @@ def fetch_suggestion_events(
 
     if not suggestion_ids:
         return result
+
+    creation_qs = _annotate_username(
+        CVEDerivationClusterProposalStatusEvent.objects.select_related(
+            "pgh_context"
+        ).filter(pgh_label="insert", pgh_obj_id__in=suggestion_ids)
+    )
+    for creation_event in creation_qs.iterator():
+        result[creation_event.pgh_obj_id].append(
+            RawCreationEvent(
+                suggestion_id=creation_event.pgh_obj_id,
+                timestamp=creation_event.pgh_created_at,
+                rejection_reason=CVEDerivationClusterProposal.RejectionReason(
+                    creation_event.rejection_reason
+                ).label.__str__()
+                if creation_event.rejection_reason is not None
+                else None,
+            )
+        )
 
     status_qs = _annotate_username(
         CVEDerivationClusterProposalStatusEvent.objects.select_related("pgh_context")

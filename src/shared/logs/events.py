@@ -11,7 +11,9 @@ class RawEvent(BaseModel, ABC):
 
     suggestion_id: int
     timestamp: datetime
-    username: str
+    # TODO(@florentc): there is no username for non-user initiated events.
+    # Maybe we'll want to have different types for user generated events and other events in the future.
+    username: str | None
 
     @abstractmethod
     def is_canceled_by(
@@ -35,6 +37,18 @@ class RawEvent(BaseModel, ABC):
             and (other.timestamp - self.timestamp).total_seconds()
             <= settings.DEBOUNCE_ACTIVITY_LOG_SECONDS
         )
+
+
+class RawCreationEvent(RawEvent):
+    """Raw suggestion creation event, with optional dismissal reason in case of auto-dismissal."""
+
+    username: str | None = None
+    action: Literal["create"] = "create"
+    rejection_reason: str | None
+
+    def is_canceled_by(self, other: "RawEvent") -> bool:
+        """Creation events are not cancellable"""
+        return False
 
 
 class RawStatusEvent(RawEvent):
@@ -147,7 +161,13 @@ class RawReferenceEvent(RawEvent):
         return False
 
 
-RawEventType = RawStatusEvent | RawPackageEvent | RawMaintainerEvent | RawReferenceEvent
+RawEventType = (
+    RawCreationEvent
+    | RawStatusEvent
+    | RawPackageEvent
+    | RawMaintainerEvent
+    | RawReferenceEvent
+)
 
 
 def sort_events_chronologically(events: list[RawEventType]) -> list[RawEventType]:
