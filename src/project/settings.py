@@ -362,6 +362,7 @@ INSTALLED_APPS = [
     "pghistory.admin",
     "rest_framework",
     "shared",
+    "api",
     "webview",
 ]
 

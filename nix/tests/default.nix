@@ -162,7 +162,8 @@ pkgs.testers.runNixOSTest {
             Importing fixtures from one module in another doesn't work in one invocation of `pytest`.
             This is because `conftest.py` files are discovered from the provided module names and registered globally.
           */
-        }server.succeed("wst-manage test -- --pyargs webview -v | tee /dev/ttyS0")
+        }server.succeed("wst-manage test -- --pyargs api -v | tee /dev/ttyS0")
+        server.succeed("wst-manage test -- --pyargs webview -v | tee /dev/ttyS0")
 
       with subtest("Check that stylesheet is served"):
         machine.succeed("curl --fail -H 'Host: example.org' http://localhost/static/reset.css")
