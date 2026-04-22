@@ -61,6 +61,11 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
         if not new_status:
             return self._handle_error(request, suggestion_context, "Missing new status")
 
+        if suggestion.status == CVEDerivationClusterProposal.Status.PUBLISHED:
+            return self._handle_error(
+                request, suggestion_context, "Issue is already published"
+            )
+
         if new_status == suggestion.status:
             return self._handle_error(
                 request, suggestion_context, "Cannot change to same status"
