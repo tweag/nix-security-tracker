@@ -10,8 +10,8 @@ from playwright.sync_api import Page, expect
 from pytest_django.live_server_helper import LiveServer
 from pytest_mock import MockerFixture
 
+from shared.cache_suggestions import cache_new_suggestions
 from shared.github import create_gh_issue
-from shared.listeners.cache_suggestions import cache_new_suggestions
 from shared.models.cve import (
     Container,
 )

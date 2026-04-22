@@ -94,7 +94,7 @@ class CVEDerivationClusterProposal(TimeStampMixin):
     def ensure_fresh_cache(self) -> None:
         """Regenerate stale or missing cache for this suggestion."""
         if self.is_cache_stale:
-            from shared.listeners.cache_suggestions import cache_new_suggestions
+            from shared.cache_suggestions import cache_new_suggestions
 
             cache_new_suggestions(self)
             self.refresh_from_db()

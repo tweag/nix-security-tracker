@@ -3,8 +3,8 @@ from datetime import timedelta
 
 import pytest
 
+from shared.cache_suggestions import cache_new_suggestions
 from shared.listeners.automatic_linkage import build_new_links
-from shared.listeners.cache_suggestions import cache_new_suggestions
 from shared.models.cve import Container, Tag
 from shared.models.linkage import (
     CVEDerivationClusterProposal,

@@ -10,8 +10,7 @@ from django.conf import settings
 from django.contrib.auth.models import Group, User
 from django.utils import timezone
 
-from shared.listeners.cache_suggestions import cache_new_suggestions
-from shared.listeners.notify_users import create_package_subscription_notifications
+from shared.cache_suggestions import cache_new_suggestions
 from shared.models.cve import (
     AffectedProduct,
     Container,
@@ -37,6 +36,7 @@ from shared.models.nix_evaluation import (
     NixEvaluation,
     NixMaintainer,
 )
+from shared.notify_users import create_package_subscription_notifications
 from webview.models import SuggestionNotification as Notification
 
 

@@ -6,7 +6,7 @@ from typing import Any
 from django.core.management.base import BaseCommand
 from django.db.models import Exists, OuterRef, Q
 
-from shared.listeners.cache_suggestions import cache_new_suggestions
+from shared.cache_suggestions import cache_new_suggestions
 from shared.models.cached import CachedSuggestions
 from shared.models.linkage import CVEDerivationClusterProposal
 
