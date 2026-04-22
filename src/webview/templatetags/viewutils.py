@@ -9,7 +9,7 @@ from django import template
 from django.conf import settings
 from django.template.context import Context
 
-from shared.listeners.cache_suggestions import CachedSuggestion
+from shared.cache_suggestions import CachedSuggestion
 from shared.logs.batches import FoldedEventType
 from shared.models.issue import NixpkgsIssue
 from shared.models.linkage import (
@@ -68,11 +68,6 @@ class PackageSubscriptionsContext(TypedDict):
     error_message: str | None
 
 
-class AutoSubscribeContext(TypedDict):
-    auto_subscribe_enabled: bool
-    error_message: str | None
-
-
 @register.inclusion_tag("subscriptions/components/packages.html")
 def package_subscriptions(
     package_subscriptions: list[str],
@@ -88,9 +83,33 @@ def package_subscriptions(
 def auto_subscribe_toggle(
     auto_subscribe_enabled: bool,
     error_message: str | None = None,
-) -> AutoSubscribeContext:
+) -> dict:
     return {
         "auto_subscribe_enabled": auto_subscribe_enabled,
+        "error_message": error_message,
+    }
+
+
+@register.inclusion_tag("subscriptions/components/email_notifications_toggler.html")
+def email_notifications_toggler(
+    enabled: bool,
+    error_message: str | None = None,
+) -> dict:
+    return {
+        "enabled": enabled,
+        "error_message": error_message,
+    }
+
+
+@register.inclusion_tag("subscriptions/components/email_setter.html")
+def email_setter(
+    notification_email: str,
+    maintainer_email: str,
+    error_message: str | None = None,
+) -> dict:
+    return {
+        "notification_email": notification_email,
+        "maintainer_email": maintainer_email,
         "error_message": error_message,
     }
 
