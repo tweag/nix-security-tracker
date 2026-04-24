@@ -407,6 +407,29 @@ in
           # Start at 03h so that the data will have been published
           startAt = "*-*-* 03:00:00";
         };
+
+        nix-security-tracker-garbage-collection = {
+          description = "Web security tracker - garbage collection";
+          after = [
+            "network.target"
+            "postgresql.service"
+            "nix-security-tracker-migrations.service"
+          ];
+          requires = [
+            "postgresql.service"
+            "nix-security-tracker-migrations.service"
+          ];
+          wantedBy = [ "multi-user.target" ];
+
+          serviceConfig.Type = "oneshot";
+          script = ''
+            wst-manage garbage_collect
+          '';
+
+          # Weekly cleanup.
+          # The time is almost arbitrary, just keep it out of the way of ingestions and peak traffic.
+          startAt = "Fri *-*-* 20:00:00";
+        };
       };
   };
 }
