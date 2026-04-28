@@ -36,11 +36,16 @@ def create_package_subscription_notifications(
     subscribed_users_set = set(subscribed_users_qs)
 
     # Find maintainers of affected packages with auto-subscribe enabled
+    github_ids = [
+        str(s)
+        for s in suggestion.derivations.filter(
+            metadata__maintainers__isnull=False
+        ).values_list("metadata__maintainers__github_id", flat=True)
+    ]
     maintainer_users_qs = (
         User.objects.filter(
-            username__in=suggestion.derivations.filter(
-                metadata__maintainers__isnull=False
-            ).values_list("metadata__maintainers__github", flat=True),
+            socialaccount__provider="github",
+            socialaccount__uid__in=github_ids,
             profile__auto_subscribe_to_maintained_packages=True,
         )
         .select_related("profile")
