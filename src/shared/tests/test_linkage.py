@@ -229,3 +229,17 @@ def test_mixed_cpe_parts_skips_hardware_only_affected_products(
     suggestion = CVEDerivationClusterProposal.objects.get(cve=app_container.cve)
     assert suggestion.derivations.filter(name__startswith="myapp").exists()
     assert not suggestion.derivations.filter(name__startswith="some_router").exists()
+
+
+def test_ignore_tests(
+    cve: Container,
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    drv1 = make_drv(attribute="foo")
+    drv2 = make_drv(attribute="tests.foo")
+
+    assert build_new_links(cve)
+
+    suggestion = CVEDerivationClusterProposal.objects.get(cve=cve.cve)
+    assert suggestion.derivations.filter(attribute=drv1.attribute).exists()
+    assert not suggestion.derivations.filter(attribute=drv2.attribute).exists()

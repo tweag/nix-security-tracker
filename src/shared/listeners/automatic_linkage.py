@@ -91,10 +91,17 @@ def produce_linkage_candidates(
     # TODO: record what is used to expand the candidate list.
     candidates: dict[NixDerivation, ProvenanceFlags] = {}
     # TODO: improve accuracy by using bigrams similarity with a `| Q(...)` query.
-    matches = NixDerivation.objects.filter(
-        package_q | product_q,
-        parent_evaluation__in=list(latest_complete_channels),
-    ).annotate(**annotations)
+    matches = (
+        NixDerivation.objects.exclude(
+            # Test derivations are a Nixpkgs implementation detail and never represent software to be distributed.
+            attribute__startswith="tests.",
+        )
+        .filter(
+            package_q | product_q,
+            parent_evaluation__in=list(latest_complete_channels),
+        )
+        .annotate(**annotations)
+    )
     for drv in matches.iterator():
         flags = getattr(drv, "package_match", 0) | getattr(drv, "product_match", 0)
         candidates[drv] = ProvenanceFlags(flags)
