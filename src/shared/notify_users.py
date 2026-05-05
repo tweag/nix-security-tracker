@@ -107,7 +107,7 @@ def send_notification_email(user: User, notification: Notification) -> None:
     email = (
         user.profile.notification_email
         if user.profile.notification_email
-        else user.profile.maintainer_email
+        else (user.profile.maintainer.email if user.profile.maintainer else None)
     )
 
     if not email:
@@ -127,7 +127,7 @@ def send_notification_email(user: User, notification: Notification) -> None:
         cve_title = truncatewords(suggestion.cached.payload["description"], 10)
 
     message_parts = [
-        f"Hello{' ' + user.profile.maintainer_github_handle if user.profile.maintainer_github_handle else ''},",
+        f"Hello{' ' + user.profile.maintainer.github if user.profile.maintainer and user.profile.maintainer.github else ''},",
         "",
         "A vulnerability may affect packages you follow or maintain:",
         "",

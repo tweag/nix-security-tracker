@@ -103,25 +103,12 @@ class Profile(models.Model):
     )
 
     @property
-    def maintainer_github_handle(self) -> str | None:
+    def maintainer(self) -> NixMaintainer | None:
         try:
             maintainer = NixMaintainer.objects.get(
                 github_id=self.user.socialaccount_set.get(provider="github").uid
             )
-            return maintainer.github
-        except (
-            NixMaintainer.DoesNotExist,
-            self.user.socialaccount_set.model.DoesNotExist,
-        ):
-            return None
-
-    @property
-    def maintainer_email(self) -> str | None:
-        try:
-            maintainer = NixMaintainer.objects.get(
-                github_id=self.user.socialaccount_set.get(provider="github").uid
-            )
-            return maintainer.email
+            return maintainer
         except (
             NixMaintainer.DoesNotExist,
             self.user.socialaccount_set.model.DoesNotExist,

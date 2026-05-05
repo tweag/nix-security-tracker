@@ -241,7 +241,9 @@ class SetNotificationEmailView(LoginRequiredMixin, TemplateView):
             return self.render_to_response(
                 {
                     "notification_email": profile.notification_email,
-                    "maintainer_email": request.user.profile.maintainer_email,
+                    "maintainer_email": request.user.profile.maintainer.email
+                    if request.user.profile.maintainer
+                    else None,
                 }
             )
         else:
@@ -253,7 +255,9 @@ class SetNotificationEmailView(LoginRequiredMixin, TemplateView):
             return self.render_to_response(
                 {
                     "notification_email": request.user.profile.notification_email,
-                    "maintainer_email": request.user.profile.maintainer_email,
+                    "maintainer_email": request.user.profile.maintainer.email
+                    if request.user.profile.maintainer
+                    else None,
                     "error_message": error_message,
                 }
             )
