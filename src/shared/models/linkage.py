@@ -2,14 +2,24 @@ from enum import STRICT, IntFlag
 from typing import Any
 
 import pghistory
+import pgtrigger
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models.signals import post_delete, post_save
+from django.db.utils import InternalError
 from django.dispatch import receiver
 from django.utils.translation import gettext_lazy as _
 
 import shared.models.cached
 from shared.models.cve import CveRecord, Reference
 from shared.models.nix_evaluation import NixDerivation, NixMaintainer, TimeStampMixin
+
+
+class SuggestionStatus(models.TextChoices):
+    PENDING = "pending", _("pending")
+    REJECTED = "rejected", _("rejected")
+    ACCEPTED = "accepted", _("accepted")
+    PUBLISHED = "published", _("published")
 
 
 @pghistory.track(
@@ -21,11 +31,7 @@ class CVEDerivationClusterProposal(TimeStampMixin):
     A proposal to link a CVE to a set of derivations.
     """
 
-    class Status(models.TextChoices):
-        PENDING = "pending", _("pending")
-        REJECTED = "rejected", _("rejected")
-        ACCEPTED = "accepted", _("accepted")
-        PUBLISHED = "published", _("published")
+    Status = SuggestionStatus
 
     class RejectionReason(models.TextChoices):
         EXCLUSIVELY_HOSTED_SERVICE = (
@@ -59,7 +65,8 @@ class CVEDerivationClusterProposal(TimeStampMixin):
 
     comment = models.CharField(
         max_length=1000,
-        default="",
+        null=True,
+        blank=True,
         help_text=_(
             "Optional free text comment for additional notes, context, dismissal reason"
         ),
@@ -113,6 +120,66 @@ class CVEDerivationClusterProposal(TimeStampMixin):
             package_attribute=package,
             overlay_type=PackageOverlay.Type.IGNORED,
         ).delete()
+
+    def change_status(
+        self,
+        status: SuggestionStatus,
+        rejection_reason: RejectionReason | None = None,
+        comment: str | None = None,
+    ) -> None:
+        if status == self.status:
+            raise ValidationError({"status": f"Already in status '{self.status}'"})
+
+        self.status = status
+        self.rejection_reason = rejection_reason
+        if comment:
+            self.comment = comment
+        self.full_clean()
+        try:
+            self.save()
+        except InternalError:
+            raise ValidationError(
+                {
+                    "status": f"Invalid status transition from '{self.status}' to '{status}'"
+                }
+            )
+
+    def clean(self) -> None:
+        if self.status == SuggestionStatus.REJECTED:
+            if self.rejection_reason is None and not self.comment:
+                raise ValidationError(
+                    {
+                        "rejection_reason": "Rejecting a suggestion requires a reason or a comment"
+                    }
+                )
+        else:
+            if self.rejection_reason is not None:
+                raise ValidationError(
+                    {
+                        "rejection_reason": "Cannot set rejection reason on suggeston that is not rejected"
+                    }
+                )
+
+    class Meta:  # type: ignore[override]
+        triggers = [
+            pgtrigger.FSM(
+                name="status_fsm",
+                field="status",
+                transitions=[
+                    (SuggestionStatus.PENDING, SuggestionStatus.REJECTED),
+                    (SuggestionStatus.PENDING, SuggestionStatus.ACCEPTED),
+                    (SuggestionStatus.REJECTED, SuggestionStatus.ACCEPTED),
+                    (SuggestionStatus.ACCEPTED, SuggestionStatus.REJECTED),
+                    (SuggestionStatus.ACCEPTED, SuggestionStatus.PUBLISHED),
+                    # FIXME(@fricklerhandwerk): It's not desirable to allow this, but it happens when we want to undo a status change ad hoc.
+                    # The correct solution is to get rid of the concept of status altogether:
+                    # Whatever is done to a piece of data will determine which filter it appears in.
+                    # And then we can have a generic undo that will simply invert edit operations on the overlay data from the frontend.
+                    (SuggestionStatus.ACCEPTED, SuggestionStatus.PENDING),
+                    (SuggestionStatus.REJECTED, SuggestionStatus.PENDING),
+                ],
+            ),
+        ]
 
 
 @pghistory.track(
