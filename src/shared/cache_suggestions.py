@@ -222,7 +222,9 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
         .all()
     )
 
-    prefetched_metrics = Metric.objects.filter(container__cve=suggestion.cve)
+    prefetched_metrics = Metric.objects.filter(container__cve=suggestion.cve).order_by(
+        "-format"
+    )
     original_packages = channel_structure(all_versions, derivations)
     maintainer_overlays = list(
         suggestion.maintainer_overlays.select_related("maintainer").all()
