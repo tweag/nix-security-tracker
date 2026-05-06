@@ -30,7 +30,8 @@ from shared.models import (
     PackageOverlayEvent,  # type: ignore
     ReferenceUrlOverlayEvent,  # type: ignore
 )
-from shared.models.linkage import CVEDerivationClusterProposal
+from shared.models.linkage import CVEDerivationClusterProposal, PackageOverlay
+from shared.models.nix_evaluation import NixDerivation
 
 
 def _annotate_username(query: EventQuerySet) -> EventQuerySet:
@@ -157,3 +158,72 @@ def fetch_suggestion_events(
         )
 
     return result
+
+
+def fetch_status_events_for_package(package_name: str) -> list[RawEventType]:
+    """Fetch all creation and status-change events for suggestions that include
+    the given package attribute as an active (non-ignored) package.
+
+    Returns a flat list of RawCreationEvent and RawStatusEvent objects sorted
+    with the most recent events first.
+    """
+    if not NixDerivation.objects.filter(attribute=package_name).exists():
+        return []
+
+    suggestion_ids = list(
+        CVEDerivationClusterProposal.objects.filter(
+            derivations__attribute=package_name,
+        )
+        .exclude(
+            package_overlays__package_attribute=package_name,
+            package_overlays__overlay_type=PackageOverlay.Type.IGNORED,
+        )
+        .distinct()
+        .values_list("pk", flat=True)
+    )
+
+    if not suggestion_ids:
+        return []
+
+    events: list[RawEventType] = []
+
+    creation_qs = _annotate_username(
+        CVEDerivationClusterProposalStatusEvent.objects.select_related(
+            "pgh_context"
+        ).filter(pgh_label="insert", pgh_obj_id__in=suggestion_ids)
+    )
+    for creation_event in creation_qs.iterator():
+        events.append(
+            RawCreationEvent(
+                suggestion_id=creation_event.pgh_obj_id,
+                timestamp=creation_event.pgh_created_at,
+                rejection_reason=CVEDerivationClusterProposal.RejectionReason(
+                    creation_event.rejection_reason
+                ).label.__str__()
+                if creation_event.rejection_reason is not None
+                else None,
+            )
+        )
+
+    status_qs = _annotate_username(
+        CVEDerivationClusterProposalStatusEvent.objects.select_related("pgh_context")
+        .exclude(pgh_label="insert")
+        .filter(pgh_obj_id__in=suggestion_ids)
+    )
+    for status_event in status_qs.iterator():
+        events.append(
+            RawStatusEvent(
+                suggestion_id=status_event.pgh_obj_id,
+                timestamp=status_event.pgh_created_at,
+                username=status_event.username,
+                action=status_event.pgh_label,
+                status_value=status_event.status,
+                rejection_reason=CVEDerivationClusterProposal.RejectionReason(
+                    status_event.rejection_reason
+                ).label.__str__()
+                if status_event.rejection_reason is not None
+                else None,
+            )
+        )
+
+    return sorted(events, key=lambda e: e.timestamp, reverse=True)
