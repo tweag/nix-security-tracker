@@ -91,24 +91,28 @@ def create_gh_issue(
         else:
             return ""
 
-    def affected_nix_packages() -> str:
+    def affected_packages() -> str:
         packages = []
 
         for attribute_name, pkg in cached_suggestion.payload["packages"].items():
+            pull_requests = f"https://github.com/NixOS/nixpkgs/pulls?q=sort%3Aupdated-desc+is%3Apr+{quote(attribute_name)}+in%3Atitle+-%3E+in%3Atitle"
             versions = []
             for major_channel, version_data in pkg["channels"].items():
                 if version_data["major_version"]:
-                    versions.append(f"{version_data['major_version']}@{major_channel}")
+                    versions.append(
+                        f"  - {version_data['major_version']}@{major_channel}"
+                    )
 
-            versions_details = f" ({', '.join(versions)})" if versions else ""
-            packages.append(f"- `{attribute_name}`{versions_details}")
+            package = f"- `{attribute_name}` ([pull requests]({pull_requests}))"
+            if versions:
+                package += f"\n{'\n'.join(versions)}"
+
+            packages.append(package)
 
         return f"""
-<details>
-<summary>Affected packages</summary>
+## Affected packages
 
-{"\n".join(packages)}
-</details>"""
+{"\n".join(packages)}"""
 
     def references() -> str:
         """
@@ -166,6 +170,14 @@ def create_gh_issue(
         else:
             return ""
 
+    def help_text() -> str:
+        return """
+## Next steps
+
+- Start here if this is your first security issue: [Triaging and fixing security issues](https://github.com/NixOS/nixpkgs/blob/master/pkgs/README.md#triaging-and-fixing)
+- Backports are usually needed: [Backporting security fixes](https://github.com/NixOS/nixpkgs/blob/master/CONTRIBUTING.md#how-to-backport-pull-requests)
+"""
+
     repo = github.get_repo(f"{settings.GH_ORGANIZATION}/{settings.GH_ISSUES_REPO}")
 
     # NOTE(@fricklerhandwerk): [tag:title-fallback-hack] 3/4 of CVEs have no title, 1/2 have no description, but none has neither.
@@ -194,7 +206,9 @@ def create_gh_issue(
 {cached_suggestion.payload["description"]}
 {references()}
 {cvss_details()}
-{affected_nix_packages()}{additional_comment()}"""
+{affected_packages()}{additional_comment()}
+{help_text()}
+"""
 
     return repo.create_issue(title=title, body=body, labels=settings.GH_ISSUES_LABELS)
 
