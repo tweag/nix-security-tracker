@@ -166,7 +166,7 @@ To replicate this on a traditional Unix-like system:
 
 ### Start the service
 
-> ![NOTE]
+> [!NOTE]
 > For a quick start, create dummy credentials:
 >
 > ```console
