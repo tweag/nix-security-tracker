@@ -290,12 +290,14 @@ def make_suggestion(
         },
         status: CVEDerivationClusterProposal.Status = CVEDerivationClusterProposal.Status.PENDING,
         rejection_reason: CVEDerivationClusterProposal.RejectionReason | None = None,
+        in_issue_draft: bool = False,
         age: timedelta = timedelta(0),
         algorithm_version: int | None = None,
     ) -> CVEDerivationClusterProposal:
         suggestion = CVEDerivationClusterProposal.objects.create(
             status=status,
             rejection_reason=rejection_reason,
+            in_issue_draft=in_issue_draft,
             cve=container.cve,
             algorithm_version=algorithm_version
             if algorithm_version is not None
@@ -361,7 +363,10 @@ def make_issue(
             container=container,
             status=CVEDerivationClusterProposal.Status.PUBLISHED,
         )
-        return NixpkgsIssue.create_nixpkgs_issue(suggestion)
+        title = suggestion.cached.payload.get("title") or suggestion.cached.payload.get(
+            "description", "Issue title"
+        )
+        return NixpkgsIssue.create_nixpkgs_issue([suggestion], title)
 
     return wrapped
 

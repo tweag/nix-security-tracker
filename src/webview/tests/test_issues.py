@@ -58,7 +58,7 @@ def test_publish_gh_issue_empty_title(
 
     as_staff.goto(live_server.url + reverse("webview:suggestion:accepted_suggestions"))
     suggestion = as_staff.locator(f"#suggestion-{accepted_suggestion.cached.pk}")
-    publish = suggestion.get_by_role("button", name="Publish issue")
+    publish = suggestion.get_by_role("button", name="Publish")
 
     # FIXME(@fricklerhandwerk): Mock Github's `create_issue()` here, not our own procedure! [ref:todo-github-connection]
     # Then we can test in-context that the right arguments have been passed, using `mock.assert_called_with()`.
@@ -89,7 +89,9 @@ def test_publish_gh_issue_empty_title(
 
     expect(suggestion).to_be_visible()
 
-    issue_link = suggestion.locator("..").get_by_role("link", name="GitHub issue")
+    issue_link = (
+        suggestion.locator("..").locator("..").get_by_role("link", name="GitHub issue")
+    )
     expect(issue_link).to_be_visible()
     # FIXME(@fricklerhandwerk): Instrument the GitHub mock to produce a controlled link and check for that in the UI.
     # This would assert we're actually displaying the right URL.
@@ -117,7 +119,7 @@ def test_maintainer_of_active_package_mentioned_in_issue(
 
     as_staff.goto(live_server.url + reverse("webview:suggestion:accepted_suggestions"))
     suggestion = as_staff.locator(f"#suggestion-{accepted_suggestion.pk}")
-    publish = suggestion.get_by_role("button", name="Publish issue")
+    publish = suggestion.get_by_role("button", name="Publish")
     active_packages = as_staff.locator(
         f"#suggestion-{accepted_suggestion.cached.pk}-active-packages"
     )
@@ -218,7 +220,7 @@ def test_cvss_base_score_visible_in_web_ui(
     mocker.patch("shared.github.create_gh_issue", mock_create_gh_issue)
     mocker.patch("shared.github.get_maintainer_username", mock_get_maintainer_username)
 
-    publish = suggestion.get_by_role("button", name="Publish issue")
+    publish = suggestion.get_by_role("button", name="Publish")
     publish.click()
     if no_js:
         as_staff.goto(live_server.url + reverse("webview:issue_list"))
@@ -266,7 +268,7 @@ def test_published_issue_shows_publication_date(
 
     as_staff.goto(live_server.url + reverse("webview:suggestion:accepted_suggestions"))
     suggestion = as_staff.locator(f"#suggestion-{accepted_suggestion.cached.pk}")
-    publish = suggestion.get_by_role("button", name="Publish issue")
+    publish = suggestion.get_by_role("button", name="Publish")
 
     publish.click()
 
@@ -275,7 +277,8 @@ def test_published_issue_shows_publication_date(
     else:
         suggestion.get_by_role("link", name="View").click()
 
-    issue = NixpkgsIssue.objects.get(suggestion=accepted_suggestion)
+    accepted_suggestion.refresh_from_db()
+    issue = accepted_suggestion.nixpkgs_issue
     github_link = as_staff.locator(f"#issue-{issue.code}-github")
 
     expect(github_link).to_have_text(re.compile(r"GitHub issue\s+published\s+\S"))
