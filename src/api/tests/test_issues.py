@@ -4,31 +4,18 @@ from rest_framework.reverse import reverse
 from rest_framework.test import APIClient
 
 from shared.models.cve import Container
-from shared.models.issue import (
-    NixpkgsIssue,
-)
-from shared.models.linkage import (
-    CVEDerivationClusterProposal,
-)
+from shared.models.issue import NixpkgsIssue
 
 
-def test_published_issue(
+def test_list_issues_by_cve(
     make_container: Callable[..., Container],
-    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+    make_issue: Callable[..., NixpkgsIssue],
 ) -> None:
     container1 = make_container(cve_id="CVE-2025-1111")
     container2 = make_container(cve_id="CVE-2025-2222")
-    suggestion1 = make_cached_suggestion(
-        container=container1,
-        status=CVEDerivationClusterProposal.Status.PUBLISHED,
-    )
-    suggestion2 = make_cached_suggestion(
-        container=container2,
-        status=CVEDerivationClusterProposal.Status.PUBLISHED,
-    )
+    issue1 = make_issue(container=container1)
+    make_issue(container=container2)
 
-    issue1 = NixpkgsIssue.create_nixpkgs_issue(suggestion1)
-    _ = NixpkgsIssue.create_nixpkgs_issue(suggestion2)
     client = APIClient()
     url = reverse("nixpkgsissue-list")
 
