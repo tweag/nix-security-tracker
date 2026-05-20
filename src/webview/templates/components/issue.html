@@ -4,7 +4,7 @@
 <article class="rounded-box column gap" id="issue-{{ issue.code }}">
 
   <div class="row gap spread">
-    <div class="uppercase bold">{{ issue.code }}</div>
+    <a href="{% url 'webview:issue_detail' code=issue.code %}">{{ issue.code }}</a>
     <div id="issue-{{ issue.code }}-github">
       {% if github_issue %}<a href="{{ github_issue }}" target="_blank" class="permalink">GitHub issue</a>{% endif %}
       {# FIXME(@fricklerhandwerk): Allow toggling to absolute time, as in the activity log. #}
@@ -12,6 +12,12 @@
     </div>
   </div>
 
-  {% suggestion suggestion_context %}
+  {% if issue.title %}<div class="bold">{{ issue.title }}</div>{% endif %}
+
+  <div class="column gap-small">
+    {% for suggestion_context in suggestion_contexts %}
+      {% suggestion suggestion_context %}
+    {% endfor %}
+  </div>
 
 </article>
