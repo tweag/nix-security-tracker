@@ -42,3 +42,21 @@ def test_list_issues_by_cve(
     response = client.get(url, {"cve": "CVE-9999-0000"})
     assert response.status_code == 200
     assert len(response.data) == 0
+
+
+def test_issue_detail_by_code(
+    make_container: Callable[..., Container],
+    make_issue: Callable[..., NixpkgsIssue],
+) -> None:
+    container = make_container(cve_id="CVE-2025-1111")
+    issue = make_issue(container=container)
+    client = APIClient()
+
+    detail_url = reverse("nixpkgsissue-by-code", kwargs={"code": issue.code})
+    response = client.get(detail_url)
+    assert response.status_code == 200
+    assert response.data["code"] == issue.code
+    assert response.data["cve"] == container.cve.cve_id
+
+    missing_url = reverse("nixpkgsissue-by-code", kwargs={"code": "NIXPKGS-2099-99999"})
+    assert client.get(missing_url).status_code == 404
