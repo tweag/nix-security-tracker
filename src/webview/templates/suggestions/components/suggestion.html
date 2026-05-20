@@ -168,13 +168,21 @@
               Accept
             </button>
           {% elif data.suggestion.status == "accepted" %}
-            <button type="submit"
-                    name="new_status"
-                    value="published"
-                    class="status-change-button btn btn-green row gap-small centered">
-              {% status_icon "published" %}
-              Publish issue
-            </button>
+            <div class="join join-green">
+              <button type="submit"
+                      name="new_status"
+                      value="published"
+                      class="status-change-button join-item btn btn-green row gap-small centered">
+                {% status_icon "published" %}
+                Publish issue
+              </button>
+              <button type="submit"
+                      name="new_status"
+                      value="published"
+                      class="status-change-button join-item btn btn-green row gap-small centered">
+                Add to draft issue
+              </button>
+            </div>
             {% include "./dismiss_button.html" %}
           {% endif %}
         </div>

@@ -1,6 +1,7 @@
 from django.urls import include, path, re_path
 
 from shared.auth.github_webhook import handle_github_hook
+from webview.issue_draft.views import IssueDraftView
 from webview.views import (
     HomeView,
     NixpkgsIssueListView,
@@ -15,6 +16,7 @@ urlpatterns = [
     path("notifications/", include("webview.notifications.urls")),
     path("subscriptions/", include("webview.subscriptions.urls")),
     path("suggestions/", include("webview.suggestions.urls")),
+    path("issue-draft/", IssueDraftView.as_view(), name="issue_draft"),
     path("issues/", NixpkgsIssueListView.as_view(), name="issue_list"),
     re_path(
         r"^issues/(?P<code>NIXPKGS-[0-9]{4}-[0-9]{4,19})$",
