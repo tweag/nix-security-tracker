@@ -1,4 +1,7 @@
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField
 from django.db import models
+from pgtrigger import UpdateSearchVector
 
 from shared.models.nix_evaluation import NixDerivation, NixMaintainer
 
@@ -8,6 +11,22 @@ class Package(models.Model):
     homepage = models.URLField(null=True)
     description = models.TextField(null=True)
     maintainers = models.ManyToManyField(NixMaintainer)
+
+    search_vector = SearchVectorField(null=True)
+
+    class Meta:  # type: ignore[override]
+        indexes = [
+            GinIndex(fields=["search_vector"]),
+        ]
+        triggers = [
+            UpdateSearchVector(
+                name="description_search_vector_idx",
+                vector_field="search_vector",
+                document_fields=[
+                    "description",
+                ],
+            )
+        ]
 
 
 class PackageAttrpath(models.Model):

@@ -111,26 +111,8 @@ class NixDerivationMeta(models.Model):
 
     position = models.URLField(null=True)
 
-    search_vector = SearchVectorField(null=True)
-
     def __str__(self) -> str:
         return self.description or ""
-
-    class Meta:  # type: ignore[override]
-        indexes = [
-            # Add a GIN index to speed up vector search queries
-            GinIndex(fields=["search_vector"]),
-        ]
-        triggers = [
-            # Add a trigger to maintain the search vector updated with row changes
-            UpdateSearchVector(
-                name="description_search_vector_idx",
-                vector_field="search_vector",
-                document_fields=[
-                    "description",
-                ],
-            )
-        ]
 
 
 class NixChannel(TimeStampMixin):
