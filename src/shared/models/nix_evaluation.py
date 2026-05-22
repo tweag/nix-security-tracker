@@ -115,6 +115,12 @@ class NixDerivationMeta(models.Model):
         return self.description or ""
 
 
+class NixChannelQuerySet(models.QuerySet):
+    def rolling(self) -> "NixChannelQuerySet":
+        # FIXME(@fricklerhandwerk): This will fall apart when we obtain the channel structure dynamically [ref:channel-structure]
+        return self.filter(channel_branch__contains=MAJOR_CHANNELS[0])
+
+
 class NixChannel(TimeStampMixin):
     """
     This represents a "Nixpkgs" (*) channel, e.g.
@@ -124,6 +130,8 @@ class NixChannel(TimeStampMixin):
 
     (*): Anything that looks like Nixpkgs is also good.
     """
+
+    objects = NixChannelQuerySet.as_manager()
 
     class ChannelState(models.TextChoices):
         END_OF_LIFE = "END_OF_LIFE", _("End of life")
@@ -155,6 +163,17 @@ class NixChannel(TimeStampMixin):
 
     def __str__(self) -> str:
         return f"{self.staging_branch} -> {self.channel_branch} (Release: {self.release_version})"
+
+    @property
+    def is_rolling_release(self) -> bool:
+        """
+        Whether the channel corresponds to a rolling release
+
+        A rolling release tracks the Nixpkgs `master` branch.
+        It's the source of truth for metadata such as package descriptions and maintainer information.
+        """
+        # FIXME(@fricklerhandwerk): This will fall apart when we obtain the channel structure dynamically [ref:channel-structure]
+        return MAJOR_CHANNELS[0] in self.channel_branch
 
 
 class NixEvaluation(TimeStampMixin):
