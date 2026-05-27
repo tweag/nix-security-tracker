@@ -93,7 +93,7 @@ class CVEDerivationClusterProposal(TimeStampMixin):
     )
 
     # Only suggstions in status ACCEPTED can be in issue_draft
-    in_issue_draft = models.BooleanField()
+    in_issue_draft = models.BooleanField(default=False)
 
     comment = models.CharField(
         max_length=1000,

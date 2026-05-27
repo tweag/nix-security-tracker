@@ -38,6 +38,7 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
 
         # Get form data
         new_status = request.POST.get("new_status")
+        in_issue_draft = request.POST.get("in_issue_draft")
         rejection_reason = request.POST.get("rejection_reason")
         new_comment = request.POST.get("comment", "").strip()
         is_compact = (
@@ -56,6 +57,21 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
             pre_fetched_events=events[suggestion.pk],
             is_compact=is_compact,
         )
+
+        # Special case: adding a suggestion to the issue draft
+        if (not new_status) and in_issue_draft:
+            if in_issue_draft == "1":
+                if suggestion.status != CVEDerivationClusterProposal.Status.ACCEPTED:
+                    return self._handle_error(request, suggestion_context, "Only accepted suggestions may be added to the issue draft")
+                else:
+                    suggestion.in_issue_draft = True;
+            elif in_issue_draft == "0":
+                suggestion.in_issue_draft = False;
+            suggestion.save()
+            if request.headers.get("HX-Request"):
+                return self.render_to_response({"data": suggestion_context})
+            else:
+                return self._redirect_to_origin(request)
 
         # Validate status change
         if not new_status:

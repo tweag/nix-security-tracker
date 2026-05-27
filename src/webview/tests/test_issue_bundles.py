@@ -36,11 +36,6 @@ from shared.models.linkage import CVEDerivationClusterProposal, ProvenanceFlags
 # ---------------------------------------------------------------------------
 
 
-def _draft_url(live_server: LiveServer) -> str:
-    """Return the absolute URL of the issue draft page."""
-    return live_server.url + reverse("webview:issue_draft")
-
-
 # ---------------------------------------------------------------------------
 # Navigation
 # ---------------------------------------------------------------------------
@@ -54,11 +49,11 @@ def test_staff_sees_issue_draft_link_in_nav(
     as_staff.goto(live_server.url + reverse("webview:suggestion:untriaged_suggestions"))
     link = as_staff.get_by_role("link", name="Issue draft")
     expect(link).to_be_visible()
-    expect(link).to_have_attribute("href", reverse("webview:issue_draft"))
+    expect(link).to_have_attribute("href", reverse("webview:suggestion:issue_draft"))
     as_staff.goto(live_server.url + reverse("webview:home"))
     link = as_staff.get_by_role("link", name="Issue draft")
     expect(link).to_be_visible()
-    expect(link).to_have_attribute("href", reverse("webview:issue_draft"))
+    expect(link).to_have_attribute("href", reverse("webview:suggestion:issue_draft"))
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +61,6 @@ def test_staff_sees_issue_draft_link_in_nav(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(reason="Not implemented")
 def test_draft_page_lists_suggestions_in_draft(
     make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
     as_staff: Page,
@@ -75,14 +69,12 @@ def test_draft_page_lists_suggestions_in_draft(
 ) -> None:
     """When there is at least one suggestion in the draft, it appears in the draft page list."""
     suggestion = make_cached_suggestion(
-        status=CVEDerivationClusterProposal.Status.ACCEPTED
+        status=CVEDerivationClusterProposal.Status.ACCEPTED,
+        in_issue_draft=True
     )
-    # Add suggestion to the draft (model-level helper that does not exist yet).
-    suggestion.add_to_issue_draft()
+    as_staff.goto(live_server.url + reverse("webview:suggestion:issue_draft"))
 
-    as_staff.goto(_draft_url(live_server))
-
-    entry = as_staff.locator(f"#draft-suggestion-{suggestion.pk}")
+    entry = as_staff.locator(f"#suggestion-{suggestion.pk}")
     expect(entry).to_be_visible()
 
 
@@ -185,6 +177,70 @@ def test_remove_from_draft_button(
     # Suggestion disappears from the draft page.
     as_staff.goto(_draft_url(live_server))
     expect(as_staff.locator(f"#draft-suggestion-{suggestion.pk}")).to_have_count(0)
+
+# ---------------------------------------------------------------------------
+# Reset draft
+# ---------------------------------------------------------------------------
+
+
+def test_reset_draft_removes_all_suggestions(
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+    as_staff: Page,
+    live_server: LiveServer,
+    no_js: bool,
+) -> None:
+    """Clicking 'Reset draft' removes all suggestions from the draft and
+    reloads the draft page, which then shows no suggestions."""
+    suggestion1 = make_cached_suggestion(
+        status=CVEDerivationClusterProposal.Status.ACCEPTED,
+        in_issue_draft=True,
+    )
+    suggestion2 = make_cached_suggestion(
+        status=CVEDerivationClusterProposal.Status.ACCEPTED,
+        in_issue_draft=True,
+    )
+
+    as_staff.goto(live_server.url + reverse("webview:suggestion:issue_draft"))
+
+    # Both suggestions are visible before the reset.
+    expect(as_staff.locator(f"#suggestion-{suggestion1.pk}")).to_be_visible()
+    expect(as_staff.locator(f"#suggestion-{suggestion2.pk}")).to_be_visible()
+
+    as_staff.get_by_role("button", name="Reset draft").click()
+
+    # After the reset the draft page is shown and lists no suggestions.
+    expect(as_staff).to_have_url(
+        live_server.url + reverse("webview:suggestion:issue_draft")
+    )
+    expect(as_staff.locator(f"#suggestion-{suggestion1.pk}")).to_have_count(0)
+    expect(as_staff.locator(f"#suggestion-{suggestion2.pk}")).to_have_count(0)
+
+    # The model-level flag must be cleared for both suggestions.
+    suggestion1.refresh_from_db()
+    suggestion2.refresh_from_db()
+    assert not suggestion1.in_issue_draft
+    assert not suggestion2.in_issue_draft
+
+
+def test_reset_draft_unauthenticated_is_forbidden(
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+    page: Page,
+    live_server: LiveServer,
+    no_js: bool,
+) -> None:
+    """An unauthenticated user POSTing to the reset endpoint is redirected to
+    login rather than being able to mutate the draft."""
+    make_cached_suggestion(
+        status=CVEDerivationClusterProposal.Status.ACCEPTED,
+        in_issue_draft=True,
+    )
+
+    reset_url = live_server.url + reverse("webview:suggestion:reset_issue_draft")
+    page.goto(reset_url)
+
+    # Should be redirected away (to login), not reach the reset endpoint.
+    expect(page).not_to_have_url(reset_url)
+
 
 # ---------------------------------------------------------------------------
 # Draft membership invariants
