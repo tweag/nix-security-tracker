@@ -44,7 +44,7 @@ graph TB
     FetchAllChannels -->|2 Git pull| GitHubNixos
     FetchAllChannels -->|3 Update Repo| LocalGitCheckout
     FetchAllChannels -->|4 update channels| PostgreSQL
-    PostgreSQL -.->|NixEvaluationChannel NOTIFY| NixEval
+    FetchAllChannels -.->|triggers evaluation| NixEval
     NixEval -->|ingest derivations| PostgreSQL
 
     SystemdTimerCVEs -.->|Triggers Daily| IngestCVEs
