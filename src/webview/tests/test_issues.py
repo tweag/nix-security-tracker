@@ -279,3 +279,14 @@ def test_published_issue_shows_publication_date(
     github_link = as_staff.locator(f"#issue-{issue.code}-github")
 
     expect(github_link).to_have_text(re.compile(r"GitHub issue\s+published\s+\S"))
+
+
+def test_issue_detail_page_title_contains_issue_code(
+    live_server: LiveServer,
+    page: Page,
+    issue: NixpkgsIssue,
+) -> None:
+    page.goto(
+        live_server.url + reverse("webview:issue_detail", kwargs={"code": issue.code})
+    )
+    assert issue.code in page.title()
