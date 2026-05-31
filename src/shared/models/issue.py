@@ -33,8 +33,9 @@ class NixpkgsIssue(TimeStampMixin):
 
     code = models.CharField(max_length=len("NIXPKGS-YYYY-") + 19, unique=True)
 
-    suggestion = models.OneToOneField(
-        CVEDerivationClusterProposal, on_delete=models.PROTECT
+    suggestions = models.ManyToManyField(
+        CVEDerivationClusterProposal,
+        related_name="nixpkgs_issues",
     )
 
     status = models.CharField(
@@ -66,15 +67,13 @@ class NixpkgsIssue(TimeStampMixin):
         that this doesn't create a corresponding GitHub issue; interaction with
         GitHub is handled separately in `shared.github`.
         """
-
         issue = cls.objects.create(
             # By default we set the status to affected; a human might later
             # change the status if it turns out we're not affected in the
             # end.
             status=IssueStatus.AFFECTED,
-            suggestion=suggestion,
         )
-        issue.save()
+        issue.suggestions.add(suggestion)
         return issue
 
     def publish(self, new_comment: str | None = None) -> None:
@@ -89,8 +88,15 @@ class NixpkgsIssue(TimeStampMixin):
         tracker_issue_path = reverse("webview:issue_detail", args=[self.code])
         tracker_issue_link = f"{settings.BASE_URL}{tracker_issue_path}"
 
+        # FIXME(@florentc): For now publish() handles the single-suggestion case.
+        # Multi-suggestion bundle publishing is handled separately and will
+        # supersede this once create_gh_issue is updated to accept a list.
+        first_suggestion = self.suggestions.select_related("cached").first()
+        if first_suggestion is None:
+            raise ValueError("Cannot publish a NixpkgsIssue with no suggestions")
+
         github_issue_link = create_gh_issue(
-            self.suggestion.cached,
+            first_suggestion.cached,
             tracker_issue_link,
             new_comment,
         ).html_url
@@ -123,7 +129,7 @@ def generate_code(
             except IntegrityError:
                 continue
         raise RuntimeError(
-            f"Failed to generate unique issue code for '{instance.suggestion.cve.cve_id}'"
+            f"Failed to generate unique issue code for NixpkgsIssue pk={instance.pk}"
         )
 
 

@@ -3,13 +3,17 @@
 <article class="rounded-box column gap" id="issue-{{ issue.code }}">
 
   <div class="row gap spread">
-    <div class="uppercase bold">{{ issue.code }}</div>
+    <div class="uppercase bold"><a href="{% url 'webview:issue_detail' code=issue.code %}">{{ issue.code }}</a></div>
     <div>
       {% if github_issue %}<a href="{{ github_issue }}" target="_blank" class="permalink">GitHub issue</a>{% endif %}
       published on {{ issue.created }}
     </div>
   </div>
 
-  {% suggestion suggestion_context %}
+  <div class="column gap-small">
+    {% for suggestion_context in suggestion_contexts %}
+      {% suggestion suggestion_context %}
+    {% endfor %}
+  </div>
 
 </article>
