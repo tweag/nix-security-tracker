@@ -121,8 +121,14 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
             elif new_status == "published":
                 try:
                     with transaction.atomic():
-                        tracker_issue = NixpkgsIssue.create_nixpkgs_issue(suggestion)
-                        tracker_issue.publish(new_comment)
+                        from django.template.defaultfilters import truncatewords
+                        title = (
+                            suggestion.cached.payload["title"]
+                            or truncatewords(suggestion.cached.payload.get("description", ""), 10)
+                            or "Security issue (missing title)"
+                        )
+                        tracker_issue = NixpkgsIssue.create_nixpkgs_issue([suggestion], title)
+                        tracker_issue.publish()
                         suggestion.status = (
                             CVEDerivationClusterProposal.Status.PUBLISHED
                         )

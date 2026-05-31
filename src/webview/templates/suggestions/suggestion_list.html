@@ -99,8 +99,7 @@
                       class="btn btn-gray no-line-breaks">Reset draft</button>
             </form>
             <form method="post"
-                  action=""
-                  hx-post=""
+                  action="{% url 'webview:suggestion:publish_issue_draft' %}"
                   hx-swap="none"
                   hx-indicator="find .join"
                   class="contents">

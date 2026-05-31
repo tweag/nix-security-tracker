@@ -7,6 +7,7 @@ from github import Auth, Github
 from github.Issue import Issue as GithubIssue
 
 from shared.models import CachedSuggestions
+from shared.models.linkage import CVEDerivationClusterProposal
 from webview.templatetags.viewutils import severity_badge
 
 logger = logging.getLogger(__name__)
@@ -25,16 +26,16 @@ def get_gh(per_page: int = 30) -> Github:
 
 
 def create_gh_issue(
-    cached_suggestion: CachedSuggestions,
+    suggestions: list[CVEDerivationClusterProposal],
+    title: str,
     tracker_issue_uri: str,
-    comment: str | None = None,
     # FIXME(@fricklerhandwerk): [tag:todo-github-connection] Make an application-level "GitHub connection" object instead.
     # Instantiating the connection at definition time makes mocking it away for tests rather cumbersome.
     # Ideally we'd have a generic mock that would abstract away regular book keeping such as app authentication, and tests would override only relevant behavior.
     github: Github = get_gh(),
 ) -> GithubIssue:
     """
-    Creates a GitHub issue for the given suggestion on the Nixpkgs repository,
+    Creates a GitHub issue for the given suggestions on the Nixpkgs repository,
     given a link to the corresponding NixpkgsIssue on the tracker side.
 
     The tracker issue URI could be derived automatically from NixpkgsIssue here,
@@ -53,56 +54,31 @@ def create_gh_issue(
         else:
             return f"`@{maintainer}`"
 
-    def cvss_details() -> str:
-        badge = severity_badge(cached_suggestion.payload["metrics"])
-        if badge:
-            metric = badge["cvss"]
-            metrics = "\n".join(
-                [f"- {k}: {v}" for k, v in badge["human_readable"].items()]
-            )
-            score_label = (
-                f"<strong>{metric['base_score']:.1f} {metric['base_severity']}</strong>"
-            )
-            return f"""
-<details>
-<summary>{score_label} | {metric["vector_string"]}</summary>
-
-- CVSS version (CVSS): {metric["version"]}
-{metrics}
-</details>"""
-        else:
-            return ""
-
-    def maintainers() -> str:
-        maintainers = cached_suggestion.payload["categorized_maintainers"]
-
+    def maintainers(suggestion: CVEDerivationClusterProposal) -> str:
+        raw = suggestion.cached.payload["categorized_maintainers"]
         # We need to query for the latest username of each maintainer, because
         # those might have changed since they were written out in Nixpkgs; since
         # we have the user id (which is stable), we can ask the GitHub API
         maintainers_list = [
             get_maintainer_username(maintainer, github)
-            for maintainer in (maintainers["active"] + maintainers["added"])
+            for maintainer in (raw["active"] + raw["added"])
             if "github_id" in maintainer and "github" in maintainer
         ]
-
         if maintainers_list:
             maintainers_joined = ", ".join(mention(m) for m in maintainers_list)
-            return f"- affected package maintainers: cc {maintainers_joined}\n"
+            return f"Affected package maintainers: cc {maintainers_joined}\n"
         else:
             return ""
 
-    def affected_nix_packages() -> str:
+    def affected_nix_packages(suggestion: CVEDerivationClusterProposal) -> str:
         packages = []
-
-        for attribute_name, pkg in cached_suggestion.payload["packages"].items():
+        for attribute_name, pkg in suggestion.cached.payload["packages"].items():
             versions = []
             for major_channel, version_data in pkg["channels"].items():
                 if version_data["major_version"]:
                     versions.append(f"{version_data['major_version']}@{major_channel}")
-
             versions_details = f" ({', '.join(versions)})" if versions else ""
             packages.append(f"- `{attribute_name}`{versions_details}")
-
         return f"""
 <details>
 <summary>Affected packages</summary>
@@ -110,91 +86,54 @@ def create_gh_issue(
 {"\n".join(packages)}
 </details>"""
 
-    def references() -> str:
-        """
-        Format active references from the cached suggestion for inclusion in GitHub issue.
-        """
-        references = cached_suggestion.payload.get("categorized_url_references", {})
-        active_refs = references.get("active", [])
-
-        if not active_refs:
+    def suggestion_comment(suggestion: CVEDerivationClusterProposal) -> str:
+        comment = suggestion.comment
+        if not comment:
             return ""
-
-        ref_lines = []
-        for ref in active_refs:
-            # Format each reference with name and URL
-            if ref.get("name") and ref["name"].strip():
-                ref_lines.append(f"- [{ref['name']}]({ref['url']})")
+        max_backticks = 0
+        current_backticks = 0
+        for char in comment:
+            if char == "`":
+                current_backticks += 1
+                max_backticks = max(max_backticks, current_backticks)
             else:
-                ref_lines.append(f"- {ref['url']}")
-
-            # Add tags if present
-            if ref.get("tags"):
-                tags_str = ", ".join(f"`{tag}`" for tag in ref["tags"])
-                ref_lines[-1] += f" ({tags_str})"
-
+                current_backticks = 0
+        # Use at least 3 backticks, or one more than the maximum found in
+        # order to escape accidents or attempts at escaping the code block
+        fence_backticks = "`" * max(3, max_backticks + 1)
         return f"""
 
-## References
-
-{"\n".join(ref_lines)}"""
-
-    def additional_comment() -> str:
-        if comment:
-            # Find the maximum number of consecutive backticks in the comment
-            max_backticks = 0
-            current_backticks = 0
-
-            for char in comment:
-                if char == "`":
-                    current_backticks += 1
-                    max_backticks = max(max_backticks, current_backticks)
-                else:
-                    current_backticks = 0
-
-            # Use at least 3 backticks, or one more than the maximum found in
-            # order to escape accidents or attempts at escaping the code block
-            fence_backticks = "`" * max(3, max_backticks + 1)
-
-            return f"""
-
-## Additional comment
+### Additional comment
 
 {fence_backticks}
 {comment}
 {fence_backticks}"""
-        else:
-            return ""
+
+    def suggestion_section(suggestion: CVEDerivationClusterProposal) -> str:
+        cve_id = suggestion.cached.payload["cve_id"]
+        section_title = (
+            suggestion.cached.payload.get("title")
+            or truncatewords(suggestion.cached.payload.get("description", ""), 10)
+            or cve_id
+        )
+        return f"""## {section_title}
+
+- [{cve_id}](https://nvd.nist.gov/vuln/detail/{quote(cve_id)})
+
+{suggestion.cached.payload["description"]}
+
+{affected_nix_packages(suggestion)}
+
+{maintainers(suggestion)}{suggestion_comment(suggestion)}"""
 
     repo = github.get_repo(f"{settings.GH_ORGANIZATION}/{settings.GH_ISSUES_REPO}")
 
-    # NOTE(@fricklerhandwerk): [tag:title-fallback-hack] 3/4 of CVEs have no title, 1/2 have no description, but none has neither.
-    # This hack, which we're also using in the template, can -- for now -- be expected to always work.
-    # Users can still change the GitHub issue title on GitHub if the truncated description is not informative.
-    if cached_suggestion.payload["title"]:
-        title = cached_suggestion.payload["title"]
-    elif cached_suggestion.payload["description"]:
-        title = truncatewords(cached_suggestion.payload["description"], 10)
-    else:
-        # FIXME(@fricklerhandwerk): Do the input validation at the call site and either show a note to users that the title should be set on GitHub,
-        # or offer a UI to override the title.
-        title = "Security issue (missing title)"
-        # XXX(@fricklerhandwerk): This should never happen, but we want to know when it does.
-        logger.warning(
-            "CVE container '%s' has no title and no description",
-            cached_suggestion.payload["pk"],
-        )
+    sections = "\n\n".join(suggestion_section(s) for s in suggestions)
 
     body = f"""\
-- [{cached_suggestion.payload["cve_id"]}](https://nvd.nist.gov/vuln/detail/{quote(cached_suggestion.payload["cve_id"])})
 - [Nixpkgs security tracker issue]({tracker_issue_uri})
-{maintainers()}
-## Description
 
-{cached_suggestion.payload["description"]}
-{references()}
-{cvss_details()}
-{affected_nix_packages()}{additional_comment()}"""
+{sections}"""
 
     return repo.create_issue(title=title, body=body, labels=settings.GH_ISSUES_LABELS)
 

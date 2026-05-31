@@ -33,6 +33,8 @@ class NixpkgsIssue(TimeStampMixin):
 
     code = models.CharField(max_length=len("NIXPKGS-YYYY-") + 19, unique=True)
 
+    title = models.CharField(max_length=500, default="")
+
     suggestions = models.ManyToManyField(
         CVEDerivationClusterProposal,
         related_name="nixpkgs_issues",
@@ -60,23 +62,24 @@ class NixpkgsIssue(TimeStampMixin):
 
     @classmethod
     def create_nixpkgs_issue(
-        cls, suggestion: CVEDerivationClusterProposal
+        cls, suggestions: list[CVEDerivationClusterProposal], title: str
     ) -> "NixpkgsIssue":
         """
-        Create a NixpkgsIssue from a suggestion and save it in the database. Note
+        Create a NixpkgsIssue from a list of suggestions and save it in the database. Note
         that this doesn't create a corresponding GitHub issue; interaction with
         GitHub is handled separately in `shared.github`.
         """
         issue = cls.objects.create(
+            title=title,
             # By default we set the status to affected; a human might later
             # change the status if it turns out we're not affected in the
             # end.
             status=IssueStatus.AFFECTED,
         )
-        issue.suggestions.add(suggestion)
+        issue.suggestions.set(suggestions)
         return issue
 
-    def publish(self, new_comment: str | None = None) -> None:
+    def publish(self) -> None:
         """
         Create a corresponding GitHub issue for this NixpkgsIssue and log the event.
         """
@@ -85,20 +88,20 @@ class NixpkgsIssue(TimeStampMixin):
 
         from shared.github import create_gh_issue
 
+        if not self.title:
+            raise ValueError("Cannot publish a NixpkgsIssue with no title")
+
         tracker_issue_path = reverse("webview:issue_detail", args=[self.code])
         tracker_issue_link = f"{settings.BASE_URL}{tracker_issue_path}"
 
-        # FIXME(@florentc): For now publish() handles the single-suggestion case.
-        # Multi-suggestion bundle publishing is handled separately and will
-        # supersede this once create_gh_issue is updated to accept a list.
-        first_suggestion = self.suggestions.select_related("cached").first()
-        if first_suggestion is None:
+        suggestions = list(self.suggestions.select_related("cached").all())
+        if not suggestions:
             raise ValueError("Cannot publish a NixpkgsIssue with no suggestions")
 
         github_issue_link = create_gh_issue(
-            first_suggestion.cached,
+            suggestions,
+            self.title,
             tracker_issue_link,
-            new_comment,
         ).html_url
 
         NixpkgsEvent.objects.create(

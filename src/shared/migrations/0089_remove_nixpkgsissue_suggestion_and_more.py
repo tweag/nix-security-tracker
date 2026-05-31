@@ -1,5 +1,7 @@
-from django.db import migrations, models
 import logging
+
+import django.db.models.deletion
+from django.db import migrations, models
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,16 @@ class Migration(migrations.Migration):
             name='suggestions',
             field=models.ManyToManyField(related_name='nixpkgs_issues', to='shared.cvederivationclusterproposal'),
         ),
+        migrations.AlterField(
+            model_name='nixpkgsissue',
+            name='suggestion',
+            field=models.OneToOneField(
+                null=True,
+                blank=True,
+                on_delete=django.db.models.deletion.PROTECT,
+                to='shared.cvederivationclusterproposal',
+            ),
+        ),
         migrations.RunPython(
             migrate_suggestion_to_suggestions,
             reverse_code=migrate_suggestions_to_suggestion,
@@ -42,5 +54,10 @@ class Migration(migrations.Migration):
         migrations.RemoveField(
             model_name='nixpkgsissue',
             name='suggestion',
+        ),
+        migrations.AddField(
+            model_name='nixpkgsissue',
+            name='title',
+            field=models.CharField(default='', max_length=500),
         ),
     ]
