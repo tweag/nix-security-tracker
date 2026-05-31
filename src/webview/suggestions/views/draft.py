@@ -49,6 +49,7 @@ class PublishIssueDraftView(LoginRequiredMixin, View):
             CVEDerivationClusterProposal.objects.filter(in_issue_draft=True).select_related("cached")
         )
         if not suggestions:
+            messages.error(request, "Cannot publish an empty issue")
             return redirect(reverse("webview:suggestion:issue_draft"))
 
         try:

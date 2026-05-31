@@ -69,7 +69,11 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
                 suggestion.in_issue_draft = False;
             suggestion.save()
             if request.headers.get("HX-Request"):
-                return self.render_to_response({"data": suggestion_context})
+                if in_issue_draft == "0" and self._is_origin_url_issue_draft(request):
+                    # In case we come from the issue draft list, we want to remove the item
+                    return HttpResponse("<template></template>")
+                else:
+                    return self.render_to_response({"data": suggestion_context})
             else:
                 return self._redirect_to_origin(request)
 
@@ -167,6 +171,10 @@ class UpdateSuggestionStatusView(SuggestionBaseView):
             # We don't display the status in lists (they are "by status" lists already)
             suggestion_context.show_status = False
             if not undo_status_change:
+                # In case we come from the issue draft list, we want to remove the item
+                if self._is_origin_url_issue_draft(request):
+                    if request.headers.get("HX-Request"):
+                        return HttpResponse("<template></template>")
                 # If we come from a suggestion list, we don't update the component in
                 # place because the list would mix suggestions of different statuses.
                 # Instead, we show only a stub of the suggestion.
