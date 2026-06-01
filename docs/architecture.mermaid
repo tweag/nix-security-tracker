@@ -23,7 +23,7 @@ graph TB
 		  SystemdTimerChannels["Systemd Timer Fetch Channels"]
 		  SystemdTimerCVEs["Systemd Timer Ingest CVEs"]
           NixEval["Evaluate Nixpkgs"]
-          DjangoWorker["Django worker"]
+          MatchingListener["CVE matching"]
 	  end
 
 	  subgraph Storage["Storage"]
@@ -50,7 +50,7 @@ graph TB
     SystemdTimerCVEs -.->|Triggers Daily| IngestCVEs
     IngestCVEs -->|1 Fetch CVEs| GitHubCVEs
     IngestCVEs -->|2 Update Database| PostgreSQL
-    IngestCVEs -->|3 PgTrigger Suggestions| DjangoWorker
+    IngestCVEs -.->|3 triggers matching| MatchingListener
 
   classDef userClass fill:#e1f5fe,stroke:#01579b,stroke-width:3px,color:#000
     classDef externalClass fill:#f3e5f5,stroke:#4a148c,stroke-width:3px,color:#000
@@ -64,6 +64,6 @@ graph TB
     class GitHub,GitHubNixos,GitHubCVEs,NixMonitoring externalClass
     class Nginx,WSGI webClass
     class FetchAllChannels,IngestCVEs commandClass
-    class SystemdTimerChannels,SystemdTimerCVEs,NixEval,DjangoWorker backgroundClass
+    class SystemdTimerChannels,SystemdTimerCVEs,NixEval,MatchingListener backgroundClass
     class PostgreSQL,LocalGitCheckout,NixStore storageClass
     class Storage,Background,ManageCommands,Web subgraphClass
