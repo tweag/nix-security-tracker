@@ -7,6 +7,21 @@ The Nixpkgs vulnerability tracker consists of
 
 ![Service architecture diagram](./architecture.mermaid)
 
+## Diagram to implementation map
+
+Maps each labeled diagram component to its implementation.
+
+- [fetch_all_channels](../src/shared/management/commands/fetch_all_channels.py)
+- [ingest_delta_cve](../src/shared/management/commands/ingest_delta_cve.py)
+- [Evaluate Nixpkgs](../src/shared/listeners/nix_evaluation.py)
+- [CVE matching](../src/shared/listeners/automatic_linkage.py)
+- [WSGI Django](../src/project/asgi.py) (Daphne ASGI in production)
+
+Related infrastructure:
+
+- [systemd services and timers](../nix/configuration.nix)
+- [pgpubsub trigger channels](../src/shared/channels.py)
+
 ## External services
 
 The tracker needs to communicate with third party services, namely:

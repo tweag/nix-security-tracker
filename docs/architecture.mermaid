@@ -67,3 +67,9 @@ graph TB
     class SystemdTimerChannels,SystemdTimerCVEs,NixEval,MatchingListener backgroundClass
     class PostgreSQL,LocalGitCheckout,NixStore storageClass
     class Storage,Background,ManageCommands,Web subgraphClass
+
+    click FetchAllChannels "https://github.com/NixOS/nix-security-tracker/blob/main/src/shared/management/commands/fetch_all_channels.py" "fetch_all_channels"
+    click IngestCVEs "https://github.com/NixOS/nix-security-tracker/blob/main/src/shared/management/commands/ingest_delta_cve.py" "ingest_delta_cve"
+    click NixEval "https://github.com/NixOS/nix-security-tracker/blob/main/src/shared/listeners/nix_evaluation.py" "Evaluate Nixpkgs"
+    click MatchingListener "https://github.com/NixOS/nix-security-tracker/blob/main/src/shared/listeners/automatic_linkage.py" "CVE matching"
+    click WSGI "https://github.com/NixOS/nix-security-tracker/blob/main/src/project/asgi.py" "Daphne ASGI"
