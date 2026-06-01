@@ -284,7 +284,7 @@ class NixDerivation(models.Model):
 # https://github.com/NixOS/infra/pull/921
 MAJOR_CHANNELS = [
     "unstable",
-    "25.11",
+    "26.05",
 ]
 
 
