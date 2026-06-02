@@ -6,6 +6,7 @@ This document is for anyone wanting to contribute to the implementation of the N
 
 Resources to help you get started:
 
+- [**Quickstart guide**](./docs/quickstart.md): Set up a database, run the service locally.
 - [**Architecture Overview**](docs/README.md): High-level system design and component interaction.
 - [**Architecture Diagram**](docs/architecture.mermaid): Visual representation of the system (Mermaid source).
 - [**Design Documents**](docs/design/): Detailed design specifications for individual features (E.g., linkage).
@@ -25,8 +26,6 @@ From here, it follows standard Django patterns:
 
 The service is implemented in Python using [Django](https://www.djangoproject.com/).
 It is built and deployed with [Nix](https://nix.dev).
-
-To get going, all you need is to [install Nix](https://nix.dev/install-nix).
 
 ## Running the service in a development environment
 
@@ -162,23 +161,6 @@ To replicate this on a traditional Unix-like system:
 - Inspect the [local database configuration](./nix/dev-setup.nix)
 - Read the documentation on the respective module options for the general idea, e.g. [`services.postgresql.ensureDatabases`](https://search.nixos.org/options?query=postgresql.ensureDatabases)
 - Search the linked module source for the option names for implementation details, e.g. [`postgresql.nix`](https://github.com/NixOS/nixpkgs/blob/master/nixos/modules/services/databases/postgresql.nix)
-
-### Start the service
-
-> [!NOTE]
-> For a quick start, create dummy credentials and a Nixpkgs clone directory:
->
-> ```console
-> shell-config-placeholder
-> ```
->
-> Logging in and publishing issues requires [setting up credentials](#setting-up-credentials).
-
-Run the server:
-
-```console
-manage runserver
-```
 
 ### Ingest Nixpkgs metadata
 
