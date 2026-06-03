@@ -9,6 +9,7 @@ from allauth.socialaccount.providers.github.provider import GitHubProvider
 from django.conf import settings
 from django.contrib.auth.models import Group, User
 from django.utils import timezone
+from knox.models import AuthToken
 
 from shared.cache_suggestions import cache_new_suggestions, parse_drv_name
 from shared.fetchers import make_metrics
@@ -479,5 +480,15 @@ def make_package_notification(
             drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH}
         )
         return create_package_subscription_notifications(suggestion)
+
+    return wrapped
+
+
+@pytest.fixture
+def make_token(db: None) -> Callable[..., tuple[AuthToken, str]]:
+    def wrapped(user: User) -> tuple[AuthToken, str]:
+        return AuthToken.objects.create(  # type: ignore[return-value]
+            user=user, expiry=settings.REST_KNOX["TOKEN_TTL"]
+        )
 
     return wrapped
