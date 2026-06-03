@@ -18,6 +18,24 @@ in
     packageOverrides = pyfinal: _pyprev: {
       django = pyfinal.django_5;
       psycopg2 = pyfinal.psycopg;
+      django-rest-knox = pyfinal.buildPythonPackage rec {
+        pname = "django-rest-knox";
+        version = "5.0.4";
+        format = "setuptools";
+
+        src = pyfinal.fetchPypi {
+          pname = "django_rest_knox";
+          inherit version;
+          hash = "sha256-AVXA3z1fZoENmOFtImYD/MoiTBzEwSg/r1abcrcmyTw=";
+        };
+
+        propagatedBuildInputs = with pyfinal; [
+          django
+          djangorestframework
+        ];
+
+        doCheck = false;
+      };
     };
   };
   # go through the motions to make a flake-incompat project use the build
@@ -75,6 +93,7 @@ in
       cvss
       freezegun
       django-model-utils
+      django-rest-knox
     ];
 
     passthru.PLAYWRIGHT_BROWSERS_PATH = final.playwright-driver.browsers;

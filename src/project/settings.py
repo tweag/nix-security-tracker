@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 import importlib.util
 import sys
+from datetime import timedelta
 from os import environ as env
 from pathlib import Path
 from typing import Annotated, Self
@@ -370,6 +371,7 @@ INSTALLED_APPS = [
     "pglock",
     "pgactivity",
     "rest_framework",
+    "knox",
     "shared",
     "api",
     "webview",
@@ -441,6 +443,17 @@ AUTHENTICATION_BACKENDS = [
 REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
     "EXCEPTION_HANDLER": "api.exceptions.custom_exception_handler",
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "knox.auth.TokenAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
+    ],
+}
+
+REST_KNOX = {
+    "TOKEN_TTL": timedelta(days=30),
+    "AUTH_HEADER_PREFIX": "Bearer",
+    "TOKEN_LIMIT_PER_USER": 1,
+    "AUTO_REFRESH": False,
 }
 
 SITE_ID = 1
