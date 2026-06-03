@@ -1,11 +1,10 @@
 # Contributing guide
 
-This document is for anyone wanting to contribute to the implementation of the security tracker.
+This document is for anyone wanting to contribute to the implementation of the Nixpkgs security tracker.
 
 ## Overview
 
-This document is for anyone wanting to contribute to the implementation of the security tracker.
-It contains general contribution information, and lists resources to help you get started:
+Resources to help you get started:
 
 - [**Architecture Overview**](docs/README.md): High-level system design and component interaction.
 - [**Architecture Diagram**](docs/architecture.mermaid): Visual representation of the system (Mermaid source).
