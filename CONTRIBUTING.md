@@ -267,6 +267,13 @@ python3 -c 'import secrets; print(secrets.token_hex(100))' > .credentials/SECRET
 
       Store the value in `.credentials/GH_SECRET`
 
+    - In the application settings / **General** / **Identifying and authorizing users**
+
+      Set the callback URL to the one through which the service will be accessed.
+
+      > [!TIP]
+      > For local development, use https://127.0.0.1:8000 since that is what `manage runserver` will output.
+
     - In the application settings / **General** / **Private keys** / **Generate a private key**
 
       Store the value in `.credentials/GH_APP_PRIVATE_KEY`
