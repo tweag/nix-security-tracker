@@ -147,7 +147,7 @@ def make_channel(db: None) -> Callable[..., NixChannel]:
                 staging_branch=branch,
                 head_sha1_commit=secrets.token_hex(16),
                 state=state,
-                release_version=release,
+                release_version=None if release == "unstable" else release,
                 repository="https://github.com/NixOS/nixpkgs",
             ),
         )
