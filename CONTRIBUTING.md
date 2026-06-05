@@ -219,6 +219,7 @@ Delete the database and recreate it, then restore it from a dump, and (just in c
 
 ```bash
 dropdb nix-security-tracker
+createdb nix-security-tracker
 ssh root@tracker-staging.security.nixos.org "sudo -u postgres pg_dump --create nix-security-tracker | zstd" | zstdcat | pv | psql
 manage migrate
 ```
