@@ -391,7 +391,7 @@ def parse_drv_name(name: str) -> tuple[str, str]:
     The package name is everything up to but not including the first dash
     not followed by a letter, and the version is everything after that dash.
     """
-    match = re.match(r"^(.+?)-([^-]*\d.*)$", name)
+    match = re.match(r"^(.+?)-([^a-zA-Z].*)$", name)
     if match:
         return match.group(1), match.group(2)
     else:
