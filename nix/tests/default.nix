@@ -41,7 +41,7 @@ pkgs.testers.runNixOSTest {
             EOF
 
             cd $out
-            git init
+            git init --initial-branch=master
             git add -A
             git -c user.name=test -c user.email=test@test commit -m "test"
             git rev-parse HEAD > REVISION
