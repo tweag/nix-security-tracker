@@ -373,6 +373,7 @@ INSTALLED_APPS = [
     "shared",
     "api",
     "webview",
+    "drf_spectacular",
 ]
 
 MIDDLEWARE = [
@@ -441,6 +442,14 @@ AUTHENTICATION_BACKENDS = [
 REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
     "EXCEPTION_HANDLER": "api.exceptions.custom_exception_handler",
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# drf-spectacular (openapi generation) settings
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Nixpkgs security tracker API",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
 }
 
 SITE_ID = 1
