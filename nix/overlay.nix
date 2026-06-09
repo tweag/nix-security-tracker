@@ -75,6 +75,7 @@ in
       cvss
       freezegun
       django-model-utils
+      drf-spectacular
     ];
 
     passthru.PLAYWRIGHT_BROWSERS_PATH = final.playwright-driver.browsers;
