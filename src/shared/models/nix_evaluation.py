@@ -4,6 +4,8 @@ from django.contrib.postgres.indexes import BTreeIndex, GinIndex
 from django.contrib.postgres.search import SearchVectorField
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
+from django.db.models import F, Q, Window
+from django.db.models.functions import RowNumber
 from django.utils.translation import gettext_lazy as _
 from pgtrigger import UpdateSearchVector
 
@@ -183,6 +185,22 @@ class NixChannel(TimeStampMixin):
         return self.channel_branch == settings.TRACKING_BRANCH
 
 
+class NixEvaluationQuerySet(models.QuerySet):
+    def latest_completed_per_channel(
+        self, channel_filter: Q | None = None
+    ) -> "NixEvaluationQuerySet":
+        qs = self.filter(state=NixEvaluation.EvaluationState.COMPLETED)
+        if channel_filter is not None:
+            qs = qs.filter(channel_filter)
+        return qs.annotate(
+            row_num=Window(
+                expression=RowNumber(),
+                partition_by=[F("channel")],
+                order_by=F("updated_at").desc(),
+            ),
+        ).filter(row_num=1)
+
+
 class NixEvaluation(TimeStampMixin):
     """
     This is a Nix evaluation of a repository,
@@ -191,6 +209,8 @@ class NixEvaluation(TimeStampMixin):
     It contains its derivations via `derivations` attribute
     set by the `NixDerivation` model.
     """
+
+    objects = NixEvaluationQuerySet.as_manager()
 
     class EvaluationState(models.TextChoices):
         COMPLETED = "COMPLETED", _("Completed")

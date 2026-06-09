@@ -21,9 +21,7 @@ from django.db.models import (
     Q,
     Value,
     When,
-    Window,
 )
-from django.db.models.functions import RowNumber
 
 from shared.channels import ContainerChannel
 from shared.models.cve import Container, Cpe
@@ -42,19 +40,8 @@ def produce_linkage_candidates(
     for ch in MAJOR_CHANNELS:
         active_channels_q |= Q(channel__channel_branch__contains=ch)
 
-    latest_complete_channels = (
-        NixEvaluation.objects.filter(
-            active_channels_q,
-            state=NixEvaluation.EvaluationState.COMPLETED,
-        )
-        .annotate(
-            row_num=Window(
-                expression=RowNumber(),
-                partition_by=[F("channel")],
-                order_by=F("updated_at").desc(),
-            ),
-        )
-        .filter(row_num=1)
+    latest_complete_channels = NixEvaluation.objects.latest_completed_per_channel(
+        active_channels_q
     )
 
     package_names = (
