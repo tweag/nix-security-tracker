@@ -15,7 +15,6 @@ from django.db import models
 from django.db.models import (
     Case,
     Exists,
-    F,
     IntegerField,
     OuterRef,
     Q,
@@ -40,9 +39,9 @@ def produce_linkage_candidates(
     for ch in MAJOR_CHANNELS:
         active_channels_q |= Q(channel__channel_branch__contains=ch)
 
-    latest_complete_channels = NixEvaluation.objects.latest_completed_per_channel(
+    latest_complete_channels = NixEvaluation.objects.filter(
         active_channels_q
-    )
+    ).latest_completed_per_channel()
 
     package_names = (
         filtered_affected.exclude(package_name__isnull=True)
