@@ -186,18 +186,19 @@ class NixChannel(TimeStampMixin):
 
 
 class NixEvaluationQuerySet(models.QuerySet):
+    def latest_per_channel(self) -> "NixEvaluationQuerySet":
+        return self.annotate(
+            row_num=Window(
+                expression=RowNumber(),
+                partition_by=[F("channel")],
+                order_by=F("updated_at").desc(),
+            ),
+        ).filter(row_num=1)
+
     def latest_completed_per_channel(self) -> "NixEvaluationQuerySet":
-        return (
-            self.filter(state=NixEvaluation.EvaluationState.COMPLETED)
-            .annotate(
-                row_num=Window(
-                    expression=RowNumber(),
-                    partition_by=[F("channel")],
-                    order_by=F("updated_at").desc(),
-                ),
-            )
-            .filter(row_num=1)
-        )
+        return self.filter(
+            state=NixEvaluation.EvaluationState.COMPLETED
+        ).latest_per_channel()
 
 
 class NixEvaluation(TimeStampMixin):
