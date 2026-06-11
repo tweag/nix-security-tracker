@@ -193,7 +193,7 @@ def _cluster_batch(
 
     return ClusterResult(
         derivations_processed=len(drvs),
-        packages_updated=len(updated),
+        packages_updated=len(updated - created),
         packages_created=len(created),
         attrpaths_updated=len(attrpath_to_pkg),
         attrpaths_created=len(new_attrpaths),
