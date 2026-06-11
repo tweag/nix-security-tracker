@@ -23,6 +23,6 @@ def cluster_after_evaluation(old: NixEvaluation, new: NixEvaluation) -> None:
     )
     logger.info(
         f"Done. Clustered {result.derivations_processed} derivations: "
-        f"updated {result.packages_updated}, created {result.packages_created} pacakges, "
+        f"updated {result.packages_updated}, created {result.packages_created} packages, "
         f"updated {result.attrpaths_updated}, created {result.attrpaths_created} attrpaths."
     )

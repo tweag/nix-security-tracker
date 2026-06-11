@@ -50,7 +50,7 @@ def cluster_packages(
         if not batch.packages_updated and not batch.packages_created:
             break
         logger.debug(
-            f"updated {batch.packages_updated}, created {batch.packages_created} pacakges, "
+            f"updated {batch.packages_updated}, created {batch.packages_created} packages, "
             f"updated {batch.attrpaths_updated}, created {batch.attrpaths_created} attrpaths "
             f"from {batch.derivations_processed} derivations",
         )

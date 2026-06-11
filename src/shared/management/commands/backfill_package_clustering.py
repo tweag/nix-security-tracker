@@ -48,7 +48,7 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 f"Done. Clustered {result.derivations_processed} derivations: "
-                f"updated {result.packages_updated}, created {result.packages_created} pacakges, "
+                f"updated {result.packages_updated}, created {result.packages_created} packages, "
                 f"updated {result.attrpaths_updated}, created {result.attrpaths_created} attrpaths."
             )
         )
