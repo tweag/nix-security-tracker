@@ -55,6 +55,12 @@
       "url": "https://github.com/nixos/infra/archive/8eeb5fafaebe7229e194eefe123f7148f3706541.tar.gz",
       "hash": "sha256-NpEsUiHn4PayZhthnCgSvxt1nX4WZ8u9uROdrb9OVoo="
     },
+    "nixos-logo": {
+      "type": "Url",
+      "url": "https://brand.nixos.org/internals/nixos-logomark-white-flat-none.svg",
+      "unpack": false,
+      "hash": "sha256-00efVhs4+7AOH9Y8Evg1snHLSw54sg06iEEF/LaScwk="
+    },
     "nixpkgs": {
       "type": "Channel",
       "name": "nixpkgs-unstable",
