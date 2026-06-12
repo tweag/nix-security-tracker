@@ -7,14 +7,6 @@ from shared.models import NixChannel, NixEvaluation
 
 logger = logging.getLogger(__name__)
 
-# Those are channels we care about.
-ADMISSIBLE_CHANNEL_STATES = (
-    NixChannel.ChannelState.DEPRECATED,
-    NixChannel.ChannelState.BETA,
-    NixChannel.ChannelState.STABLE,
-    NixChannel.ChannelState.UNSTABLE,
-)
-
 
 def enqueue_evaluation_job(channel: NixChannel) -> tuple[NixEvaluation, bool]:
     eval_job, created = NixEvaluation.objects.get_or_create(
@@ -35,7 +27,7 @@ def enqueue_evaluation_job(channel: NixChannel) -> tuple[NixEvaluation, bool]:
 @pgpubsub.post_insert_listener(NixChannelInsertChannel)
 def start_evaluation_jobs_upon_insertion(old: NixChannel, new: NixChannel) -> None:
     logger.info("Nix channel created: %s", new.head_sha1_commit)
-    if new.state in ADMISSIBLE_CHANNEL_STATES:
+    if new.state in NixChannel.TRACKED_STATES:
         enqueue_evaluation_job(new)
 
 
@@ -48,6 +40,6 @@ def start_evaluation_jobs_upon_updates(old: NixChannel, new: NixChannel) -> None
     )
     if (
         old.head_sha1_commit != new.head_sha1_commit
-        and new.state in ADMISSIBLE_CHANNEL_STATES
+        and new.state in NixChannel.TRACKED_STATES
     ):
         enqueue_evaluation_job(new)

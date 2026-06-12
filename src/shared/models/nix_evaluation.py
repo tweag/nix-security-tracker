@@ -153,6 +153,15 @@ class NixChannel(TimeStampMixin):
         STABLE = "stable", _("Stable")
         UNSTABLE = "rolling", _("Unstable")
 
+    # States we care about for evaluation and prospective matching, as those are considered to be maintained.
+    # Mutable per channel over time.
+    TRACKED_STATES = (
+        ChannelState.DEPRECATED,
+        ChannelState.BETA,
+        ChannelState.STABLE,
+        ChannelState.UNSTABLE,
+    )
+
     # A staging branch is the `release-$number` branch or `master` for unstable.
     # Not to confuse with the `staging` branch itself.
     release_branch = models.CharField(max_length=255)

@@ -25,7 +25,7 @@ from django.db.models import (
 from shared.channels import ContainerChannel
 from shared.models.cve import Container, Cpe
 from shared.models.linkage import CVEDerivationClusterProposal, ProvenanceFlags
-from shared.models.nix_evaluation import MAJOR_CHANNELS, NixDerivation, NixEvaluation
+from shared.models.nix_evaluation import NixChannel, NixDerivation, NixEvaluation
 
 logger = logging.getLogger(__name__)
 
@@ -34,13 +34,8 @@ def produce_linkage_candidates(
     container: Container,
     filtered_affected: models.QuerySet,
 ) -> dict[NixDerivation, ProvenanceFlags]:
-    # FIXME(@fricklerhandwerk): This will fall apart when we obtain the channel structure dynamically [ref:channel-structure]
-    active_channels_q = Q()
-    for ch in MAJOR_CHANNELS:
-        active_channels_q |= Q(channel__channel_branch__contains=ch)
-
     latest_complete_channels = NixEvaluation.objects.filter(
-        active_channels_q
+        channel__state__in=NixChannel.TRACKED_STATES,
     ).latest_completed_per_channel()
 
     package_names = (

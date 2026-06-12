@@ -12,7 +12,6 @@ from shared.models.linkage import (
     ProvenanceFlags,
 )
 from shared.models.nix_evaluation import (
-    MAJOR_CHANNELS,
     NixChannel,
     NixDerivation,
     NixEvaluation,
@@ -70,21 +69,22 @@ def test_link_only_latest_eval(
     cache_new_suggestions(suggestion)
 
 
-def test_link_only_major_channels(
+def test_eol_channel_produces_no_matches(
     make_container: Callable[..., Container],
     make_channel: Callable[..., NixChannel],
     make_evaluation: Callable[..., NixEvaluation],
     make_drv: Callable[..., NixDerivation],
 ) -> None:
     """
-    Derivations on channels outside MAJOR_CHANNELS must not produce matches.
-    Otherwise we'd be notifying people who aren't maintainers any more.
+    Derivations on unmaintained channels must not produce matches.
     """
-    old_release = "24.05"
-    assert old_release not in MAJOR_CHANNELS
-    old_channel = make_channel(channel_branch=f"nixos-{old_release}")
-    old_eval = make_evaluation(channel=old_channel)
-    make_drv(pname="foo", evaluation=old_eval)
+    assert NixChannel.ChannelState.END_OF_LIFE not in NixChannel.TRACKED_STATES
+    eol_channel = make_channel(
+        channel_branch="nixos-24.05",
+        state=NixChannel.ChannelState.END_OF_LIFE,
+    )
+    eol_eval = make_evaluation(channel=eol_channel)
+    make_drv(pname="foo", evaluation=eol_eval)
 
     container = make_container(package_name="foo")
     assert not build_new_links(container)
