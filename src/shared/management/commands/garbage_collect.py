@@ -21,6 +21,9 @@ from shared.models.nix_evaluation import (
     NixDerivationMeta,
     NixEvaluation,
 )
+from shared.models.package import PackageAttrpath
+
+DEFAULT_CUTOFF_DAYS = 365
 
 
 class Command(BaseCommand):
@@ -59,7 +62,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--cutoff-days",
             type=int,
-            default=365,
+            default=DEFAULT_CUTOFF_DAYS,
             help="Number of days for data cutoff",
         )
 
@@ -79,16 +82,18 @@ class Command(BaseCommand):
         # Each step satisfies the cascading constraints that gate the next step.
         # `pghistory` events are never auto-deleted — each step explicitly clears relevant events first.
 
-        self.stdout.write("\n[1/5] Deleting stale matches")
+        self.stdout.write("\n[1/6] Deleting stale matches")
         self._delete_stale_matches(cutoff, batch_size, dry_run)
-        self.stdout.write("\n[2/5] Deleting unmatched derivations")
+        self.stdout.write("\n[2/6] Deleting unmatched derivations")
         self._delete_unmatched_derivations(cutoff, batch_size, dry_run)
-        self.stdout.write("\n[3/5] Deleting empty evaluations")
+        self.stdout.write("\n[3/6] Deleting empty evaluations")
         self._delete_empty_evaluations(cutoff, batch_size, dry_run)
-        self.stdout.write("\n[4/5] Deleting inactive channels")
+        self.stdout.write("\n[4/6] Deleting inactive channels")
         self._delete_inactive_channels(batch_size, dry_run)
-        self.stdout.write("\n[5/5] Deduplicating evaluations")
+        self.stdout.write("\n[5/6] Deduplicating evaluations")
         self._deduplicate_evaluations(batch_size, dry_run)
+        self.stdout.write("\n[6/6] Pruning stale package attrpaths")
+        self._prune_stale_package_attrpaths(batch_size, dry_run)
 
         self.stdout.write(self.style.SUCCESS("\nGarbage collection complete."))
 
@@ -230,6 +235,16 @@ class Command(BaseCommand):
             pk_field="channel_branch",
             label="channels",
             batch_size=batch_size,
+        )
+
+    def _prune_stale_package_attrpaths(self, batch_size: int, dry_run: bool) -> None:
+        self._delete_in_batches(
+            qs=PackageAttrpath.objects.stale(),
+            model=PackageAttrpath,
+            pk_field="attrpath",
+            label="stale package attrpaths",
+            batch_size=batch_size,
+            dry_run=dry_run,
         )
 
     def _deduplicate_evaluations(self, batch_size: int, dry_run: bool) -> None:

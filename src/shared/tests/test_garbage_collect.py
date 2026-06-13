@@ -6,6 +6,7 @@ from io import StringIO
 import pytest
 from django.core.management import call_command
 
+from shared.management.commands.garbage_collect import DEFAULT_CUTOFF_DAYS
 from shared.models.cve import Container, CveRecord
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
@@ -22,6 +23,8 @@ from shared.models.nix_evaluation import (
     NixEvaluation,
     NixMaintainer,
 )
+from shared.models.package import Package, PackageAttrpath, PackageDerivation
+from shared.package_clustering import cluster_packages
 
 
 def test_cve_record_not_deleted_with_stale_proposal(
@@ -348,3 +351,94 @@ def test_when_there_is_duplicate_evaluation(
     assert not DerivationClusterProposalLink.objects.filter(
         proposal=duplicate_suggestion
     ).exists()
+
+
+def test_garbage_collect_prunes_stale_package_attrpaths(
+    make_channel: Callable[..., NixChannel],
+    make_evaluation: Callable[..., NixEvaluation],
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    channel = make_channel(state=NixChannel.ChannelState.END_OF_LIFE)
+    evaluation = make_evaluation(
+        channel=channel,
+        state=NixEvaluation.EvaluationState.COMPLETED,
+        age=timedelta(days=DEFAULT_CUTOFF_DAYS + 1),
+    )
+    drv = make_drv(evaluation=evaluation)
+    cluster_packages(NixDerivation.objects.filter(pk=drv.pk))
+    assert PackageAttrpath.objects.filter(attrpath=drv.attribute).exists()
+
+    call_command("garbage_collect", stdout=StringIO())
+
+    assert not NixDerivation.objects.filter(pk=drv.pk).exists()
+    assert not PackageAttrpath.objects.filter(attrpath=drv.attribute).exists()
+
+
+def test_garbage_collect_preserves_linked_attrpaths(
+    make_channel: Callable[..., NixChannel],
+    make_evaluation: Callable[..., NixEvaluation],
+    make_drv: Callable[..., NixDerivation],
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    channel = make_channel(state=NixChannel.ChannelState.END_OF_LIFE)
+    evaluation = make_evaluation(
+        channel=channel,
+        state=NixEvaluation.EvaluationState.COMPLETED,
+        age=timedelta(days=DEFAULT_CUTOFF_DAYS + 1),
+    )
+    drv = make_drv(evaluation=evaluation)
+    cluster_packages(NixDerivation.objects.filter(pk=drv.pk))
+    make_suggestion(
+        drvs={drv: ProvenanceFlags.PACKAGE_NAME_MATCH},
+        status=CVEDerivationClusterProposal.Status.ACCEPTED,
+    )
+
+    call_command("garbage_collect", stdout=StringIO())
+
+    assert NixDerivation.objects.filter(pk=drv.pk).exists()
+    assert PackageDerivation.objects.filter(derivation=drv).exists()
+    assert PackageAttrpath.objects.filter(attrpath=drv.attribute).exists()
+
+
+def test_garbage_collect_preserves_attrpath_with_live_link(
+    make_channel: Callable[..., NixChannel],
+    make_evaluation: Callable[..., NixEvaluation],
+    make_drv: Callable[..., NixDerivation],
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    channel = make_channel(state=NixChannel.ChannelState.END_OF_LIFE)
+    evaluation = make_evaluation(
+        channel=channel,
+        state=NixEvaluation.EvaluationState.COMPLETED,
+        age=timedelta(days=DEFAULT_CUTOFF_DAYS + 1),
+    )
+    drv_orphan = make_drv(evaluation=evaluation, attribute="shared-attr")
+    drv_linked = make_drv(evaluation=evaluation, attribute="shared-attr")
+    cluster_packages(
+        NixDerivation.objects.filter(pk__in=[drv_orphan.pk, drv_linked.pk])
+    )
+    make_suggestion(
+        drvs={drv_linked: ProvenanceFlags.PACKAGE_NAME_MATCH},
+        status=CVEDerivationClusterProposal.Status.ACCEPTED,
+    )
+
+    call_command("garbage_collect", stdout=StringIO())
+
+    assert not NixDerivation.objects.filter(pk=drv_orphan.pk).exists()
+    assert NixDerivation.objects.filter(pk=drv_linked.pk).exists()
+    assert PackageDerivation.objects.filter(derivation=drv_linked).exists()
+    assert PackageAttrpath.objects.filter(attrpath="shared-attr").exists()
+
+
+def test_garbage_collect_dry_run_preserves_stale_package_attrpaths(
+    drv: NixDerivation,
+    make_package: Callable[..., Package],
+) -> None:
+    make_package(drv)
+    assert PackageAttrpath.objects.filter(attrpath=drv.attribute).exists()
+
+    out = StringIO()
+    call_command("garbage_collect", "--dry-run", stdout=out)
+
+    assert PackageAttrpath.objects.filter(attrpath=drv.attribute).exists()
+    assert "stale package attrpath" in out.getvalue().lower()
