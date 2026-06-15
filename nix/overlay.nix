@@ -89,6 +89,7 @@ in
       django-model-utils
       drf-spectacular
       django-rest-knox
+      django-vite
     ];
 
     passthru.PLAYWRIGHT_BROWSERS_PATH = final.playwright-driver.browsers;

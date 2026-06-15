@@ -1,0 +1,28 @@
+{% load django_vite %}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nixpkgs security tracker</title>
+    {% vite_hmr_client %}
+    {% vite_asset 'src/main.tsx' %}
+  </head>
+  <body>
+    <!--
+      Server-injected configuration for the frontend.
+      Values come from Django context processors:
+      - debug: django.template.context_processors.debug
+      - showDemoDisclaimer, production, revision: shared.context_processors.deployment_info
+    -->
+    <script>
+      window.__CONFIG__ = {
+        debug: {{ debug|yesno:"true,false" }},
+        showDemoDisclaimer: {{ show_demo_disclaimer|yesno:"true,false" }},
+        production: {{ production|yesno:"true,false" }},
+        revision: "{{ git_revision|escapejs }}"
+      };
+    </script>
+    <div id="app"></div>
+  </body>
+</html>

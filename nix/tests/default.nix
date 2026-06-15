@@ -177,6 +177,14 @@ pkgs.testers.runNixOSTest {
       with subtest("Check that admin interface is served"):
         server.succeed("curl --fail -L -H 'Host: example.org' http://localhost/admin")
 
+      with subtest("Check that frontend UI is served"):
+        server.succeed("curl --fail -H 'Host: example.org' http://localhost/ui-v2/")
+        # SPA fallback: unknown routes still return the same page
+        server.succeed("curl --fail -H 'Host: example.org' http://localhost/ui-v2/some/route")
+        # Vite-built assets are served by nginx with immutable cache headers
+        result = server.succeed("curl -sI -H 'Host: example.org' http://localhost/static/vite/.vite/manifest.json")
+        assert "200" in result, f"Expected 200 for manifest.json, got: {result}"
+
       with subtest("Check that evaluations succeed"):
           ${
             # XXX(@fricklerhandwerk): We do this at the end since it takes a while and would otherwise stall the Django tests.

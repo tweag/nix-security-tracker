@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -14,6 +15,16 @@ class SubscriptionsViewSet(viewsets.GenericViewSet):
     class AutoSubscribeSerializer(serializers.Serializer):
         enabled = serializers.BooleanField()
 
+    @extend_schema(
+        methods=["GET"],
+        operation_id="getAutoSubscribe",
+        description="Get the current auto-subscribe preference for maintained packages.",
+    )
+    @extend_schema(
+        methods=["PUT"],
+        operation_id="setAutoSubscribe",
+        description="Update the auto-subscribe preference for maintained packages.",
+    )
     @action(
         detail=False,
         methods=["get", "put"],
@@ -34,7 +45,7 @@ class SubscriptionsViewSet(viewsets.GenericViewSet):
                 "enabled"
             ]
             profile.save()
-            return Response(status=status.HTTP_204_NO_CONTENT)
+            return Response(serializer.validated_data, status=status.HTTP_200_OK)
         else:
             raise AssertionError(
                 f"unexpected method (this should never happen): {request.method}"
