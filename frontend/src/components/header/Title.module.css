@@ -1,0 +1,17 @@
+.title {
+  font-size: 2em;
+  font-weight: bold;
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  text-decoration: none;
+  color: inherit;
+}
+
+.logo {
+  width: 2.5rem;
+  height: 2.5rem;
+}

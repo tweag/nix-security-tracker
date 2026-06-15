@@ -1,0 +1,9 @@
+.headerBar {
+  background-color: var(--nixos-blue);
+  padding: 0.5em 1em;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+}

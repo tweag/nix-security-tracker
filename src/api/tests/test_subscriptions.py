@@ -25,12 +25,12 @@ def test_put_enable(client: APIClient, user: User) -> None:
     user.profile.auto_subscribe_to_maintained_packages = False
     user.profile.save()
     response = client.put(URL, {"enabled": True}, format="json")
-    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert response.status_code == status.HTTP_200_OK
     user.profile.refresh_from_db()
     assert user.profile.auto_subscribe_to_maintained_packages is True
     # idempotency
     response = client.put(URL, {"enabled": True}, format="json")
-    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert response.status_code == status.HTTP_200_OK
     user.profile.refresh_from_db()
     assert user.profile.auto_subscribe_to_maintained_packages is True
 
@@ -39,12 +39,12 @@ def test_put_disable(client: APIClient, user: User) -> None:
     user.profile.auto_subscribe_to_maintained_packages = True
     user.profile.save()
     response = client.put(URL, {"enabled": False}, format="json")
-    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert response.status_code == status.HTTP_200_OK
     user.profile.refresh_from_db()
     assert user.profile.auto_subscribe_to_maintained_packages is False
     # idempotency
     response = client.put(URL, {"enabled": False}, format="json")
-    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert response.status_code == status.HTTP_200_OK
     user.profile.refresh_from_db()
     assert user.profile.auto_subscribe_to_maintained_packages is False
 
