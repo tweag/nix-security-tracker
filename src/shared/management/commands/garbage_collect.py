@@ -4,7 +4,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandParser, DjangoHelpFormatter
 from django.db import connection, models
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 from django.utils import timezone
 
 from shared.models import (  # type: ignore
@@ -98,14 +98,24 @@ class Command(BaseCommand):
     def _delete_stale_matches(
         self, cutoff: Any, batch_size: int, dry_run: bool
     ) -> None:
-        candidates = CVEDerivationClusterProposal.objects.filter(
-            created_at__lt=cutoff,
-            status=CVEDerivationClusterProposal.Status.PENDING,
-            # No user input must be attached
-            maintainer_overlays__isnull=True,
-            package_overlays__isnull=True,
-            reference_url_overlays__isnull=True,
-        ).distinct()
+        candidates = (
+            CVEDerivationClusterProposal.objects.filter(
+                Q(created_at__lt=cutoff)
+                | Q(cve__date_published__lt=cutoff)
+                | Q(
+                    cve__date_published__isnull=True,
+                    cve__date_reserved__lt=cutoff,
+                ),
+            )
+            .filter(
+                status=CVEDerivationClusterProposal.Status.PENDING,
+                # No user input must be attached
+                maintainer_overlays__isnull=True,
+                package_overlays__isnull=True,
+                reference_url_overlays__isnull=True,
+            )
+            .distinct()
+        )
 
         total = candidates.count()
         self.stdout.write(f"Found {total} eligible proposals.")

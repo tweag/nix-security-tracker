@@ -4,7 +4,9 @@ from enum import Enum
 from io import StringIO
 
 import pytest
+from django.contrib.auth.models import User
 from django.core.management import call_command
+from django.utils import timezone
 
 from shared.management.commands.garbage_collect import DEFAULT_CUTOFF_DAYS
 from shared.models.cve import Container, CveRecord
@@ -396,3 +398,86 @@ def test_garbage_collect_dry_run_preserves_stale_package_attrpaths(
 
     assert PackageAttrpath.objects.filter(attrpath=drv.attribute).exists()
     assert "stale package attrpath" in out.getvalue().lower()
+
+
+@pytest.mark.parametrize(
+    "date_published_age, date_reserved_age, expected_count",
+    [
+        (DEFAULT_CUTOFF_DAYS + 1, None, 0),
+        (DEFAULT_CUTOFF_DAYS - 1, None, 1),
+        (None, DEFAULT_CUTOFF_DAYS + 1, 0),
+        (None, DEFAULT_CUTOFF_DAYS - 1, 1),
+    ],
+)
+def test_proposal_deletion_by_cve_date(
+    make_container: Callable[..., Container],
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+    date_published_age: int | None,
+    date_reserved_age: int | None,
+    expected_count: int,
+) -> None:
+    """
+    Proposals are deleted when the relevant CVE date exceeds the cutoff, preserved when within it.
+    Falls back to `date_reserved` when `date_published` is absent.
+    """
+    container = make_container()
+    if date_published_age is not None:
+        CveRecord.objects.filter(pk=container.cve.pk).update(
+            date_published=timezone.now() - timedelta(days=date_published_age),
+        )
+    elif date_reserved_age is not None:
+        CveRecord.objects.filter(pk=container.cve.pk).update(
+            date_published=None,
+            date_reserved=timezone.now() - timedelta(days=date_reserved_age),
+        )
+    make_suggestion(container=container)
+
+    call_command("garbage_collect", stdout=StringIO())
+
+    assert CVEDerivationClusterProposal.objects.count() == expected_count
+
+
+def test_stale_proposal_deletion_cascades_to_cache(
+    make_container: Callable[..., Container],
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    """Deleting a stale proposal removes CachedSuggestions and link rows via CASCADE."""
+    from shared.models.cached import CachedSuggestions
+
+    container = make_container()
+    suggestion = make_cached_suggestion(
+        container=container, age=timedelta(days=DEFAULT_CUTOFF_DAYS + 1)
+    )
+
+    assert DerivationClusterProposalLink.objects.filter(proposal=suggestion).exists()
+    assert hasattr(suggestion, "cached")
+
+    call_command("garbage_collect", stdout=StringIO())
+
+    assert CVEDerivationClusterProposal.objects.count() == 0
+    assert DerivationClusterProposalLink.objects.count() == 0
+    assert CachedSuggestions.objects.count() == 0
+
+
+def test_stale_proposal_deletion_cascades_to_notifications(
+    make_container: Callable[..., Container],
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+    user: User,
+) -> None:
+    """Old suggestions with notifications are deleted via CASCADE and the unread counter is updated."""
+    from webview.models import SuggestionNotification
+
+    container = make_container()
+    suggestion = make_suggestion(
+        container=container, age=timedelta(days=DEFAULT_CUTOFF_DAYS + 1)
+    )
+    user.profile.create_notification(suggestion)
+
+    assert SuggestionNotification.objects.count() == 1
+    assert user.profile.unread_notifications_count == 1
+
+    call_command("garbage_collect", stdout=StringIO())
+
+    assert SuggestionNotification.objects.count() == 0
+    user.profile.refresh_from_db()
+    assert user.profile.unread_notifications_count == 0
