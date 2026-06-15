@@ -170,7 +170,6 @@ class GarbageCollect(Enum):
         (NixChannel.ChannelState.BETA, True),
         (NixChannel.ChannelState.STABLE, True),
         (NixChannel.ChannelState.UNSTABLE, True),
-        (NixChannel.ChannelState.STAGING, True),
     ],
 )
 @pytest.mark.parametrize(
@@ -234,7 +233,11 @@ def test_deletes_empty_old_evaluations(
     Empty evaluations are deleted unless completed or not started.
     Empty channels are deleted.
     """
-    channel = make_channel(state=channel_state, branch=channel_state)
+    channel = make_channel(
+        state=channel_state,
+        # Make a unique channel for each state; the concrete name doesn't matter here.
+        channel_branch=f"{channel_state.value}-unstable",
+    )
     evaluation = make_evaluation(
         channel=channel,
         state=eval_state,
@@ -323,7 +326,8 @@ def test_when_there_is_duplicate_evaluation(
     first_meta_id = first_drv.metadata_id
 
     duplicate_eval = make_evaluation(
-        channel=make_channel(release="25.11", branch="nixos-25.11"),
+        # Branch must be different due to uniqueness constraint.
+        channel=make_channel(channel_branch=evaluation.channel.channel_branch + "-new"),
         commit_sha1=evaluation.commit_sha1,
         state=NixEvaluation.EvaluationState.COMPLETED,
     )

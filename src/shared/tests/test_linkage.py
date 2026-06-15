@@ -30,8 +30,12 @@ def test_link_only_latest_eval(
     """
 
     channels = [
-        make_channel(release="26.05", state=NixChannel.ChannelState.STABLE),
-        make_channel(release="unstable", state=NixChannel.ChannelState.UNSTABLE),
+        make_channel(
+            channel_branch="nixos-26.05", state=NixChannel.ChannelState.STABLE
+        ),
+        make_channel(
+            channel_branch="nixos-unstable", state=NixChannel.ChannelState.UNSTABLE
+        ),
     ]
 
     evaluations = []
@@ -78,7 +82,7 @@ def test_link_only_major_channels(
     """
     old_release = "24.05"
     assert old_release not in MAJOR_CHANNELS
-    old_channel = make_channel(release=old_release)
+    old_channel = make_channel(channel_branch=f"nixos-{old_release}")
     old_eval = make_evaluation(channel=old_channel)
     make_drv(pname="foo", evaluation=old_eval)
 
