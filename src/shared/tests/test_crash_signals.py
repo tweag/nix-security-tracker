@@ -84,7 +84,6 @@ def test_zero_exit_marks_completed(
     assert waiting_evaluation.state == NixEvaluation.EvaluationState.COMPLETED
 
 
-@pytest.mark.xfail(strict=True, reason="Not implemented")
 @pytest.mark.django_db(transaction=True)
 def test_already_completed_evaluation_is_not_re_run(
     make_evaluation: Callable[..., NixEvaluation],
