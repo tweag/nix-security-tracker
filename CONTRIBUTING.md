@@ -152,6 +152,8 @@ Assuming you have a local checkout of this repository at `~/src/nix-security-tra
     enable = true;
     # The user you run the backend application as, so that you can access the local database
     user = "myuser";
+    # Optionally enable a local Grafana instance at http://localhost:3000 to preview the monitoring dashboard
+    enableDashboard = true;
   };
 }
 ```
