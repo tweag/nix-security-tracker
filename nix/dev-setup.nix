@@ -21,22 +21,24 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    services.postgresql = {
-      enable = true;
-      ensureDatabases = [ "nix-security-tracker" ];
-      ensureUsers = [
-        {
-          name = "nix-security-tracker";
-          ensureDBOwnership = true;
-          ensureClauses.createdb = true;
-        }
-      ];
-      identMap = ''
-        map-nix-security-tracker ${cfg.user} nix-security-tracker
-      '';
-      authentication = ''
-        local all nix-security-tracker ident map=map-nix-security-tracker
-      '';
+    services = {
+      postgresql = {
+        enable = true;
+        ensureDatabases = [ "nix-security-tracker" ];
+        ensureUsers = [
+          {
+            name = "nix-security-tracker";
+            ensureDBOwnership = true;
+            ensureClauses.createdb = true;
+          }
+        ];
+        identMap = ''
+          map-nix-security-tracker ${cfg.user} nix-security-tracker
+        '';
+        authentication = ''
+          local all nix-security-tracker ident map=map-nix-security-tracker
+        '';
+      };
     };
   };
 }
