@@ -21,8 +21,8 @@ def enqueue_evaluation_job(channel: NixChannel) -> tuple[NixEvaluation, bool]:
     # If the commit is shared by multiple channels, prefer the tracking branch.
     if (
         not created
-        and channel.is_rolling_release
-        and not eval_job.channel.is_rolling_release
+        and channel.is_tracking_branch
+        and not eval_job.channel.is_tracking_branch
     ):
         eval_job.channel = channel
         eval_job.save(update_fields=["channel", "updated_at"])

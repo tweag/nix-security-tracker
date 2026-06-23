@@ -129,11 +129,6 @@ class NixDerivationMeta(models.Model):
         return self.description or ""
 
 
-class NixChannelQuerySet(models.QuerySet):
-    def rolling(self) -> "NixChannelQuerySet":
-        return self.filter(channel_branch=settings.TRACKING_BRANCH)
-
-
 class NixChannel(TimeStampMixin):
     """
     This represents a "Nixpkgs" (*) channel, e.g.
@@ -143,8 +138,6 @@ class NixChannel(TimeStampMixin):
 
     (*): Anything that looks like Nixpkgs is also good.
     """
-
-    objects = NixChannelQuerySet.as_manager()
 
     class ChannelState(models.TextChoices):
         END_OF_LIFE = "unmaintained", _("End of life")
@@ -182,7 +175,7 @@ class NixChannel(TimeStampMixin):
         return f"{self.release_branch} -> {self.channel_branch}"
 
     @property
-    def is_rolling_release(self) -> bool:
+    def is_tracking_branch(self) -> bool:
         """
         Whether the channel corresponds to a the tracking branch.
 

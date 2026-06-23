@@ -316,7 +316,7 @@ def channel_structure(
         packages[attribute_path].derivation_ids.append(derivation.pk)
         if (
             derivation.metadata
-            and derivation.parent_evaluation.channel.is_rolling_release
+            and derivation.parent_evaluation.channel.is_tracking_branch
         ):
             packages[attribute_path].description = derivation.metadata.get_description()
             packages[attribute_path].maintainers = [

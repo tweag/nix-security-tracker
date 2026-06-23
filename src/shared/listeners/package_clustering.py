@@ -19,7 +19,7 @@ def cluster_after_evaluation(old: NixEvaluation, new: NixEvaluation) -> None:
     logger.info("Clustering derivations from evaluation %s", evaluation)
     result = cluster_packages(
         NixDerivation.objects.filter(parent_evaluation_id=new.pk),
-        update_packages=evaluation.channel.is_rolling_release,
+        update_packages=evaluation.channel.is_tracking_branch,
     )
     logger.info(
         f"Done. Clustered {result.derivations_processed} derivations: "
