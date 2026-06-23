@@ -159,13 +159,23 @@ def build_new_links(container: Container) -> bool:
         logger.info("No derivations matching '%s', ignoring", container.cve)
         return False
 
-    if matches.count() > settings.MAX_MATCHES:
-        logger.warning(
-            "More than '%d' derivations matching '%s', ignoring",
-            settings.MAX_MATCHES,
+    match_count = matches.count()
+    if match_count > settings.MAX_MATCHES:
+        logger.info(
+            "Container for '%s' exceeds MAX_MATCHES (%d > %d), rejecting without match.",
             container.cve,
+            match_count,
+            settings.MAX_MATCHES,
         )
-        return False
+        CVEDerivationClusterProposal.objects.create(
+            cve=container.cve,
+            status=CVEDerivationClusterProposal.Status.REJECTED,
+            rejection_reason=CVEDerivationClusterProposal.RejectionReason.MAX_MATCHES_EXCEEDED,
+            rejection_match_count=match_count,
+            rejection_max_matches_limit=settings.MAX_MATCHES,
+            algorithm_version=CVEDerivationClusterProposal.CURRENT_ALGORITHM_VERSION,
+        )
+        return True
 
     with_known_vuln = matches.filter(
         metadata__known_vulnerabilities__contains=[container.cve.cve_id],

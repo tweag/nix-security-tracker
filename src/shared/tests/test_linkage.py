@@ -2,6 +2,7 @@ from collections.abc import Callable
 from datetime import timedelta
 
 import pytest
+from django.test import override_settings
 
 from shared.cache_suggestions import cache_new_suggestions
 from shared.listeners.automatic_linkage import build_new_links
@@ -153,6 +154,27 @@ def test_exclusively_hosted_service_creates_rejected_proposal(
         == CVEDerivationClusterProposal.RejectionReason.EXCLUSIVELY_HOSTED_SERVICE
     )
     assert proposal.derivations.count() == 0
+
+
+@override_settings(MAX_MATCHES=1)
+def test_max_matches_exceeded_creates_rejected_proposal(
+    make_container: Callable[..., Container],
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    container = make_container(package_name="foo", product="foo")
+    make_drv(pname="foo", attribute="foo1")
+    make_drv(pname="foo", attribute="foo2")
+
+    assert build_new_links(container) is True
+    proposal = CVEDerivationClusterProposal.objects.get(cve=container.cve)
+    assert proposal.status == CVEDerivationClusterProposal.Status.REJECTED
+    assert (
+        proposal.rejection_reason
+        == CVEDerivationClusterProposal.RejectionReason.MAX_MATCHES_EXCEEDED
+    )
+    assert proposal.derivations.count() == 0
+    assert proposal.rejection_match_count == 2
+    assert proposal.rejection_max_matches_limit == 1
 
 
 def test_hardware_cpe_produces_no_match(
