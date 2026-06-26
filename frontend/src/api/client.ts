@@ -8,10 +8,7 @@
  * - Throws `ApiError` on non-2xx (TanStack Query marks the query as failed). `ApiError.status` lets consumers discriminate errors (e.g. treat 401 as "not logged in").
  *
  */
-function getCsrfToken(): string | null {
-  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : null;
-}
+import { getCsrfToken } from "@/utils/csrf";
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 

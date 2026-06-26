@@ -284,11 +284,13 @@ def drv(
 def make_package(db: None) -> Callable[..., Package]:
     def wrapped(
         drv: NixDerivation,
-        homepage: str | None = "https://example.com",
+        homepage: str | None = None,
         description: str | None = "My package",
         attrpath: str | None = None,
     ) -> Package:
         pname, _ = parse_drv_name(drv.name)
+        if not homepage:
+            homepage = f"https://example.com/{pname}"
         pkg = Package.objects.create(
             name=pname,
             homepage=homepage,
@@ -298,6 +300,14 @@ def make_package(db: None) -> Callable[..., Package]:
         return pkg
 
     return wrapped
+
+
+@pytest.fixture
+def package(
+    make_package: Callable[..., NixDerivation],
+    drv: NixDerivation,
+) -> NixDerivation:
+    return make_package(drv)
 
 
 @pytest.fixture
