@@ -1,5 +1,4 @@
 import { getConfig } from "@/config";
-import styles from "./Footer.module.css";
 
 function Revision() {
   const { production, revision } = getConfig();
@@ -16,7 +15,7 @@ function Revision() {
 
 export function Footer() {
   return (
-    <footer className={styles.footer}>
+    <footer className="bg-nixos-blue box spacious column gap text-white centered">
       <p>
         Nixpkgs security tracker is part of{" "}
         <a href="https://nixos.org/community/teams/security/">NixOS security infrastructure</a>.

@@ -7,4 +7,6 @@ To be kept in sync.
 
 UI_V2_PREFIX = "/ui-v2"
 HOME = f"{UI_V2_PREFIX}/"
-USER_SETTINGS = f"{UI_V2_PREFIX}/user"
+USER_SETTINGS_SUBSCRIPTIONS = f"{UI_V2_PREFIX}/user/subscriptions"
+USER_SETTINGS_TOKENS = f"{UI_V2_PREFIX}/user/tokens"
+PACKAGE_SUBSCRIPTION = f"{UI_V2_PREFIX}/user/subscriptions/packages"

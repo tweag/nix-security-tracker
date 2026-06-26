@@ -1,6 +1,7 @@
-import { ApiError } from "../api/client";
-import { useV1MeRetrieve } from "../api/generated/endpoints";
-import type { CurrentUser } from "../api/generated/models";
+import { ApiError } from "@/api/client";
+import { useV1MeRetrieve } from "@/api/generated/endpoints";
+import type { CurrentUser } from "@/api/generated/models";
+import { getCsrfToken } from "@/utils/csrf";
 
 export function useAuth() {
   const { data, isLoading, error } = useV1MeRetrieve({
@@ -24,8 +25,7 @@ export function useAuth() {
 export const LOGIN_URL = "/accounts/github/login/?process=login&next=/ui-v2/";
 
 export function logout(): void {
-  const csrfMatch = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/);
-  const csrfToken = csrfMatch ? decodeURIComponent(csrfMatch[1]) : "";
+  const csrfToken = getCsrfToken() ?? "";
 
   // Form submission to allauth's logout endpoint (handles redirect server-side)
   const form = document.createElement("form");

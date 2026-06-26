@@ -49,6 +49,10 @@
   cursor: pointer;
 }
 
+.btn:disabled {
+  cursor: not-allowed;
+}
+
 .btn:not(:disabled):hover {
   outline-style: solid;
 }
@@ -209,28 +213,12 @@
   background-color: var(--light-gray);
 }
 
-/* Titles
- *
- * .page-title - Only for the main title of a page
- * .heading - Box (for instance .rounded-box) or section title
- */
-
-.page-title {
-  font-size: 2em;
-  font-weight: bold;
-  margin-bottom: 0.5em;
-}
-
-.heading {
-  font-size: 1.2em;
-  font-weight: bold;
-  margin-bottom: 0.5em;
-}
-
 /* Text
  *
  * Typography and text styling utilities:
  *
+ * .text-xl, .text-l - Font size variants
+ * .text-white - White text color
  * .bold - Bold font weight
  * .monospace - Apply monospace font
  * .condensed - Apply condensed font
@@ -238,6 +226,18 @@
  * .dimmed - Dimmed gray text color
  * .no-line-breaks - Prevent line breaks
  */
+
+.text-xl {
+  font-size: 2em;
+}
+
+.text-l {
+  font-size: 1.2em;
+}
+
+.text-white {
+  color: white;
+}
 
 .bold {
   font-weight: bold;
@@ -283,9 +283,8 @@
  * .align-end - At the end of container (bottom for rows, right for columns)
  *
  * Spacing (use one or none):
- * .gap - Normal gap between items
- * .gap-small - Small gap between items
- * .dividers - Display a separation line between items (handles gaps, don't use .gap or .gap-small)
+ * .gap, .gap-small, .gap-big - Gap between items
+ * .dividers - Display a separation line between items (handles gaps, don't use gap classes)
  *
  * Horizontal separator line:
  * .divider - On an <hr> element: display a horizontal line to separate content.
@@ -296,6 +295,7 @@
  * .grow - Make an item grow in a container
  * .spread - Force items to be spread across available space
  *           For instance 2 elements on a .row .spread .full-width will be respectively on the far left and far right.
+ * .justify-right - Right-justify items in the container
  * .wrap - Allow items to wrap for responsivity. This is how responsivity is to be implemented rather than through breakpoints.
  *
  */
@@ -303,19 +303,16 @@
 .row {
   display: flex;
   flex-direction: row;
-  align-items: flex-start;
 }
 
 .row-reverse {
   display: flex;
   flex-direction: row-reverse;
-  align-items: flex-start;
 }
 
 .inline-row {
   display: inline-flex;
   flex-direction: row;
-  align-items: flex-start;
 }
 
 .centered {
@@ -355,6 +352,10 @@
   gap: 1em;
 }
 
+.gap-big {
+  gap: 2em;
+}
+
 .gap-small {
   gap: 0.5em;
 }
@@ -390,187 +391,92 @@
   border: none;
 }
 
-/* Size */
-
-.w-12 {
-  width: 12em;
-}
-
-.w-25 {
-  width: 25em;
-}
-
-.basis-20 {
-  flex-basis: 20em;
-}
-
 /* Boxes
  *
- * .rounded-box - Bordered container with padding and rounded corners.
- *                Includes overflow: auto for locally scrollable content.
- * .rounded-box-compact - Same with small padding (same as buttons) to be used for inline boxes (e.g text inputs) next to buttons for instance.
+ * .rounded - Rounded corners
+ * .border - Gray border
+ * .circle - Circular shape
+ * .box - Padding and scrollbars during overflows.
+ *        Modifiers: .spacious, .compact (affects padding)
  */
 
-.rounded-box {
-  border: 1px solid var(--gray);
-  padding: 1em;
+.rounded {
   border-radius: 0.4em;
+}
+
+.rounded-full {
+  border-radius: 99999px;
+}
+
+.border {
+  border: 1px solid var(--gray);
+}
+
+.box {
+  padding: 1em;
   overflow: auto;
 }
 
-.rounded-box-compact {
-  border: 1px solid var(--gray);
+.circle {
+  border-radius: 50%;
+}
+
+.box.spacious {
+  padding: 2em;
+}
+
+.box.compact {
   padding: 0.3em;
-  border-radius: 0.4em;
-  overflow: auto;
 }
 
-/* Toggle box
+/* Loading / Skeleton
  *
- * Big toggler element with visual state indicators:
- *
- * .toggler - Base toggler container (padding, border-radius, flex layout)
- * .toggler-on - Active/on state with green background and checkmark
- * .toggler-off - Inactive/off state with gray background and X mark
- *
- * Usage: <div class="toggler toggler-on">Content</div>
+ * .loading - Animated shimmer background for loading/skeleton states.
+ *            Apply directly, or use the <Skeleton> component for shaped placeholders.
+ *            Override border-radius as needed (e.g. 50% for circles).
  */
 
-.toggler {
-  padding: 1em;
-  border-radius: 0.4em;
-  display: flex;
-  gap: 1em;
-  align-items: center;
-}
-
-.toggler::before {
-  font-size: 2.5em;
-  font-weight: bold;
-  text-align: center;
-  width: 1em;
-}
-
-.toggler-on {
-  background-color: var(--light-green);
-}
-
-.toggler-off::before {
-  content: "✕";
-  color: var(--gray);
-}
-
-.toggler-off {
-  background-color: var(--light-gray);
-}
-
-.toggler-on::before {
-  content: "✓";
-  color: var(--green);
-}
-
-/* Accordions (details/summary)
- *
- * Utilities for HTML details/summary elements to create expandable content.
- * These classes should only be used if you want different title for open/closed states.
- *
- * Use on <details>
- * .details-marker-outside - Move the arrow marker outside the container.
- *                           This align the accordion content with its title (e.g. for presenting table-like data)
- *
- * Use on content in <summary>
- * .details-open - Content shown when accordion is open (hidden by default)
- * .details-closed - Content shown when accordion is closed (hidden when open)
- *
- * Usage:
- * <details>
- *   <summary>
- *     <span class="details-closed">Show more</span>
- *     <span class="details-open">Show less</span>
- *   </summary>
- *   <div>Expandable content here</div>
- * </details>
- */
-
-details > summary > .details-open {
-  display: none;
-}
-
-details[open] > summary > .details-open {
-  display: inline;
-}
-
-details[open] > summary > .details-closed {
-  display: none;
-}
-
-details.details-marker-outside {
-  margin-left: 1em;
-}
-
-details.details-marker-outside > summary {
-  list-style-position: outside;
-}
-
-/* Errors
- *
- * Error styling utilities:
- *
- * .error-block - Red box for error messages
- * .error-inline - Red text for inline errors
- */
-
-.error-block {
-  padding: 1em;
-  border-radius: 0.4em;
-  background-color: var(--red);
-  color: white;
-  font-weight: bold;
-}
-
-.error-inline {
-  color: var(--red);
-  font-weight: bold;
-}
-
-/* Highlighting
- *
- * Text and background highlighting utilities:
- *
- * .highlight - Default yellow highlight background
- * .highlight-target - Animation highlight for anchor targets: brief highlight that fades away over 3 seconds
- * .highlight-nonempty - Yellow background when input is not empty
- * .hl-red - Light red background highlight
- * .hl-green - Light green background highlight
- *
- * Note: @keyframes quick-highlight defines the fade animation from yellow to transparent
- */
-
-@keyframes quick-highlight {
+@keyframes skeleton-shimmer {
   0% {
-    background: var(--light-yellow);
+    background-position: 200% center;
   }
   100% {
-    background: transparent;
+    background-position: -200% center;
   }
 }
 
-.highlight {
+.loading {
+  background: linear-gradient(90deg, var(--light-gray) 25%, white 50%, var(--light-gray) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border: 1px solid var(--light-gray);
+}
+
+/* Background
+ *
+ * Background color utilities for theme colors (yellow, red, green, nixos-blue).
+ */
+
+.bg-yellow-light {
   background-color: var(--light-yellow);
 }
 
-.hl-red {
+.bg-red {
+  background-color: var(--red);
+}
+
+.bg-red-light {
   background-color: var(--light-red);
 }
 
-.hl-green {
+.bg-green {
+  background-color: var(--green);
+}
+
+.bg-green-light {
   background-color: var(--light-green);
 }
 
-.highlight-target:target {
-  animation: quick-highlight 3s;
-}
-
-.highlight-nonempty:not(:placeholder-shown) {
-  background-color: var(--light-yellow);
+.bg-nixos-blue {
+  background-color: var(--nixos-blue);
 }

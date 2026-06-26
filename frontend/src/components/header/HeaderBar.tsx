@@ -4,7 +4,7 @@ import { Title } from "./Title";
 
 export function HeaderBar() {
   return (
-    <header className={styles.headerBar}>
+    <header className={`row gap spread centered bg-nixos-blue text-white ${styles.headerBar}`}>
       <Title />
       <AuthStatus />
     </header>
