@@ -1,16 +1,27 @@
-import { getConfig } from "@/config";
+import { useServerInfo } from "@/hooks/useServerInfo";
 
 function Revision() {
-  const { production, revision } = getConfig();
-  const shortRev = revision.slice(0, 8);
+  const serverInfo = useServerInfo();
 
-  if (production) {
+  if (serverInfo) {
+    const { production, revision } = serverInfo;
+    const shortRev = revision.slice(0, 8);
+
     return (
-      <a href={`https://github.com/NixOS/nix-security-tracker/commit/${revision}`}>{shortRev}</a>
+      <p>
+        Running revision{" "}
+        {production ? (
+          <a href={`https://github.com/NixOS/nix-security-tracker/commit/${revision}`}>
+            {shortRev}
+          </a>
+        ) : (
+          <span>{shortRev} (development)</span>
+        )}
+      </p>
     );
+  } else {
+    return null;
   }
-
-  return <span>{shortRev} (development)</span>;
 }
 
 export function Footer() {
@@ -20,10 +31,10 @@ export function Footer() {
         Nixpkgs security tracker is part of{" "}
         <a href="https://nixos.org/community/teams/security/">NixOS security infrastructure</a>.
       </p>
-      <p>
-        <a href="https://github.com/NixOS/nix-security-tracker">Source code</a>, running revision{" "}
+      <div className="row gap-big">
+        <a href="https://github.com/NixOS/nix-security-tracker">Source code</a>
         <Revision />
-      </p>
+      </div>
     </footer>
   );
 }

@@ -1,11 +1,15 @@
-import { getConfig } from "@/config";
+import { useServerInfo } from "@/hooks/useServerInfo";
 
 const className = "box compact column centered bg-yellow-light";
 
 export function Disclaimer() {
-  const config = getConfig();
+  const serverInfo = useServerInfo();
 
-  if (config.debug) {
+  if (!serverInfo) {
+    return null;
+  }
+
+  if (serverInfo.debug) {
     return (
       <div className={className}>
         <em>
@@ -16,7 +20,7 @@ export function Disclaimer() {
     );
   }
 
-  if (config.showDemoDisclaimer) {
+  if (serverInfo.show_demo_disclaimer) {
     return (
       <div className={className}>
         <em>
