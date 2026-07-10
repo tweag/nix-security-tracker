@@ -4,7 +4,7 @@ from typing import Any
 import pghistory
 import pgtrigger
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q
 from django.db.models.signals import post_delete, post_save
 from django.db.utils import InternalError
@@ -181,6 +181,58 @@ class CVEDerivationClusterProposal(TimeStampMixin):
             package_attribute=package,
             overlay_type=PackageOverlay.Type.IGNORED,
         ).delete()
+
+    def ignore_reference(self, reference_url: str) -> None:
+        """Ignore a URL reference, updating the overlay and the cache."""
+        cat_refs = self.cached.payload["categorized_url_references"]
+        ref = next((r for r in cat_refs["original"] if r["url"] == reference_url), None)
+        if ref is None:
+            raise ValidationError(
+                {"reference_url": "Reference not found in the suggestion"}
+            )
+        if self.reference_url_overlays.filter(
+            reference_url=reference_url, type=ReferenceUrlOverlay.Type.IGNORED
+        ).exists():
+            raise ValidationError({"reference_url": "Reference is already ignored"})
+
+        with transaction.atomic():
+            self.reference_url_overlays.get_or_create(
+                reference_url=reference_url,
+                defaults={
+                    "deduplicated_name": ref["name"],
+                    "type": ReferenceUrlOverlay.Type.IGNORED,
+                },
+            )
+            cat_refs["active"] = [
+                r for r in cat_refs["active"] if r["url"] != reference_url
+            ]
+            cat_refs["ignored"].append(ref)
+            self.cached.save()
+
+    def restore_reference(self, reference_url: str) -> None:
+        """Restore a previously ignored URL reference."""
+        cat_refs = self.cached.payload["categorized_url_references"]
+        ref = next((r for r in cat_refs["ignored"] if r["url"] == reference_url), None)
+        if ref is None:
+            raise ValidationError(
+                {"reference_url": "Reference not found in ignored references"}
+            )
+
+        overlay = self.reference_url_overlays.filter(
+            reference_url=reference_url, type=ReferenceUrlOverlay.Type.IGNORED
+        ).first()
+        if not overlay:
+            raise ValidationError(
+                {"reference_url": "No ignore overlay found for this reference"}
+            )
+
+        with transaction.atomic():
+            overlay.delete()
+            cat_refs["ignored"] = [
+                r for r in cat_refs["ignored"] if r["url"] != reference_url
+            ]
+            cat_refs["active"].append(ref)
+            self.cached.save()
 
     def set_comment(self, comment: str | None) -> None:
         """Update the free-text comment independently of status changes."""
