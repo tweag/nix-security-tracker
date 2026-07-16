@@ -14,9 +14,11 @@ from api.serializers import ErrorDetailSerializer
 from api.suggestions.serializers import (
     ActivityLogEntrySerializer,
     SuggestionCategorizedMaintainersSerializer,
+    SuggestionCategorizedPackagesSerializer,
     SuggestionCategorizedUrlReferencesSerializer,
     SuggestionCommentSerializer,
     SuggestionMaintainerUpdateSerializer,
+    SuggestionPackageUpdateSerializer,
     SuggestionReferenceUpdateSerializer,
     SuggestionSerializer,
     folded_event_to_dict,
@@ -275,6 +277,72 @@ class SuggestionViewSet(RetrieveModelMixin, viewsets.GenericViewSet):
                     instance.ignore_maintainer(serializer.validated_data["github_id"])
                 else:
                     instance.restore_maintainer(serializer.validated_data["github_id"])
+            except ValidationError as e:
+                raise DRFValidationError(e.message_dict)
+            return Response(status=204)
+        else:
+            raise MethodNotAllowed(request.method)
+
+    @extend_schema(
+        methods=["get"],
+        operation_id="getSuggestionPackages",
+        description="Get the categorized packages of a suggestion (original, active, ignored).",
+        responses={
+            200: SuggestionCategorizedPackagesSerializer,
+            404: ErrorDetailSerializer,
+        },
+    )
+    @extend_schema(
+        methods=["patch"],
+        operation_id="updateSuggestionPackage",
+        description="Ignore or restore a package. Send `ignored: true` to ignore, `ignored: false` to restore.",
+        request=SuggestionPackageUpdateSerializer,
+        responses={
+            204: None,
+            400: ErrorDetailSerializer,
+            403: ErrorDetailSerializer,
+            404: ErrorDetailSerializer,
+        },
+    )
+    @action(
+        detail=True,
+        methods=["get", "patch"],
+        url_path="packages",
+        serializer_class=SuggestionPackageUpdateSerializer,
+    )
+    def packages(self, request: Request, pk: int) -> Response:
+        if request.method == "GET":
+            # FIXME(@florentc): On the model side, packages don't follow the "categorized" convention of maintainers and references.
+            # This converts to the convention to present a unified interface to API users.
+            # Eventually, this should be at the model level.
+            instance = self.get_object()
+            instance.ensure_fresh_cache()
+            payload = instance.cached.payload
+            active = payload["packages"]
+            data = {
+                "original": payload["original_packages"],
+                "active": active,
+                "ignored": {
+                    k: v
+                    for k, v in payload["original_packages"].items()
+                    if k not in active
+                },
+            }
+            return Response(SuggestionCategorizedPackagesSerializer(data).data)
+        elif request.method == "PATCH":
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            instance = self.get_object()
+            instance.ensure_fresh_cache()
+            try:
+                if serializer.validated_data["ignored"]:
+                    instance.ignore_package(
+                        serializer.validated_data["package_attribute"]
+                    )
+                else:
+                    instance.restore_package(
+                        serializer.validated_data["package_attribute"]
+                    )
             except ValidationError as e:
                 raise DRFValidationError(e.message_dict)
             return Response(status=204)

@@ -18,7 +18,7 @@ const doneFeatures = [
 ];
 
 const pendingFeatures = [
-  "Suggestions: package ignore/restore",
+  "Suggestions: maintainer ignore/restore",
   "Suggestions: maintainer add/delete",
   "Suggestions: status change",
   "Notification center",
