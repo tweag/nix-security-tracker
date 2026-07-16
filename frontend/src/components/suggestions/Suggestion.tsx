@@ -84,7 +84,12 @@ export function Suggestion({ suggestion }: Props) {
       {/* Packages */}
       <div className="rounded border box column gap">
         <h2 className="text-l bold text-gray">Matching in nixpkgs</h2>
-        <CategorizedPackagesList suggestionId={id} active={packages} ignored={ignored_packages} />
+        <CategorizedPackagesList
+          suggestionId={id}
+          active={packages}
+          ignored={ignored_packages}
+          editable={userCanEdit && (status === "pending" || status === "accepted")}
+        />
       </div>
 
       {/* Maintainers */}
