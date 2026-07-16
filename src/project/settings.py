@@ -396,6 +396,7 @@ INSTALLED_APPS = [
     "allauth.account",
     "allauth.socialaccount",
     "allauth.socialaccount.providers.github",
+    "allauth.headless",
     "channels",
     "pgpubsub",
     "pgtrigger",
@@ -503,10 +504,17 @@ SITE_ID = 1
 
 # Disable regular signup but allow GitHub auth
 SOCIALACCOUNT_ONLY = True
-# Skip intermediate "Continue" page, redirect to GitHub immediately
-SOCIALACCOUNT_LOGIN_ON_GET = True
 ACCOUNT_ALLOW_REGISTRATION = False
 ACCOUNT_EMAIL_VERIFICATION = "none"
+
+# allauth headless API (see frontend/src/hooks/useAuth.ts)
+HEADLESS_ONLY = False  # Keep classic `allauth.urls` views for Django webviews
+HEADLESS_CLIENTS = ("browser",)
+HEADLESS_FRONTEND_URLS = {
+    # Fallback if the OAuth handshake state is lost (e.g. denied access, expired session mid-flow).
+    # We set login_error for the frontend to recognize it and display an error message
+    "socialaccount_login_error": "/ui-v2/?login_error=1",
+}
 
 # TODO: make configurable so one can log in locally
 LOGIN_REDIRECT_URL = "webview:home"

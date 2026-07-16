@@ -498,6 +498,15 @@ details.details-marker-outside > summary {
   border: 1px solid var(--light-gray);
 }
 
+/* Cursor
+ * 
+ * .cursor-pointer - hand cursor like links
+ */
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
 /* Background
  *
  * Background color utilities for theme colors (yellow, red, green, nixos-blue).

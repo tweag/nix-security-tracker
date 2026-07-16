@@ -3,7 +3,7 @@ import { useLocation } from "wouter-preact";
 import { Avatar } from "@/components/ui/Avatar";
 import { Menu } from "@/components/ui/Menu";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { LOGIN_URL, logout, useAuth } from "@/hooks/useAuth";
+import { login, logout, useAuth } from "@/hooks/useAuth";
 
 export function AuthStatus() {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -20,10 +20,14 @@ export function AuthStatus() {
 
   if (!isAuthenticated || !user) {
     return (
-      <div className="row gap-small centered">
+      <button
+        type="button"
+        className="row gap-small centered text-white cursor-pointer"
+        onClick={login}
+      >
         <LogInIcon />
-        <a href={LOGIN_URL}>Login with GitHub</a>
-      </div>
+        Login with GitHub
+      </button>
     );
   }
 
