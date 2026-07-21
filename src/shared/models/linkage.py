@@ -249,6 +249,66 @@ class CVEDerivationClusterProposal(TimeStampMixin):
             cat_refs["active"].append(ref)
             self.cached.save()
 
+    def ignore_maintainer(self, github_id: int) -> None:
+        """Ignore a maintainer, updating the overlay and the cache."""
+        cat_maintainers = self.cached.payload["categorized_maintainers"]
+        maintainer_data = next(
+            (m for m in cat_maintainers["original"] if m["github_id"] == github_id),
+            None,
+        )
+        if maintainer_data is None:
+            raise ValidationError(
+                {"github_id": "Maintainer not found in original maintainers"}
+            )
+        if self.maintainer_overlays.filter(
+            maintainer__github_id=github_id, type=MaintainerOverlay.Type.IGNORED
+        ).exists():
+            raise ValidationError({"github_id": "Maintainer is already ignored"})
+
+        maintainer = NixMaintainer.objects.get(github_id=github_id)
+
+        with transaction.atomic():
+            edit, created = self.maintainer_overlays.get_or_create(
+                maintainer=maintainer,
+                defaults={"type": MaintainerOverlay.Type.IGNORED},
+            )
+            if not created and edit.type != MaintainerOverlay.Type.IGNORED:
+                edit.type = MaintainerOverlay.Type.IGNORED
+                edit.save()
+            cat_maintainers["active"] = [
+                m for m in cat_maintainers["active"] if m["github_id"] != github_id
+            ]
+            cat_maintainers["ignored"].append(maintainer_data)
+            self.cached.save()
+
+    def restore_maintainer(self, github_id: int) -> None:
+        """Restore a previously ignored maintainer."""
+        cat_maintainers = self.cached.payload["categorized_maintainers"]
+        maintainer_data = next(
+            (m for m in cat_maintainers["ignored"] if m["github_id"] == github_id),
+            None,
+        )
+        if maintainer_data is None:
+            raise ValidationError(
+                {"github_id": "Maintainer not found in ignored maintainers"}
+            )
+
+        overlay = self.maintainer_overlays.filter(
+            maintainer__github_id=github_id, type=MaintainerOverlay.Type.IGNORED
+        ).first()
+        if not overlay:
+            raise ValidationError(
+                {"github_id": "No ignore overlay found for this maintainer"}
+            )
+
+        with transaction.atomic():
+            overlay.delete()
+            cat_maintainers["ignored"] = [
+                m for m in cat_maintainers["ignored"] if m["github_id"] != github_id
+            ]
+            cat_maintainers["active"].append(maintainer_data)
+            self.cached.save()
+
     def set_comment(self, comment: str | None) -> None:
         """Update the free-text comment independently of status changes."""
         self.comment = comment or None

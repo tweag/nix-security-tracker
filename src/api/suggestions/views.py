@@ -13,8 +13,10 @@ from rest_framework.views import APIView
 from api.serializers import ErrorDetailSerializer
 from api.suggestions.serializers import (
     ActivityLogEntrySerializer,
+    SuggestionCategorizedMaintainersSerializer,
     SuggestionCategorizedUrlReferencesSerializer,
     SuggestionCommentSerializer,
+    SuggestionMaintainerUpdateSerializer,
     SuggestionReferenceUpdateSerializer,
     SuggestionSerializer,
     folded_event_to_dict,
@@ -224,6 +226,55 @@ class SuggestionViewSet(RetrieveModelMixin, viewsets.GenericViewSet):
                     instance.restore_reference(
                         serializer.validated_data["reference_url"]
                     )
+            except ValidationError as e:
+                raise DRFValidationError(e.message_dict)
+            return Response(status=204)
+        else:
+            raise MethodNotAllowed(request.method)
+
+    @extend_schema(
+        methods=["get"],
+        operation_id="getSuggestionMaintainers",
+        description="Get the categorized maintainers of a suggestion (original, active, ignored, added).",
+        responses={
+            200: SuggestionCategorizedMaintainersSerializer,
+            404: ErrorDetailSerializer,
+        },
+    )
+    @extend_schema(
+        methods=["patch"],
+        operation_id="updateSuggestionMaintainer",
+        description="Ignore or restore a maintainer. Send `ignored: true` to ignore, `ignored: false` to restore.",
+        request=SuggestionMaintainerUpdateSerializer,
+        responses={
+            204: None,
+            400: ErrorDetailSerializer,
+            403: ErrorDetailSerializer,
+            404: ErrorDetailSerializer,
+        },
+    )
+    @action(
+        detail=True,
+        methods=["get", "patch"],
+        url_path="maintainers",
+        serializer_class=SuggestionMaintainerUpdateSerializer,
+    )
+    def maintainers(self, request: Request, pk: int) -> Response:
+        if request.method == "GET":
+            instance = self.get_object()
+            instance.ensure_fresh_cache()
+            data = instance.cached.payload["categorized_maintainers"]
+            return Response(SuggestionCategorizedMaintainersSerializer(data).data)
+        elif request.method == "PATCH":
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            instance = self.get_object()
+            instance.ensure_fresh_cache()
+            try:
+                if serializer.validated_data["ignored"]:
+                    instance.ignore_maintainer(serializer.validated_data["github_id"])
+                else:
+                    instance.restore_maintainer(serializer.validated_data["github_id"])
             except ValidationError as e:
                 raise DRFValidationError(e.message_dict)
             return Response(status=204)

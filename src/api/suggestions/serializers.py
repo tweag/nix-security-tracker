@@ -25,6 +25,17 @@ class SuggestionReferenceUpdateSerializer(serializers.Serializer):
     )
 
 
+class SuggestionMaintainerUpdateSerializer(serializers.Serializer):
+    """Request body for ignore/restore maintainer PATCH operations."""
+
+    github_id = serializers.IntegerField(
+        help_text="GitHub ID of the maintainer to ignore or restore.",
+    )
+    ignored = serializers.BooleanField(
+        help_text="Set to true to ignore the maintainer, false to restore it.",
+    )
+
+
 class SuggestionCommentSerializer(serializers.Serializer):
     """Serializer for reading or updating a suggestion comment."""
 
