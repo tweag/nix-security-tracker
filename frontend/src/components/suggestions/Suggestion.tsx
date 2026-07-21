@@ -88,12 +88,13 @@ export function Suggestion({ suggestion }: Props) {
       </div>
 
       {/* Maintainers */}
-      {categorized_maintainers.active.length > 0 && (
+      {categorized_maintainers.original.length > 0 && (
         <div className="rounded border box column gap">
           <h2 className="text-l bold text-gray">Maintainers</h2>
           <CategorizedMaintainersList
             suggestionId={id}
             categorizedMaintainers={categorized_maintainers}
+            editable={userCanEdit && (status === "pending" || status === "accepted")}
           />
         </div>
       )}
