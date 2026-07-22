@@ -15,12 +15,12 @@ const doneFeatures = [
   "Suggestions: comment edit",
   "Suggestions: reference ignore/restore",
   "Suggestions: maintainer ignore/restore",
+  "Suggestions: status change (publication excluded)",
 ];
 
 const pendingFeatures = [
   "Suggestions: package ignore/restore",
   "Suggestions: maintainer add/delete",
-  "Suggestions: status change",
   "Notification center",
   "Notification pill (in navbar)",
   "Notification polling",
@@ -29,6 +29,7 @@ const pendingFeatures = [
   "Suggestion lists: per status",
   "Suggestion lists: by package",
   "Suggestion lists: draft issue",
+  "Suggestions: publication and batch publication",
   "Navigation bar",
   "Published issues list",
   "Published issues individual page",
