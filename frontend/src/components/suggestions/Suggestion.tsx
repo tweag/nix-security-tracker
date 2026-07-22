@@ -9,6 +9,7 @@ import { CategorizedReferencesList } from "./CategorizedReferencesList";
 import { Comment } from "./Comment";
 import { SeverityBadge } from "./SeverityBadge";
 import { SuggestionStatus } from "./SuggestionStatus";
+import { SuggestionStatusActions } from "./SuggestionStatusActions";
 
 type Props = {
   suggestion: SuggestionType;
@@ -107,6 +108,9 @@ export function Suggestion({ suggestion }: Props) {
       {/* Comment */}
       {(comment || userCanEdit) && (
         <Comment suggestionId={id} comment={comment ?? null} canEdit={userCanEdit} />
+      )}
+      {userCanEdit && (
+        <SuggestionStatusActions suggestionId={id} status={status} comment={comment} />
       )}
     </article>
   );
