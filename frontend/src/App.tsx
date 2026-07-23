@@ -1,6 +1,7 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { useEffect } from "preact/hooks";
 import { Redirect, Route, Switch } from "wouter-preact";
+import { queryClient } from "@/api/queryClient";
 import { Footer } from "@/components/footer/Footer";
 import { Disclaimer } from "@/components/header/Disclaimer";
 import { HeaderBar } from "@/components/header/HeaderBar";
@@ -9,15 +10,6 @@ import { Home } from "@/routes/Home";
 import { SuggestionDetail } from "@/routes/SuggestionDetail";
 import { UserSettings } from "@/routes/UserSettings";
 import { toaster } from "@/utils/toaster";
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000,
-      retry: 1,
-    },
-  },
-});
 
 export function App() {
   // Fallback landing page when allauth's GitHub OAuth handshake fails
