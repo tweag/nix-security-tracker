@@ -230,11 +230,17 @@ class CVEDerivationClusterProposal(TimeStampMixin):
             self.cached.payload["original_packages"],
             self.package_overlays.all(),
         )
+        original_packages = {
+            k: CachedSuggestion.Package.model_validate(v)
+            for k, v in self.cached.payload["original_packages"].items()
+        }
+        active_packages = {
+            k: CachedSuggestion.Package.model_validate(v)
+            for k, v in self.cached.payload["packages"].items()
+        }
         self.cached.payload["categorized_maintainers"] = categorize_maintainers(
-            {
-                k: CachedSuggestion.Package.model_validate(v)
-                for k, v in self.cached.payload["packages"].items()
-            },
+            original_packages,
+            active_packages,
             self.maintainer_overlays.all(),
         ).model_dump()
         self.cached.save()

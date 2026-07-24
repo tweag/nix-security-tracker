@@ -137,6 +137,7 @@ class SuggestionCategorizedMaintainersSerializer(serializers.Serializer):
     active = MaintainerSerializer(many=True)
     ignored = MaintainerSerializer(many=True)
     added = MaintainerSerializer(many=True)
+    orphan = MaintainerSerializer(many=True)
 
 
 class SuggestionSerializer(serializers.Serializer):

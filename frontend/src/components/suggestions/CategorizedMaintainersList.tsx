@@ -12,11 +12,15 @@ export function CategorizedMaintainersList({
   categorizedMaintainers,
   editable,
 }: Props) {
-  const { active, ignored, added } = categorizedMaintainers;
+  const { active, ignored, added, orphan } = categorizedMaintainers;
+  // Orphan maintainers (no longer associated with any active package) are kept in the data but hidden from display.
+  const orphanIds = new Set(orphan.map((m) => m.github_id));
+  const visibleActive = active.filter((m) => !orphanIds.has(m.github_id));
+  const visibleIgnored = ignored.filter((m) => !orphanIds.has(m.github_id));
   return (
     <div className="column gap" data-testid={`suggestion-${suggestionId}-maintainers`}>
       <ul className="column gap-small">
-        {active.map((m) => (
+        {visibleActive.map((m) => (
           <li key={m.github_id}>
             <Maintainer
               maintainer={m}
@@ -27,13 +31,13 @@ export function CategorizedMaintainersList({
           </li>
         ))}
       </ul>
-      {ignored.length > 0 && (
+      {visibleIgnored.length > 0 && (
         <details className="column gap">
           <summary className="text-l bold text-gray">
-            Ignored maintainers ({ignored.length})
+            Ignored maintainers ({visibleIgnored.length})
           </summary>
           <ul className="column gap-small">
-            {ignored.map((m) => (
+            {visibleIgnored.map((m) => (
               <li key={m.github_id}>
                 <Maintainer
                   maintainer={m}
