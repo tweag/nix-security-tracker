@@ -22,9 +22,11 @@ def test_get_maintainers_anonymous(
     assert "active" in data
     assert "ignored" in data
     assert "added" in data
+    assert "orphan" in data
     assert any(m["github_id"] == maintainer.github_id for m in data["original"])
     assert any(m["github_id"] == maintainer.github_id for m in data["active"])
     assert data["ignored"] == []
+    assert data["orphan"] == []
 
 
 def test_get_maintainers_not_found(

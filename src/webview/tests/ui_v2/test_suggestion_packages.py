@@ -190,3 +190,74 @@ def test_package_ignore_removes_solo_maintainer_from_active_list(
 
     expect(maintainers.get_by_text(f"@{solo_maintainer.github}")).to_be_visible()
     expect(maintainers.get_by_text(f"@{other_maintainer.github}")).to_be_visible()
+
+
+@pytest.mark.django_db
+def test_package_restore_brings_back_maintainer_in_ignored_section_if_it_was_ignored(
+    live_server: LiveServer,
+    as_committer: Page,
+    make_drv: Callable[..., NixDerivation],
+    make_maintainer: Callable[..., NixMaintainer],
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    """Regression test: a maintainer that was ignored, and later becomes an
+    orphan (all its packages get ignored), must reappear under "Ignored
+    maintainers" — not "active" — once one of its packages is restored."""
+    maintainer = make_maintainer(github_id=999, github="solo")
+    drv1 = make_drv(pname=PACKAGE_ATTRIBUTE, maintainer=maintainer)
+    drv2 = make_drv(pname="package2", maintainer=maintainer)
+    suggestion = make_cached_suggestion(
+        status=CVEDerivationClusterProposal.Status.PENDING,
+        drvs={
+            drv1: ProvenanceFlags.PACKAGE_NAME_MATCH,
+            drv2: ProvenanceFlags.PACKAGE_NAME_MATCH,
+        },
+    )
+    as_committer.goto(live_server.url + SUGGESTION_DETAIL + f"/{suggestion.pk}")
+    maintainers = as_committer.get_by_test_id(f"suggestion-{suggestion.pk}-maintainers")
+    packages = as_committer.get_by_test_id(f"suggestion-{suggestion.pk}-packages")
+
+    # Ignore the maintainer while it still has active packages.
+    maintainers.get_by_role("button", name="Ignore").click()
+    expect(maintainers.get_by_text("Ignored maintainers", exact=False)).to_be_visible()
+
+    # Ignore both of its packages, making it an orphan: it disappears entirely.
+    package1_item = packages.get_by_role("listitem").filter(has_text=PACKAGE_ATTRIBUTE)
+    package1_item.get_by_role("button", name="Ignore").click()
+    expect(packages.get_by_text("Ignored packages", exact=False)).to_be_visible()
+    packages.get_by_text("Ignored packages", exact=False).click()
+    expect(
+        packages.get_by_role("listitem")
+        .filter(has_text=PACKAGE_ATTRIBUTE)
+        .get_by_role("button", name="Restore")
+    ).to_be_visible()
+
+    package2_item = packages.get_by_role("listitem").filter(has_text="package2")
+    package2_item.get_by_role("button", name="Ignore").click()
+    expect(
+        packages.get_by_role("listitem")
+        .filter(has_text="package2")
+        .get_by_role("button", name="Restore")
+    ).to_be_visible()
+
+    # Both packages ignored: the maintainer is orphan, hidden from both the
+    # active and ignored sections (the "Ignored maintainers" accordion itself
+    # disappears, since it has no visible entries left).
+    expect(maintainers.get_by_text(f"@{maintainer.github}")).to_be_hidden()
+    expect(maintainers.get_by_text("Ignored maintainers", exact=False)).to_be_hidden()
+
+    # Restore one of the packages: the maintainer must reappear as ignored.
+    ignored_package1_item = packages.get_by_role("listitem").filter(
+        has_text=PACKAGE_ATTRIBUTE
+    )
+    ignored_package1_item.get_by_role("button", name="Restore").click()
+
+    expect(maintainers.get_by_text("Ignored maintainers", exact=False)).to_be_visible()
+    maintainers.get_by_text("Ignored maintainers", exact=False).click()
+    ignored_maintainer_item = maintainers.get_by_role("listitem").filter(
+        has_text=f"@{maintainer.github}"
+    )
+    expect(ignored_maintainer_item).to_be_visible()
+    expect(
+        ignored_maintainer_item.get_by_role("button", name="Restore")
+    ).to_be_visible()

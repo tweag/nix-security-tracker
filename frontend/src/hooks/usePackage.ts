@@ -96,22 +96,12 @@ function recomputeCategorizedMaintainers(
   activePackages: SuggestionPackages,
   previous: SuggestionCategorizedMaintainers,
 ): SuggestionCategorizedMaintainers {
-  // Maintainers not part of an active package are not shown at all.
-  // Fits legacy UI behavior.
-  const original = [
-    ...new Map(
-      Object.values(activePackages)
-        .flatMap((pkg) => pkg.maintainers)
-        .map((m) => [m.github_id, m]),
-    ).values(),
-  ];
-
-  const previouslyIgnoredIds = new Set(previous.ignored.map((m) => m.github_id));
+  const activePackageMaintainerIds = new Set(
+    Object.values(activePackages).flatMap((pkg) => pkg.maintainers.map((m) => m.github_id)),
+  );
 
   return {
-    original,
-    active: original.filter((m) => !previouslyIgnoredIds.has(m.github_id)),
-    ignored: original.filter((m) => previouslyIgnoredIds.has(m.github_id)),
-    added: previous.added,
+    ...previous,
+    orphan: previous.original.filter((m) => !activePackageMaintainerIds.has(m.github_id)),
   };
 }
