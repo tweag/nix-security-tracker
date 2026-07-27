@@ -19,7 +19,6 @@ const doneFeatures = [
 ];
 
 const pendingFeatures = [
-  "Suggestions: maintainer ignore/restore",
   "Suggestions: maintainer add/delete",
   "Notification center",
   "Notification pill (in navbar)",
