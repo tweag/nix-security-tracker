@@ -39,8 +39,8 @@ export function Suggestion({ suggestion }: Props) {
 
   return (
     <article className="box shadow border rounded column gap-big" data-testid={`suggestion-${id}`}>
-      {/* Status + CVE ID + title */}
-      <div className="column gap">
+      {/* Header */}
+      <div className="column gap-small">
         <SuggestionStatus status={status} rejectionReason={rejection_reason} />
 
         <div className="row gap spread align-start">
@@ -62,53 +62,57 @@ export function Suggestion({ suggestion }: Props) {
         </details>
       </div>
 
-      {/* References */}
-      {categorized_url_references.original.length > 0 && (
+      <div className="column gap">
+        {/* References */}
+        {categorized_url_references.original.length > 0 && (
+          <div className="rounded border box column gap">
+            <h2 className="text-l bold text-gray">References</h2>
+            <CategorizedReferencesList
+              categorizedReferences={categorized_url_references}
+              suggestionId={id}
+              editable={userCanEdit && (status === "pending" || status === "accepted")}
+            />
+          </div>
+        )}
+
+        {/* Affected products */}
+        {Object.keys(affected_products).length > 0 && (
+          <div className="rounded border box column gap">
+            <h2 className="text-l bold text-gray">Affected products</h2>
+            <AffectedProductsList affectedProducts={affected_products} />
+          </div>
+        )}
+
+        {/* Packages */}
         <div className="rounded border box column gap">
-          <h2 className="text-l bold text-gray">References</h2>
-          <CategorizedReferencesList
-            categorizedReferences={categorized_url_references}
+          <h2 className="text-l bold text-gray">Matching in nixpkgs</h2>
+          <CategorizedPackagesList
             suggestionId={id}
+            active={packages}
+            ignored={ignored_packages}
             editable={userCanEdit && (status === "pending" || status === "accepted")}
           />
         </div>
-      )}
 
-      {/* Affected products */}
-      {Object.keys(affected_products).length > 0 && (
-        <div className="rounded border box column gap">
-          <h2 className="text-l bold text-gray">Affected products</h2>
-          <AffectedProductsList affectedProducts={affected_products} />
-        </div>
-      )}
+        {/* Maintainers */}
+        {categorized_maintainers.original.length > 0 && (
+          <div className="rounded border box column gap">
+            <h2 className="text-l bold text-gray">Maintainers</h2>
+            <CategorizedMaintainersList
+              suggestionId={id}
+              categorizedMaintainers={categorized_maintainers}
+              editable={userCanEdit && (status === "pending" || status === "accepted")}
+            />
+          </div>
+        )}
 
-      {/* Packages */}
-      <div className="rounded border box column gap">
-        <h2 className="text-l bold text-gray">Matching in nixpkgs</h2>
-        <CategorizedPackagesList
-          suggestionId={id}
-          active={packages}
-          ignored={ignored_packages}
-          editable={userCanEdit && (status === "pending" || status === "accepted")}
-        />
+        {/* Comment */}
+        {(comment || userCanEdit) && (
+          <Comment suggestionId={id} comment={comment ?? null} canEdit={userCanEdit} />
+        )}
       </div>
 
-      {/* Maintainers */}
-      {categorized_maintainers.original.length > 0 && (
-        <div className="rounded border box column gap">
-          <h2 className="text-l bold text-gray">Maintainers</h2>
-          <CategorizedMaintainersList
-            suggestionId={id}
-            categorizedMaintainers={categorized_maintainers}
-            editable={userCanEdit && (status === "pending" || status === "accepted")}
-          />
-        </div>
-      )}
-
-      {/* Comment */}
-      {(comment || userCanEdit) && (
-        <Comment suggestionId={id} comment={comment ?? null} canEdit={userCanEdit} />
-      )}
+      {/* Change status */}
       {userCanEdit && (
         <SuggestionStatusActions suggestionId={id} status={status} comment={comment} />
       )}

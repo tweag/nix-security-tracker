@@ -16,6 +16,7 @@ const doneFeatures = [
   "Suggestions: reference ignore/restore",
   "Suggestions: maintainer ignore/restore",
   "Suggestions: status change (publication excluded)",
+  "Suggestion lists: pagination",
 ];
 
 const pendingFeatures = [
@@ -23,7 +24,6 @@ const pendingFeatures = [
   "Notification center",
   "Notification pill (in navbar)",
   "Notification polling",
-  "Suggestion lists: pagination / infinite scroll",
   "Suggestion lists: compact view",
   "Suggestion lists: per status",
   "Suggestion lists: by package",

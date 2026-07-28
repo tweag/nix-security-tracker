@@ -2,7 +2,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
 import {
   getGetSuggestionActivityLogQueryKey,
-  getGetSuggestionQueryKey,
   useUpdateSuggestionPackage,
 } from "@/api/generated/endpoints";
 import type {
@@ -12,6 +11,12 @@ import type {
   SuggestionPackages,
 } from "@/api/generated/models";
 import { getApiErrorMessage } from "@/utils/apiError";
+import {
+  cancelCachedSuggestionQueries,
+  getCachedSuggestion,
+  invalidateCachedSuggestion,
+  setCachedSuggestion,
+} from "@/utils/suggestionCache";
 import { toaster } from "@/utils/toaster";
 
 type MutationVars = { id: number; data: PatchedSuggestionPackageUpdate };
@@ -20,16 +25,14 @@ type MutationContext = { previous?: Suggestion };
 // TODO(@florentc): Deduplicate shared code structure between the references and maintainers counterparts
 export function usePackageMutation(suggestionId: number) {
   const queryClient = useQueryClient();
-  const queryKey = getGetSuggestionQueryKey(suggestionId);
 
   return useUpdateSuggestionPackage({
     mutation: {
       onMutate: async ({ data }: MutationVars): Promise<MutationContext> => {
-        await queryClient.cancelQueries({ queryKey });
-        const previous = queryClient.getQueryData<Suggestion>(queryKey);
+        await cancelCachedSuggestionQueries(queryClient, suggestionId);
+        const previous = getCachedSuggestion(queryClient, suggestionId);
 
-        queryClient.setQueryData<Suggestion>(queryKey, (prev) => {
-          if (!prev) return prev;
+        setCachedSuggestion(queryClient, suggestionId, (prev) => {
           const { package_attribute, ignored } = data;
           if (!package_attribute) return prev;
 
@@ -66,13 +69,14 @@ export function usePackageMutation(suggestionId: number) {
           const title = vars.data.ignored ? "Package already ignored" : "Package already restored";
           const description =
             "The suggestion might have been stale. It has been re-synchronized with the server.";
-          queryClient.invalidateQueries({ queryKey });
+          invalidateCachedSuggestion(queryClient, suggestionId);
           toaster.warning({ title, description });
         } else if (context?.previous) {
           const title = vars.data.ignored
             ? "Failed to ignore package"
             : "Failed to restore package";
-          queryClient.setQueryData(queryKey, context.previous);
+          const snapshot = context.previous;
+          setCachedSuggestion(queryClient, suggestionId, () => snapshot);
           toaster.error({ title, description });
         }
       },

@@ -7,7 +7,7 @@ from pytest_django.live_server_helper import LiveServer
 from shared.models.linkage import CVEDerivationClusterProposal, ProvenanceFlags
 from shared.models.nix_evaluation import NixDerivation, NixMaintainer
 
-from .routes import SUGGESTION_DETAIL
+from .routes import SUGGESTION_DETAIL, SUGGESTION_LIST
 
 PACKAGE_ATTRIBUTE = "package1"
 
@@ -261,3 +261,23 @@ def test_package_restore_brings_back_maintainer_in_ignored_section_if_it_was_ign
     expect(
         ignored_maintainer_item.get_by_role("button", name="Restore")
     ).to_be_visible()
+
+
+@pytest.mark.django_db
+def test_package_ignore_from_list_updates_the_list_card(
+    live_server: LiveServer,
+    as_committer: Page,
+    suggestion_with_package: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    suggestion = suggestion_with_package(
+        status=CVEDerivationClusterProposal.Status.PENDING
+    )
+    as_committer.goto(live_server.url + SUGGESTION_LIST)
+    card = as_committer.get_by_test_id(f"suggestion-{suggestion.pk}")
+    packages = card.get_by_test_id(f"suggestion-{suggestion.pk}-packages")
+
+    packages.get_by_role("button", name="Ignore").click()
+
+    expect(packages.get_by_text("Ignored packages", exact=False)).to_be_visible()
+    packages.get_by_text("Ignored packages", exact=False).click()
+    expect(packages.get_by_role("button", name="Restore")).to_be_visible()

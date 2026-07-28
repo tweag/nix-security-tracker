@@ -8,6 +8,7 @@ import { HeaderBar } from "@/components/header/HeaderBar";
 import { Toaster } from "@/components/ui/Toaster";
 import { Home } from "@/routes/Home";
 import { SuggestionDetail } from "@/routes/SuggestionDetail";
+import { SuggestionList } from "@/routes/SuggestionList";
 import { UserSettings } from "@/routes/UserSettings";
 import { toaster } from "@/utils/toaster";
 
@@ -33,6 +34,7 @@ export function App() {
       <main>
         <Switch>
           <Route path="/ui-v2/suggestions/by-id/:id" component={SuggestionDetail} />
+          <Route path="/ui-v2/suggestions" component={SuggestionList} />
           <Route path="/ui-v2/" component={Home} />
           <Route path="/ui-v2/user">
             <Redirect to="/ui-v2/user/subscriptions" />

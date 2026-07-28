@@ -306,6 +306,10 @@
   align-items: flex-end;
 }
 
+.stretched {
+  align-items: strech;
+}
+
 .column {
   display: flex;
   flex-direction: column;
