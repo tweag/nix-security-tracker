@@ -6,7 +6,7 @@ from pytest_django.live_server_helper import LiveServer
 
 from shared.models.linkage import CVEDerivationClusterProposal
 
-from .routes import SUGGESTION_DETAIL
+from .routes import SUGGESTION_DETAIL, SUGGESTION_LIST
 
 
 @pytest.mark.django_db
@@ -187,9 +187,6 @@ def test_accept_shows_error_toast_on_backend_mismatch(
     as_committer: Page,
     make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
 ) -> None:
-    """If the suggestion was already accepted server-side (e.g. by another
-    committer, or a stale tab) by the time the user clicks Accept, the
-    optimistic update is rolled back and an error message is shown."""
     suggestion = make_cached_suggestion(
         status=CVEDerivationClusterProposal.Status.PENDING
     )
@@ -205,3 +202,48 @@ def test_accept_shows_error_toast_on_backend_mismatch(
     expect(as_committer.get_by_text("Failed to change status")).to_be_visible()
     # The optimistic update should have been rolled back to "pending"
     expect(as_committer.get_by_text("Untriaged")).to_be_visible()
+
+
+@pytest.mark.django_db
+def test_accept_from_list_updates_the_list_card(
+    live_server: LiveServer,
+    as_committer: Page,
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    """Accepting a suggestion from the list page updates its card in the list, not just its activity log."""
+    suggestion = make_cached_suggestion(
+        status=CVEDerivationClusterProposal.Status.PENDING
+    )
+    as_committer.goto(live_server.url + SUGGESTION_LIST)
+    card = as_committer.get_by_test_id(f"suggestion-{suggestion.pk}")
+    actions = card.get_by_test_id(f"suggestion-{suggestion.pk}-status-actions")
+
+    actions.get_by_role("button", name="Accept").click()
+
+    expect(card.get_by_text("Accepted")).to_be_visible()
+    expect(actions.get_by_role("button", name="Accept")).to_be_hidden()
+    expect(actions.get_by_role("button", name="Dismiss")).to_be_visible()
+
+
+@pytest.mark.django_db
+def test_dismiss_with_comment_enabled_after_typing_comment_from_list(
+    live_server: LiveServer,
+    as_committer: Page,
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    """Writing a comment on a suggestion from the list page enables the "With comment" dismiss option."""
+    suggestion = make_cached_suggestion(
+        status=CVEDerivationClusterProposal.Status.PENDING
+    )
+    as_committer.goto(live_server.url + SUGGESTION_LIST)
+    card = as_committer.get_by_test_id(f"suggestion-{suggestion.pk}")
+
+    textarea = card.locator("textarea")
+    textarea.fill("dismissal note")
+    expect(textarea).to_have_attribute("data-save-state", "saved")
+
+    actions = card.get_by_test_id(f"suggestion-{suggestion.pk}-status-actions")
+    actions.get_by_role("button", name="Dismiss").click()
+    expect(
+        as_committer.get_by_role("menuitem", name="With comment")
+    ).not_to_have_attribute("data-disabled", "")

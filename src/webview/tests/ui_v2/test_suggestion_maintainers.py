@@ -7,7 +7,7 @@ from pytest_django.live_server_helper import LiveServer
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.nix_evaluation import NixMaintainer
 
-from .routes import SUGGESTION_DETAIL
+from .routes import SUGGESTION_DETAIL, SUGGESTION_LIST
 
 
 @pytest.mark.django_db
@@ -131,3 +131,20 @@ def test_maintainer_ignore_shows_error_toast_on_backend_mismatch(
 
     # The suggestion is supposed to have been refreshed so the maintainer should be ignored now
     expect(maintainers.get_by_text("Ignored maintainers", exact=False)).to_be_visible()
+
+
+@pytest.mark.django_db
+def test_maintainer_ignore_from_list_updates_the_list_card(
+    live_server: LiveServer,
+    as_committer: Page,
+    cached_suggestion: CVEDerivationClusterProposal,
+) -> None:
+    as_committer.goto(live_server.url + SUGGESTION_LIST)
+    card = as_committer.get_by_test_id(f"suggestion-{cached_suggestion.pk}")
+    maintainers = card.get_by_test_id(f"suggestion-{cached_suggestion.pk}-maintainers")
+
+    maintainers.get_by_role("button", name="Ignore").click()
+
+    expect(maintainers.get_by_text("Ignored maintainers", exact=False)).to_be_visible()
+    maintainers.get_by_text("Ignored maintainers", exact=False).click()
+    expect(maintainers.get_by_role("button", name="Restore")).to_be_visible()

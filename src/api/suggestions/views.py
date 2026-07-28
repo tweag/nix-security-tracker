@@ -1,10 +1,12 @@
 from django.core.exceptions import ValidationError
+from django.db.models.query import QuerySet
 from drf_spectacular.utils import extend_schema, extend_schema_serializer
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.exceptions import ValidationError as DRFValidationError
-from rest_framework.mixins import RetrieveModelMixin
+from rest_framework.mixins import ListModelMixin, RetrieveModelMixin
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -28,6 +30,7 @@ from shared.logs.batches import batch_events
 from shared.logs.events import remove_canceling_events
 from shared.logs.fetchers import fetch_suggestion_events
 from shared.models import CVEDerivationClusterProposal
+from shared.models.cached import CachedSuggestions
 
 
 class CanEditSuggestion(BasePermission):
@@ -61,15 +64,44 @@ class SuggestionStatusSerializer(serializers.ModelSerializer):
         return result
 
 
-class SuggestionViewSet(RetrieveModelMixin, viewsets.GenericViewSet):
+class SuggestionPagination(PageNumberPagination):
+    page_size = 10  # TODO(@florentc): Allow the user to change it within limits
+
+
+class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericViewSet):
     queryset = CVEDerivationClusterProposal.objects.all()
     serializer_class = SuggestionSerializer
+    pagination_class = SuggestionPagination
 
     def get_permissions(self) -> list:
         if getattr(self.request, "method", None) != "GET":
             return [IsAuthenticated(), CanEditSuggestion()]
         else:
             return []
+
+    def get_queryset(self) -> QuerySet[CVEDerivationClusterProposal]:  # pyright: ignore[reportIncompatibleMethodOverride]
+        if self.action != "list":
+            return super().get_queryset()
+
+        # Only suggestions with fresh cache
+        return (
+            CVEDerivationClusterProposal.objects.target_proposals()
+            .filter(
+                cached__isnull=False,
+                cached__schema_version=CachedSuggestions.CURRENT_SCHEMA_VERSION,
+            )
+            .select_related("cached")
+            .prefetch_related("cve__container__references__tags")
+            .order_by("-updated_at", "-created_at")
+        )
+
+    @extend_schema(
+        operation_id="listSuggestions",
+        description="List all suggestions (proposals linking CVEs to derivations), paginated and sorted by most recently modified or created first.",
+        responses={200: SuggestionSerializer(many=True)},
+    )
+    def list(self, request: Request) -> Response:
+        return super().list(request)
 
     @extend_schema(
         operation_id="getSuggestion",
@@ -131,6 +163,7 @@ class SuggestionViewSet(RetrieveModelMixin, viewsets.GenericViewSet):
         url_path="activity_log",
         serializer_class=ActivityLogEntrySerializer,
         permission_classes=[AllowAny],
+        pagination_class=None,
     )
     def activity_log(self, request: Request, pk: int) -> Response:
         instance = self.get_object()
