@@ -28,6 +28,8 @@ export function useSuggestionStatusMutation(suggestionId: number) {
           ...prev,
           status: data.status,
           rejection_reason: data.status === "rejected" ? data.rejection_reason : undefined,
+          // Remove from issue draft during optimistic update
+          in_issue_draft: prev.in_issue_draft && data.status === "accepted",
         }));
 
         return { previous };

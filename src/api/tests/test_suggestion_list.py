@@ -5,11 +5,20 @@ from django.utils import timezone
 from rest_framework.reverse import reverse
 from rest_framework.test import APIClient
 
-from shared.models.linkage import CVEDerivationClusterProposal
+from shared.models.cve import Container
+from shared.models.linkage import (
+    CVEDerivationClusterProposal,
+    ProvenanceFlags,
+)
+from shared.models.nix_evaluation import NixDerivation
 
 
 def url() -> str:
     return reverse("cvederivationclusterproposal-list")
+
+
+def detail_url(pk: int) -> str:
+    return reverse("cvederivationclusterproposal-detail", kwargs={"pk": pk})
 
 
 def test_suggestion_list_anonymous(
@@ -137,3 +146,166 @@ def test_suggestion_list_second_page(
     first_page_ids = {item["id"] for item in first_page.data["results"]}
     second_page_ids = {item["id"] for item in second_page.data["results"]}
     assert first_page_ids.isdisjoint(second_page_ids)
+
+
+def test_suggestion_list_filters_by_single_status(
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    """Filtering by a single status only returns suggestions in that status."""
+    client = APIClient()
+    pending = make_cached_suggestion(status=CVEDerivationClusterProposal.Status.PENDING)
+    accepted = make_cached_suggestion(
+        status=CVEDerivationClusterProposal.Status.ACCEPTED
+    )
+
+    response = client.get(url(), {"status": "accepted"})
+    assert response.status_code == 200
+    ids = [item["id"] for item in response.data["results"]]
+    assert ids == [accepted.pk]
+    assert pending.pk not in ids
+
+
+def test_suggestion_list_filters_by_multiple_statuses(
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    """Filtering by several statuses combines them with OR."""
+    client = APIClient()
+    pending = make_cached_suggestion(status=CVEDerivationClusterProposal.Status.PENDING)
+    accepted = make_cached_suggestion(
+        status=CVEDerivationClusterProposal.Status.ACCEPTED
+    )
+    rejected = make_cached_suggestion(
+        status=CVEDerivationClusterProposal.Status.REJECTED
+    )
+
+    response = client.get(url(), [("status", "pending"), ("status", "accepted")])
+    assert response.status_code == 200
+    ids = {item["id"] for item in response.data["results"]}
+    assert ids == {pending.pk, accepted.pk}
+    assert rejected.pk not in ids
+
+
+def test_suggestion_list_invalid_status_returns_400(
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    """An unknown status value is rejected."""
+    client = APIClient()
+    make_cached_suggestion()
+
+    response = client.get(url(), {"status": "not-a-real-status"})
+    assert response.status_code == 400
+
+
+def test_suggestion_list_filters_by_in_issue_draft(
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    """Filtering by in_issue_draft only returns matching suggestions."""
+    client = APIClient()
+    in_draft = make_cached_suggestion(
+        status=CVEDerivationClusterProposal.Status.ACCEPTED, in_issue_draft=True
+    )
+    not_in_draft = make_cached_suggestion(
+        status=CVEDerivationClusterProposal.Status.ACCEPTED, in_issue_draft=False
+    )
+
+    response = client.get(url(), {"in_issue_draft": "true"})
+    assert response.status_code == 200
+    ids = [item["id"] for item in response.data["results"]]
+    assert ids == [in_draft.pk]
+
+    response = client.get(url(), {"in_issue_draft": "false"})
+    assert response.status_code == 200
+    ids = [item["id"] for item in response.data["results"]]
+    assert ids == [not_in_draft.pk]
+
+
+def test_suggestion_list_filters_by_package(
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+    make_drv: Callable[..., NixDerivation],
+    make_container: Callable[..., Container],
+) -> None:
+    """Filtering by package only returns suggestions with that active package."""
+    client = APIClient()
+    package1 = make_drv(pname="foo")
+    package2 = make_drv(pname="bar")
+    container1 = make_container(cve_id="CVE-2026-1001")
+    container2 = make_container(cve_id="CVE-2026-1002")
+    matching = make_cached_suggestion(
+        container=container1, drvs={package1: ProvenanceFlags.PACKAGE_NAME_MATCH}
+    )
+    other = make_cached_suggestion(
+        container=container2, drvs={package2: ProvenanceFlags.PACKAGE_NAME_MATCH}
+    )
+
+    response = client.get(url(), {"package": package1.attribute})
+    assert response.status_code == 200
+    ids = [item["id"] for item in response.data["results"]]
+    assert ids == [matching.pk]
+    assert other.pk not in ids
+
+
+def test_suggestion_list_filters_excludes_ignored_package(
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    """A suggestion whose only matching package has been ignored isn't returned."""
+    client = APIClient()
+    package = make_drv(pname="foo")
+    suggestion = make_cached_suggestion(
+        drvs={package: ProvenanceFlags.PACKAGE_NAME_MATCH}
+    )
+    suggestion.ignore_package(package.attribute)
+
+    response = client.get(url(), {"package": package.attribute})
+    assert response.status_code == 200
+    ids = [item["id"] for item in response.data["results"]]
+    assert suggestion.pk not in ids
+
+
+def test_suggestion_list_combines_filters_with_and(
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+    make_drv: Callable[..., NixDerivation],
+    make_container: Callable[..., Container],
+) -> None:
+    """Status, in_issue_draft, and package filters combine with AND."""
+    client = APIClient()
+    package = make_drv(pname="foo")
+    container1 = make_container(cve_id="CVE-2026-2001")
+    container2 = make_container(cve_id="CVE-2026-2002")
+
+    matching = make_cached_suggestion(
+        container=container1,
+        drvs={package: ProvenanceFlags.PACKAGE_NAME_MATCH},
+        status=CVEDerivationClusterProposal.Status.ACCEPTED,
+        in_issue_draft=True,
+    )
+    # Same package and draft state, but wrong status.
+    wrong_status = make_cached_suggestion(
+        container=container2,
+        drvs={package: ProvenanceFlags.PACKAGE_NAME_MATCH},
+        status=CVEDerivationClusterProposal.Status.PENDING,
+    )
+
+    response = client.get(
+        url(),
+        {"status": "accepted", "in_issue_draft": "true", "package": package.attribute},
+    )
+    assert response.status_code == 200
+    ids = [item["id"] for item in response.data["results"]]
+    assert ids == [matching.pk]
+    assert wrong_status.pk not in ids
+
+
+def test_suggestion_detail_unaffected_by_list_filters(
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    """Query params meant for the list endpoint don't filter out detail lookups."""
+    client = APIClient()
+    suggestion = make_cached_suggestion(
+        status=CVEDerivationClusterProposal.Status.PENDING
+    )
+
+    # A status filter that this suggestion doesn't match must not 404 the detail view.
+    response = client.get(detail_url(suggestion.pk), {"status": "accepted"})
+    assert response.status_code == 200
+    assert response.data["id"] == suggestion.pk

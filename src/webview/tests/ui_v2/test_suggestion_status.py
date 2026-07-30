@@ -133,7 +133,7 @@ def test_dismiss_not_in_nixpkgs_transitions_and_shows_reason(
     as_committer.get_by_role("menuitem", name="Not in nixpkgs").click()
 
     expect(as_committer.get_by_text("Dismissed")).to_be_visible()
-    expect(as_committer.get_by_text("not_in_nixpkgs")).to_be_visible()
+    expect(as_committer.get_by_text("not in Nixpkgs")).to_be_visible()
 
 
 @pytest.mark.django_db

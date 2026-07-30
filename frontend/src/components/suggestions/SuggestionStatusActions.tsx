@@ -1,4 +1,5 @@
 import { PenToolIcon, Trash2Icon } from "lucide-preact";
+import type { ComponentChild } from "preact";
 import type { StatusEnum, SuggestionStatusRejectionReason } from "@/api/generated/models";
 import { Menu } from "@/components/ui/Menu";
 import { useSuggestionStatusMutation } from "@/hooks/useSuggestionStatus";
@@ -7,9 +8,10 @@ type Props = {
   suggestionId: number;
   status: StatusEnum;
   comment?: string | null;
+  children?: ComponentChild; // Component to insert between the status change buttons: e.g. comment in compact mode
 };
 
-export function SuggestionStatusActions({ suggestionId, status, comment }: Props) {
+export function SuggestionStatusActions({ suggestionId, status, comment, children }: Props) {
   const mutation = useSuggestionStatusMutation(suggestionId);
 
   if (status === "published") {
@@ -32,7 +34,7 @@ export function SuggestionStatusActions({ suggestionId, status, comment }: Props
 
   return (
     <div
-      className={`${canDismiss ? "row" : "row-reverse"} gap-small centered spread`}
+      className="row gap-small centered spread"
       data-testid={`suggestion-${suggestionId}-status-actions`}
     >
       {canDismiss && (
@@ -58,6 +60,7 @@ export function SuggestionStatusActions({ suggestionId, status, comment }: Props
           ]}
         />
       )}
+      {children ?? <div></div>}
       {canAccept && (
         <button
           type="button"
