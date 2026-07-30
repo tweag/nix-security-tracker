@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.db.models.query import QuerySet
+from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema, extend_schema_serializer
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
@@ -68,16 +69,52 @@ class SuggestionPagination(PageNumberPagination):
     page_size = 10  # TODO(@florentc): Allow the user to change it within limits
 
 
+class SuggestionFilterSet(filters.FilterSet):
+    """Filters for the suggestion list endpoint.
+
+    `status` accepts repeated query params (e.g. `?status=pending&status=accepted`) and is combined with OR.
+    Combines with other filters with AND.
+    """
+
+    status = filters.MultipleChoiceFilter(
+        choices=CVEDerivationClusterProposal.Status.choices,
+        label="Filter by status (repeatable, combined with OR)",
+    )
+    in_issue_draft = filters.BooleanFilter(
+        label="Filter by whether the suggestion is in the issue draft",
+    )
+    package = filters.CharFilter(
+        method="filter_package",
+        label="Filter by an active package attribute name (exact match)",
+    )
+
+    class Meta:
+        model = CVEDerivationClusterProposal
+        fields = ["status", "in_issue_draft", "package"]
+
+    def filter_package(self, queryset: QuerySet, name: str, value: str) -> QuerySet:
+        return queryset.filter(cached__payload__packages__has_key=value)
+
+
 class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericViewSet):
     queryset = CVEDerivationClusterProposal.objects.all()
     serializer_class = SuggestionSerializer
     pagination_class = SuggestionPagination
+    filter_backends = [filters.DjangoFilterBackend]
+    filterset_class = SuggestionFilterSet
 
     def get_permissions(self) -> list:
         if getattr(self.request, "method", None) != "GET":
             return [IsAuthenticated(), CanEditSuggestion()]
         else:
             return []
+
+    def filter_queryset(self, queryset: QuerySet) -> QuerySet:  # pyright: ignore[reportIncompatibleMethodOverride]
+        # Filters (status/in_issue_draft/package) only apply to the list action.
+        # Other actions (retrieve, status, comment, ...) fetch a single suggestion by pk via get_object() and must not be affected by list-only filters.
+        if self.action != "list":
+            return queryset
+        return super().filter_queryset(queryset)
 
     def get_queryset(self) -> QuerySet[CVEDerivationClusterProposal]:  # pyright: ignore[reportIncompatibleMethodOverride]
         if self.action != "list":

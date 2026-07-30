@@ -371,6 +371,10 @@ class CVEDerivationClusterProposal(TimeStampMixin):
         if status == self.status:
             raise ValidationError({"status": f"Already in status '{self.status}'"})
 
+        # Automatically remove from issue draft when changing status away from accepted
+        if status != SuggestionStatus.ACCEPTED:
+            self.in_issue_draft = False
+
         self.status = status
         self.rejection_reason = rejection_reason
         if comment:

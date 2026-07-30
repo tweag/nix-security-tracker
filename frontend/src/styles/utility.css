@@ -259,6 +259,7 @@
  *
  * Spacing (use one or none):
  * .gap, .gap-small, .gap-big - Gap between items
+ * .row-gap, .row-gap-small, .row-gap-big - Gap between items in a row, may be combined with `gap` variants (useful when wrapping is possible)
  * .dividers - Display a separation line between items (handles gaps, don't use gap classes)
  *
  * Horizontal separator line:
@@ -331,6 +332,10 @@
   justify-content: space-between;
 }
 
+.self-stretch {
+  align-self: stretch;
+}
+
 .gap {
   gap: 1em;
 }
@@ -341,6 +346,18 @@
 
 .gap-small {
   gap: 0.5em;
+}
+
+.row-gap {
+  column-gap: 1em;
+}
+
+.row-gap-big {
+  column-gap: 2em;
+}
+
+.row-gap-small {
+  column-gap: 0.5em;
 }
 
 .grow {
@@ -378,6 +395,7 @@
  *
  * .rounded - Rounded corners
  * .border - Gray border
+ * .border-dashed - Dashed border (to be used with `border`)
  * .circle - Circular shape
  * .box - Padding and scrollbars during overflows.
  *        Modifiers: .spacious, .compact (affects padding)
@@ -393,6 +411,10 @@
 
 .border {
   border: 1px solid var(--gray);
+}
+
+.border-dashed {
+  border-style: dashed;
 }
 
 .box {
