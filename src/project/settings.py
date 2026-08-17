@@ -525,6 +525,12 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "Nixpkgs security tracker API",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # `status` is used as a field name for several unrelated choice sets (issue status, suggestion status, rejection reason...).
+    # This gives explicit names (instead of auto generated ones)
+    "ENUM_NAME_OVERRIDES": {
+        "IssueStatusEnum": "shared.models.issue.IssueStatus",
+        "SuggestionStatusEnum": "shared.models.linkage.SuggestionStatus",
+    },
 }
 
 REST_KNOX = {
