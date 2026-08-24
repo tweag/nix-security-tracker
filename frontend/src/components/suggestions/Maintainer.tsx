@@ -1,24 +1,39 @@
 import { UserMinusIcon, UserPlusIcon } from "lucide-preact";
 import type { Maintainer as MaintainerType } from "@/api/generated/models";
 import { ExternalLink } from "@/components/ui/ExternalLink";
-import { useMaintainerMutation } from "@/hooks/useMaintainer";
+import { useDeleteMaintainerMutation, useMaintainerMutation } from "@/hooks/useMaintainer";
 
 type Props = {
   maintainer: MaintainerType;
   suggestionId: number;
   editable: boolean;
-  isIgnored: boolean;
+  /** Which category this maintainer is displayed in, and thus which action applies. */
+  kind: "active" | "ignored" | "added";
 };
 
-export function Maintainer({ maintainer, suggestionId, editable, isIgnored }: Props) {
-  const mutation = useMaintainerMutation(suggestionId);
+export function Maintainer({ maintainer, suggestionId, editable, kind }: Props) {
+  const ignoreRestoreMutation = useMaintainerMutation(suggestionId);
+  const deleteMutation = useDeleteMaintainerMutation(suggestionId);
+
+  const isIgnored = kind === "ignored";
+  const isAdded = kind === "added";
+  const mutation = isAdded ? deleteMutation : ignoreRestoreMutation;
 
   function handleClick() {
-    mutation.mutate({
-      id: suggestionId,
-      data: { github_id: maintainer.github_id, ignored: !isIgnored },
-    });
+    if (isAdded) {
+      deleteMutation.mutate({
+        id: suggestionId,
+        params: { github_id: maintainer.github_id },
+      });
+    } else {
+      ignoreRestoreMutation.mutate({
+        id: suggestionId,
+        data: { github_id: maintainer.github_id, ignored: !isIgnored },
+      });
+    }
   }
+
+  const label = isAdded ? "Delete" : isIgnored ? "Restore" : "Ignore";
 
   return (
     <div className="row gap centered">
@@ -30,7 +45,7 @@ export function Maintainer({ maintainer, suggestionId, editable, isIgnored }: Pr
           disabled={mutation.isPending}
         >
           {isIgnored ? <UserPlusIcon size="1em" /> : <UserMinusIcon size="1em" />}
-          {isIgnored ? "Restore" : "Ignore"}
+          {label}
         </button>
       )}
       <div>

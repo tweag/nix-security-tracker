@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from django.db.models.query import QuerySet
 from django_filters import rest_framework as filters
 from drf_spectacular.utils import (
+    OpenApiParameter,
     extend_schema,
     extend_schema_serializer,
 )
@@ -22,10 +23,13 @@ from api.params import ACTIVITY_LOG_PARAMETER, activity_log_requested
 from api.serializers import ErrorDetailSerializer
 from api.suggestions.serializers import (
     ActivityLogEntrySerializer,
+    MaintainerSerializer,
     SuggestionCategorizedMaintainersSerializer,
     SuggestionCategorizedPackagesSerializer,
     SuggestionCategorizedUrlReferencesSerializer,
     SuggestionCommentSerializer,
+    SuggestionMaintainerAddSerializer,
+    SuggestionMaintainerDeleteSerializer,
     SuggestionMaintainerUpdateSerializer,
     SuggestionPackageUpdateSerializer,
     SuggestionReferenceUpdateSerializer,
@@ -349,9 +353,49 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
             404: ErrorDetailSerializer,
         },
     )
+    @extend_schema(
+        methods=["post"],
+        operation_id="addSuggestionMaintainer",
+        description="Manually add a maintainer that is not part of the original maintainers.",
+        request=SuggestionMaintainerAddSerializer,
+        responses={
+            201: MaintainerSerializer,
+            400: ErrorDetailSerializer,
+            403: ErrorDetailSerializer,
+            404: ErrorDetailSerializer,
+        },
+    )
+    @extend_schema(
+        methods=["delete"],
+        operation_id="deleteSuggestionMaintainer",
+        description="Delete a manually added maintainer.",
+        # FIXME(@florentc): drf-spectacular doesn't document request body for DELETE
+        # We can't have the info in OpenAPI schema and then generated field in frontend.
+        # The github_id is passed as query param instead for the time being.
+        # In the future, we could consider the following structure:
+        # PATCH suggestions/{id}/maintainers/{github_id} to ignore/restore
+        # POST suggestions/{id}/extra_maintainers/ with github_id in request body to add extra maintainer
+        # DELETE suggestions/{id}/extra_maintainers/{github_id} to remove extra maintainer
+        # We should stay consistent with package & reference ignore/restore if we change ignore/restore
+        parameters=[
+            OpenApiParameter(
+                name="github_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description="GitHub ID of the manually added maintainer to delete.",
+            ),
+        ],
+        responses={
+            204: None,
+            400: ErrorDetailSerializer,
+            403: ErrorDetailSerializer,
+            404: ErrorDetailSerializer,
+        },
+    )
     @action(
         detail=True,
-        methods=["get", "patch"],
+        methods=["get", "patch", "post", "delete"],
         url_path="maintainers",
         serializer_class=SuggestionMaintainerUpdateSerializer,
     )
@@ -371,6 +415,28 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
                     instance.ignore_maintainer(serializer.validated_data["github_id"])
                 else:
                     instance.restore_maintainer(serializer.validated_data["github_id"])
+            except ValidationError as e:
+                raise DRFValidationError(e.message_dict)
+            return Response(status=204)
+        elif request.method == "POST":
+            serializer = SuggestionMaintainerAddSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            instance = self.get_object()
+            instance.ensure_fresh_cache()
+            try:
+                maintainer = instance.add_maintainer(
+                    serializer.validated_data["github_handle"]
+                )
+            except ValidationError as e:
+                raise DRFValidationError(e.message_dict)
+            return Response(MaintainerSerializer(maintainer).data, status=201)
+        elif request.method == "DELETE":
+            serializer = SuggestionMaintainerDeleteSerializer(data=request.query_params)
+            serializer.is_valid(raise_exception=True)
+            instance = self.get_object()
+            instance.ensure_fresh_cache()
+            try:
+                instance.delete_maintainer(serializer.validated_data["github_id"])
             except ValidationError as e:
                 raise DRFValidationError(e.message_dict)
             return Response(status=204)
