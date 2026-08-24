@@ -39,6 +39,23 @@ class SuggestionMaintainerUpdateSerializer(serializers.Serializer):
     )
 
 
+class SuggestionMaintainerAddSerializer(serializers.Serializer):
+    """Request body for adding a maintainer that is not part of the original maintainers."""
+
+    github_handle = serializers.CharField(
+        max_length=200,
+        help_text="GitHub handle of the maintainer to add.",
+    )
+
+
+class SuggestionMaintainerDeleteSerializer(serializers.Serializer):
+    """Request body for deleting a manually added maintainer."""
+
+    github_id = serializers.IntegerField(
+        help_text="GitHub ID of the manually added maintainer to delete.",
+    )
+
+
 class SuggestionPackageUpdateSerializer(serializers.Serializer):
     """Request body for ignore/restore package PATCH operations."""
 

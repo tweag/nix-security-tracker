@@ -29,10 +29,10 @@ const doneFeatures = [
   "Published issues individual page",
   "Navigation bar",
   "Suggestion lists: optimized batch activity log queries",
+  "Suggestions: maintainer add/delete",
 ];
 
 const pendingFeatures = [
-  "Suggestions: maintainer add/delete",
   "Notification center",
   "Notification pill (in navbar)",
   "Suggestions: publication and batch publication",

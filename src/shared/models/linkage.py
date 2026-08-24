@@ -374,6 +374,78 @@ class CVEDerivationClusterProposal(TimeStampMixin):
             cat_maintainers["active"].append(maintainer_data)
             self.cached.save()
 
+    def add_maintainer(self, github_handle: str) -> NixMaintainer:
+        """Manually add a maintainer that is not part of the original maintainers."""
+        # FIXME(@fricklerhandwerk): Extract helper into utilities collection.
+        from shared.cache_suggestions import to_dict
+
+        # FIXME(@fricklerhandwerk): Extract applicaton-specific GitHub-related logic into separate module.
+        from shared.github import fetch_user_info
+
+        cat_maintainers = self.cached.payload["categorized_maintainers"]
+        if any(m["github"] == github_handle for m in cat_maintainers["original"]):
+            raise ValidationError({"github_handle": "Already a maintainer"})
+
+        maintainer = NixMaintainer.objects.filter(github=github_handle).first()
+        if maintainer is None:
+            gh_user = fetch_user_info(github_handle)
+            if gh_user is None:
+                raise ValidationError(
+                    {"github_handle": "Could not fetch maintainer from GitHub"}
+                )
+            maintainer, _ = NixMaintainer.objects.update_or_create(
+                github_id=gh_user["id"],
+                defaults={
+                    "github": gh_user["login"],
+                    "name": gh_user.get("name"),
+                    "email": gh_user.get("email"),
+                },
+            )
+
+        with transaction.atomic():
+            edit, created = self.maintainer_overlays.get_or_create(
+                maintainer=maintainer,
+                defaults={"type": MaintainerOverlay.Type.ADDITIONAL},
+            )
+            if not created and edit.type != MaintainerOverlay.Type.ADDITIONAL:
+                edit.type = MaintainerOverlay.Type.ADDITIONAL
+                edit.save()
+
+            if not any(
+                m["github_id"] == maintainer.github_id for m in cat_maintainers["added"]
+            ):
+                cat_maintainers["added"].append(to_dict(maintainer))
+            self.cached.save()
+
+        return maintainer
+
+    def delete_maintainer(self, github_id: int) -> None:
+        """Delete a maintainer that was manually added."""
+        cat_maintainers = self.cached.payload["categorized_maintainers"]
+        maintainer_data = next(
+            (m for m in cat_maintainers["added"] if m["github_id"] == github_id),
+            None,
+        )
+        if maintainer_data is None:
+            raise ValidationError(
+                {"github_id": "Only manually added maintainers can be deleted"}
+            )
+
+        overlay = self.maintainer_overlays.filter(
+            maintainer__github_id=github_id, type=MaintainerOverlay.Type.ADDITIONAL
+        ).first()
+        if not overlay:
+            raise ValidationError(
+                {"github_id": "No add overlay found for this maintainer"}
+            )
+
+        with transaction.atomic():
+            overlay.delete()
+            cat_maintainers["added"] = [
+                m for m in cat_maintainers["added"] if m["github_id"] != github_id
+            ]
+            self.cached.save()
+
     def set_comment(self, comment: str | None) -> None:
         """Update the free-text comment independently of status changes."""
         self.comment = comment or None
