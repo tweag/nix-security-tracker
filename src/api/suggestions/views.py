@@ -1,7 +1,12 @@
+from typing import cast
+
 from django.core.exceptions import ValidationError
 from django.db.models.query import QuerySet
 from django_filters import rest_framework as filters
-from drf_spectacular.utils import extend_schema, extend_schema_serializer
+from drf_spectacular.utils import (
+    extend_schema,
+    extend_schema_serializer,
+)
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
@@ -13,6 +18,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.params import ACTIVITY_LOG_PARAMETER, activity_log_requested
 from api.serializers import ErrorDetailSerializer
 from api.suggestions.serializers import (
     ActivityLogEntrySerializer,
@@ -24,12 +30,9 @@ from api.suggestions.serializers import (
     SuggestionPackageUpdateSerializer,
     SuggestionReferenceUpdateSerializer,
     SuggestionSerializer,
-    folded_event_to_dict,
+    build_activity_log_map,
 )
 from shared.auth import user_can_edit_suggestion
-from shared.logs.batches import batch_events
-from shared.logs.events import remove_canceling_events
-from shared.logs.fetchers import fetch_suggestion_events
 from shared.models import CVEDerivationClusterProposal
 from shared.models.cached import CachedSuggestions
 
@@ -132,23 +135,50 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
             .order_by("-updated_at", "-created_at")
         )
 
+    def get_serializer_context(self) -> dict:
+        context = super().get_serializer_context()
+        context["include_activity_log"] = activity_log_requested(
+            cast(Request, self.request)
+        )
+        return context
+
     @extend_schema(
         operation_id="listSuggestions",
         description="List all suggestions (proposals linking CVEs to derivations), paginated and sorted by most recently modified or created first.",
+        parameters=[ACTIVITY_LOG_PARAMETER],
         responses={200: SuggestionSerializer(many=True)},
     )
     def list(self, request: Request) -> Response:
-        return super().list(request)
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        objects = page if page is not None else list(queryset)
+
+        context = self.get_serializer_context()
+        if context.get("include_activity_log"):
+            # Batch the activity log for the whole page in a fixed number of queries.
+            context["activity_logs"] = build_activity_log_map(
+                [obj.pk for obj in objects]
+            )
+
+        serializer = self.get_serializer_class()(objects, many=True, context=context)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
     @extend_schema(
         operation_id="getSuggestion",
         description="Get full details of a suggestion (proposal linking CVEs to derivations).",
+        parameters=[ACTIVITY_LOG_PARAMETER],
         responses={200: SuggestionSerializer, 404: ErrorDetailSerializer},
     )
     def retrieve(self, request: Request, pk: int) -> Response:
         instance = self.get_object()
         instance.ensure_fresh_cache()
-        return Response(self.get_serializer(instance).data)
+        context = self.get_serializer_context()
+        if context.get("include_activity_log"):
+            context["activity_logs"] = build_activity_log_map([instance.pk])
+        serializer = self.get_serializer_class()(instance, context=context)
+        return Response(serializer.data)
 
     @extend_schema(
         methods=["get"],
@@ -204,13 +234,7 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
     )
     def activity_log(self, request: Request, pk: int) -> Response:
         instance = self.get_object()
-        # FIXME(@florentc): Eventually we'll want to:
-        # - remove cancelling events: at the model level through a proper debouncing implementation
-        # - batch events: at the frontend level as it's presentation-related
-        raw_events = fetch_suggestion_events([instance.pk]).get(instance.pk, [])
-        deduplicated = remove_canceling_events(raw_events, sort=True)
-        folded = batch_events(deduplicated)
-        data = [folded_event_to_dict(e) for e in folded]
+        data = build_activity_log_map([instance.pk]).get(instance.pk, [])
         serializer = ActivityLogEntrySerializer(data, many=True)
         return Response(serializer.data)
 

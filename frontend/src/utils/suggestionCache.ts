@@ -10,9 +10,18 @@ import type { PaginatedSuggestionList, Suggestion } from "@/api/generated/models
 
 const listQueryKeyPrefix = getListSuggestionsQueryKey();
 
+// Common query key prefix regardless of query params (e.g. activity log)
+function detailQueryKeyPrefix(id: number) {
+  return getGetSuggestionQueryKey(id);
+}
+
 export function getCachedSuggestion(queryClient: QueryClient, id: number): Suggestion | undefined {
-  const detail = queryClient.getQueryData<Suggestion>(getGetSuggestionQueryKey(id));
-  if (detail) return detail;
+  const detailQueries = queryClient.getQueriesData<Suggestion>({
+    queryKey: detailQueryKeyPrefix(id),
+  });
+  for (const [, data] of detailQueries) {
+    if (data) return data;
+  }
 
   const listQueries = queryClient.getQueriesData<PaginatedSuggestionList>({
     queryKey: listQueryKeyPrefix,
@@ -30,7 +39,7 @@ export async function cancelCachedSuggestionQueries(
   id: number,
 ): Promise<void> {
   await Promise.all([
-    queryClient.cancelQueries({ queryKey: getGetSuggestionQueryKey(id) }),
+    queryClient.cancelQueries({ queryKey: detailQueryKeyPrefix(id) }),
     queryClient.cancelQueries({ queryKey: listQueryKeyPrefix }),
   ]);
 }
@@ -40,7 +49,7 @@ export function setCachedSuggestion(
   id: number,
   updater: (prev: Suggestion) => Suggestion,
 ): void {
-  queryClient.setQueryData<Suggestion>(getGetSuggestionQueryKey(id), (prev) =>
+  queryClient.setQueriesData<Suggestion>({ queryKey: detailQueryKeyPrefix(id) }, (prev) =>
     prev ? updater(prev) : prev,
   );
 
@@ -57,6 +66,6 @@ export function setCachedSuggestion(
 }
 
 export function invalidateCachedSuggestion(queryClient: QueryClient, id: number): void {
-  queryClient.invalidateQueries({ queryKey: getGetSuggestionQueryKey(id) });
+  queryClient.invalidateQueries({ queryKey: detailQueryKeyPrefix(id) });
   queryClient.invalidateQueries({ queryKey: listQueryKeyPrefix });
 }
