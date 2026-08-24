@@ -1,4 +1,5 @@
 import { FormatRelativeTime } from "@ark-ui/react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   InboxIcon,
   LinkIcon,
@@ -9,7 +10,11 @@ import {
   UserMinusIcon,
   UserPlusIcon,
 } from "lucide-preact";
-import { useGetSuggestionActivityLog } from "@/api/generated/endpoints";
+import { useEffect } from "preact/hooks";
+import {
+  getGetSuggestionActivityLogQueryKey,
+  useGetSuggestionActivityLog,
+} from "@/api/generated/endpoints";
 import { type ActivityLogEntry, SuggestionStatusEnum } from "@/api/generated/models";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Spinner } from "@/components/ui/Spinner";
@@ -24,6 +29,7 @@ const JUST_NOW_MS = 5_000;
 
 type Props = {
   suggestionId: number;
+  initialActivityLog?: readonly ActivityLogEntry[] | null;
 };
 
 function entryIcon(entry: ActivityLogEntry) {
@@ -178,8 +184,26 @@ function Timestamp({ iso }: { iso: string }) {
   );
 }
 
-export function ActivityLog({ suggestionId }: Props) {
-  const { data, isLoading, isFetching } = useGetSuggestionActivityLog(suggestionId);
+export function ActivityLog({ suggestionId, initialActivityLog }: Props) {
+  const queryClient = useQueryClient();
+
+  const { data, isLoading, isFetching } = useGetSuggestionActivityLog(suggestionId, undefined, {
+    query: {
+      // `initialData` seed the query on first mount with the activity log inlined in the parent suggestion
+      initialData: initialActivityLog ? [...initialActivityLog] : undefined,
+      // No automatic refetches unless specifically invalidated (e.g. after suggestion mutation)
+      staleTime: Infinity,
+    },
+  });
+
+  // When `initialActivityLog` changes, the component remounts and we reflect the new value in the activity log query cache.
+  useEffect(() => {
+    if (!initialActivityLog) return;
+    queryClient.setQueryData(getGetSuggestionActivityLogQueryKey(suggestionId), [
+      ...initialActivityLog,
+    ]);
+  }, [queryClient, suggestionId, initialActivityLog]);
+
   // Single shared tick driving re-renders for every Timestamp in this log,
   // instead of each Timestamp instance running its own interval.
   useTick(TICK_INTERVAL_MS);

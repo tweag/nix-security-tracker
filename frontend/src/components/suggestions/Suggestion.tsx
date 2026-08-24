@@ -101,7 +101,7 @@ export function Suggestion({
             </a>
             {metrics.length > 0 && <SeverityBadge metrics={metrics} />}
           </div>
-          <ActivityLog suggestionId={id} />
+          <ActivityLog suggestionId={id} initialActivityLog={suggestion.activity_log} />
         </div>
 
         <details>

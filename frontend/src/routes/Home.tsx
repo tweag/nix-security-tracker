@@ -28,13 +28,13 @@ const doneFeatures = [
   "Published issues list",
   "Published issues individual page",
   "Navigation bar",
+  "Suggestion lists: optimized batch activity log queries",
 ];
 
 const pendingFeatures = [
   "Suggestions: maintainer add/delete",
   "Notification center",
   "Notification pill (in navbar)",
-  "Suggestion lists: optimized batch activity log queries",
   "Suggestions: publication and batch publication",
   "Suggestions: section icons (like in tab view)",
   "Homepage",

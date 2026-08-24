@@ -52,6 +52,7 @@ export function SuggestionList() {
     status: filters.statuses.length > 0 ? filters.statuses : undefined,
     in_issue_draft: filters.inIssueDraft || undefined,
     package: filters.packageFilter || undefined,
+    activity_log: true,
   });
 
   const handlePageChange = (newPage: number) => {
