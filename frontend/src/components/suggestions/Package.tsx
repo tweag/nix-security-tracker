@@ -1,5 +1,6 @@
 import { PackageMinusIcon, PackagePlusIcon } from "lucide-preact";
 import type { SuggestionPackage } from "@/api/generated/models";
+import { ExternalLink } from "@/components/ui/ExternalLink";
 import { usePackageMutation } from "@/hooks/usePackage";
 import styles from "./Package.module.css";
 
@@ -55,14 +56,12 @@ export function Package({ attr, pkg, suggestionId, editable, isIgnored }: Props)
                     <span className={styles.channel}>{channel}</span>
                     {info.major_version ? (
                       info.src_position ? (
-                        <a
+                        <ExternalLink
                           className={versionStatusClass(info.status)}
                           href={info.src_position}
-                          target="_blank"
-                          rel="noreferrer"
                         >
                           {info.major_version}
-                        </a>
+                        </ExternalLink>
                       ) : (
                         <span className={versionStatusClass(info.status)}>
                           {info.major_version}
@@ -79,14 +78,12 @@ export function Package({ attr, pkg, suggestionId, editable, isIgnored }: Props)
                       <li key={branch} className="inline-row gap-small">
                         <span className={styles.branch}>{branch}</span>
                         {binfo.src_position ? (
-                          <a
+                          <ExternalLink
                             className={versionStatusClass(binfo.status)}
                             href={binfo.src_position}
-                            target="_blank"
-                            rel="noreferrer"
                           >
                             {binfo.version}
-                          </a>
+                          </ExternalLink>
                         ) : (
                           <span className={versionStatusClass(binfo.status)}>{binfo.version}</span>
                         )}

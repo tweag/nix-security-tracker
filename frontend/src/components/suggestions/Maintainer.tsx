@@ -1,5 +1,6 @@
 import { UserMinusIcon, UserPlusIcon } from "lucide-preact";
 import type { Maintainer as MaintainerType } from "@/api/generated/models";
+import { ExternalLink } from "@/components/ui/ExternalLink";
 import { useMaintainerMutation } from "@/hooks/useMaintainer";
 
 type Props = {
@@ -33,14 +34,9 @@ export function Maintainer({ maintainer, suggestionId, editable, isIgnored }: Pr
         </button>
       )}
       <div>
-        <a
-          className="bold"
-          href={`https://github.com/${maintainer.github}`}
-          target="_blank"
-          rel="noreferrer"
-        >
+        <ExternalLink className="bold" href={`https://github.com/${maintainer.github}`}>
           @{maintainer.github}
-        </a>
+        </ExternalLink>
         {maintainer.name && <span> {maintainer.name}</span>}
         {maintainer.email && (
           <span>
