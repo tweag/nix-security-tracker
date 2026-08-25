@@ -31,12 +31,12 @@ const doneFeatures = [
   "Suggestion lists: optimized batch activity log queries",
   "Suggestions: maintainer add/delete",
   "Suggestions: section icons (like in tab view)",
+  "Suggestions: publication and batch publication",
 ];
 
 const pendingFeatures = [
   "Notification center",
   "Notification pill (in navbar)",
-  "Suggestions: publication and batch publication",
   "Homepage",
   "Help messages (tooltip info about statuses, view modes)",
 ];
