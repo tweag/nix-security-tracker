@@ -89,3 +89,34 @@ manage ingest_bulk_cve --from 2026-01-01 --to 2026-01-31
 ```
 
 This should produce untriaged matches.
+
+### Offline matching training data
+
+In order to measure matching algorithm accuracy locally when developing, you will need access to production data, which contains past automatic matches curated with corrections by users.
+You need an [API token](https://tracker.security.nixos.org/ui-v2/user/tokens), and permissions to access the endpoint with your user account which you can request by contacting maintainers.
+
+Fetch paginated pages (ca. 500k items total):
+
+```console
+export MATCHING_TRAINING_DATA_TOKEN=<api-token>
+manage fetch_matching_training_data \
+  --base-url https://tracker.security.nixos.org \
+  --output ./training-data/
+```
+
+`--output` must be an empty directory (the command refuses to overwrite existing files).
+Use `--limit N` to fetch only a sample.
+
+This will produce one JSON file per page fetched.
+
+Import into your local database:
+
+> [!WARNING]
+> Do _not_ run `manage listen` during import.
+> The command suppresses `pgpubsub` triggers so workers are not flooded with tasks.
+
+```console
+manage import_matching_training_data --input ./training-data/
+```
+
+Re-importing the same dump is idempotent per CVE ID.
