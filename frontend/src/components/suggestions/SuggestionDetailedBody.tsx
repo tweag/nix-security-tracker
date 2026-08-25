@@ -17,6 +17,7 @@ export function SuggestionDetailedBody({ suggestion, userCanEdit }: Props) {
     id,
     status,
     comment,
+    in_issue_draft,
     affected_products,
     packages,
     ignored_packages,
@@ -94,7 +95,12 @@ export function SuggestionDetailedBody({ suggestion, userCanEdit }: Props) {
 
       {/* Change status */}
       {userCanEdit && (
-        <SuggestionStatusActions suggestionId={id} status={status} comment={comment} />
+        <SuggestionStatusActions
+          suggestionId={id}
+          status={status}
+          comment={comment}
+          inIssueDraft={in_issue_draft}
+        />
       )}
     </>
   );

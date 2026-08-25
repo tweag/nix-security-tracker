@@ -2,6 +2,7 @@ from typing import cast
 
 from django.core.exceptions import ValidationError
 from django.db.models.query import QuerySet
+from django.template.defaultfilters import truncatewords
 from django_filters import rest_framework as filters
 from drf_spectacular.utils import (
     OpenApiParameter,
@@ -19,11 +20,14 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.issues.serializers import IssueSerializer
 from api.params import ACTIVITY_LOG_PARAMETER, activity_log_requested
 from api.serializers import ErrorDetailSerializer
 from api.suggestions.serializers import (
     ActivityLogEntrySerializer,
+    IssueDraftPublishSerializer,
     MaintainerSerializer,
+    SuggestionBundleSerializer,
     SuggestionCategorizedMaintainersSerializer,
     SuggestionCategorizedPackagesSerializer,
     SuggestionCategorizedUrlReferencesSerializer,
@@ -37,7 +41,7 @@ from api.suggestions.serializers import (
     build_activity_log_map,
 )
 from shared.auth import user_can_edit_suggestion
-from shared.models import CVEDerivationClusterProposal
+from shared.models import CVEDerivationClusterProposal, NixpkgsIssue
 from shared.models.cached import CachedSuggestions
 
 
@@ -219,6 +223,115 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
             return Response(self.get_serializer(instance).data)
         else:
             raise MethodNotAllowed(request.method)
+
+    @extend_schema(
+        operation_id="bundleSuggestion",
+        description=("Add or remove an accepted suggestion from the issue draft."),
+        request=SuggestionBundleSerializer,
+        responses={
+            200: SuggestionBundleSerializer,
+            400: ErrorDetailSerializer,
+            403: ErrorDetailSerializer,
+            404: ErrorDetailSerializer,
+        },
+    )
+    @action(
+        detail=True,
+        methods=["patch"],
+        url_path="bundle",
+        serializer_class=SuggestionBundleSerializer,
+    )
+    def bundle(self, request: Request, pk: int) -> Response:
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        instance = self.get_object()
+        try:
+            instance.set_in_issue_draft(serializer.validated_data["in_issue_draft"])
+        except ValidationError as e:
+            raise DRFValidationError(e.message_dict)
+        return Response(self.get_serializer(instance).data)
+
+    @extend_schema(
+        operation_id="publishSuggestion",
+        description=(
+            "Publish an accepted suggestion in a standalone GitHub issue. "
+            "The issue title is derived automatically from the suggestion."
+        ),
+        request=None,
+        responses={
+            201: IssueSerializer,
+            400: ErrorDetailSerializer,
+            403: ErrorDetailSerializer,
+            404: ErrorDetailSerializer,
+        },
+    )
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="publish",
+        serializer_class=IssueSerializer,
+    )
+    def publish(self, request: Request, pk: int) -> Response:
+        instance = self.get_object()
+        if instance.status != CVEDerivationClusterProposal.Status.ACCEPTED:
+            raise DRFValidationError(
+                {"status": "Only accepted suggestions can be published"}
+            )
+        instance.ensure_fresh_cache()
+        payload = instance.cached.payload
+        title = (
+            payload.get("title")
+            or truncatewords(payload.get("description") or "", 10)
+            or "Security issue"
+        )
+        issue = NixpkgsIssue.publish_suggestions([instance], title)
+        return Response(IssueSerializer(issue).data, status=201)
+
+    @extend_schema(
+        operation_id="publishIssueDraft",
+        description="Publish all suggestions currently in the issue draft as a single GitHub issue.",
+        request=IssueDraftPublishSerializer,
+        responses={
+            201: IssueSerializer,
+            400: ErrorDetailSerializer,
+            403: ErrorDetailSerializer,
+        },
+    )
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="issue_draft/publish",
+        serializer_class=IssueDraftPublishSerializer,
+    )
+    def publish_issue_draft(self, request: Request) -> Response:
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        suggestions = list(
+            CVEDerivationClusterProposal.objects.filter(
+                in_issue_draft=True
+            ).select_related("cached")
+        )
+        if not suggestions:
+            raise DRFValidationError(
+                {"non_field_errors": ["Cannot publish an empty issue"]}
+            )
+        issue = NixpkgsIssue.publish_suggestions(
+            suggestions, serializer.validated_data["title"]
+        )
+        return Response(IssueSerializer(issue).data, status=201)
+
+    @extend_schema(
+        operation_id="resetIssueDraft",
+        description="Remove all suggestions from the issue draft.",
+        request=None,
+        responses={204: None, 403: ErrorDetailSerializer},
+    )
+    @action(detail=False, methods=["post"], url_path="issue_draft/reset")
+    def reset_issue_draft(self, request: Request) -> Response:
+        CVEDerivationClusterProposal.objects.filter(in_issue_draft=True).update(
+            in_issue_draft=False
+        )
+        return Response(status=204)
 
     @extend_schema(
         operation_id="getSuggestionActivityLog",

@@ -451,6 +451,12 @@ class CVEDerivationClusterProposal(TimeStampMixin):
         self.comment = comment or None
         self.save(update_fields=["comment"])
 
+    def set_in_issue_draft(self, in_issue_draft: bool) -> None:
+        """Add or remove this suggestion from the issue draft bundle."""
+        self.in_issue_draft = in_issue_draft
+        self.full_clean()
+        self.save(update_fields=["in_issue_draft"])
+
     def change_status(
         self,
         status: SuggestionStatus,

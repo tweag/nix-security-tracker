@@ -80,6 +80,23 @@ class SuggestionCommentSerializer(serializers.Serializer):
     )
 
 
+class SuggestionBundleSerializer(serializers.Serializer):
+    """Request/response body for adding or removing a suggestion from the issue draft."""
+
+    in_issue_draft = serializers.BooleanField(
+        help_text="Set to true to add the suggestion to the issue draft, false to remove it.",
+    )
+
+
+class IssueDraftPublishSerializer(serializers.Serializer):
+    """Request body for publishing the issue draft (all bundled suggestions) as one issue."""
+
+    title = serializers.CharField(
+        max_length=500,
+        help_text="Title of the GitHub issue to create from the bundled suggestions.",
+    )
+
+
 class MetricHumanReadableItemSerializer(serializers.Serializer):
     label = serializers.CharField()
     value = serializers.CharField()

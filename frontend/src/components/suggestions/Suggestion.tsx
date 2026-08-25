@@ -98,7 +98,7 @@ export function Suggestion({
             <ExternalLink href={nvdUrl}>{cve_id}</ExternalLink>
             {metrics.length > 0 && <SeverityBadge metrics={metrics} />}
           </div>
-          <ActivityLog suggestionId={id} initialActivityLog={suggestion.activity_log} />
+          <ActivityLog suggestionId={id} />
         </div>
 
         <details>
