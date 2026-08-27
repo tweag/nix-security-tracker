@@ -95,7 +95,8 @@ This should produce untriaged matches.
 In order to measure matching algorithm accuracy locally when developing, you will need access to production data, which contains past automatic matches curated with corrections by users.
 You need an [API token](https://tracker.security.nixos.org/ui-v2/user/tokens), and permissions to access the endpoint with your user account which you can request by contacting maintainers.
 
-Fetch paginated pages (ca. 500k items total):
+Fetch paginated user-curated matches.
+Dump size is determined by number of automatically matched derivations (currently ca. 500k items).
 
 ```console
 export MATCHING_TRAINING_DATA_TOKEN=<api-token>
