@@ -15,7 +15,11 @@ from django.core.management.base import CommandError
 
 from shared.matching_training_data import SCHEMA_VERSION
 from shared.matching_training_data import serializers as mtd
-from shared.matching_training_data.serializers import BENCHMARK_CHANNEL_BRANCH
+from shared.matching_training_data.purge import purge_training_corpus
+from shared.matching_training_data.serializers import (
+    _TRAINING_ORG_UUID,
+    BENCHMARK_CHANNEL_BRANCH,
+)
 from shared.models.cve import Container, CveRecord
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
@@ -366,3 +370,48 @@ def test_import_respects_limit(tmp_path: Path, db: None) -> None:
         ).count()
         == 1
     )
+
+
+def test_purge_removes_imported_training_data(tmp_path: Path, db: None) -> None:
+    record = _sample_api_record("CVE-2026-cmd-purge")
+    (tmp_path / "page-00001.json").write_text(
+        json.dumps([record], indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    call_command(
+        "import_matching_training_data",
+        "--input",
+        str(tmp_path),
+        stdout=StringIO(),
+    )
+    assert CveRecord.objects.filter(cve_id="CVE-2026-cmd-purge").exists()
+    assert NixDerivation.objects.filter(
+        parent_evaluation__channel__channel_branch=BENCHMARK_CHANNEL_BRANCH
+    ).exists()
+
+    call_command("purge_matching_training_data", stdout=StringIO())
+
+    assert not CveRecord.objects.filter(cve_id="CVE-2026-cmd-purge").exists()
+    assert not CVEDerivationClusterProposal.objects.filter(
+        cve__cve_id="CVE-2026-cmd-purge"
+    ).exists()
+    assert not NixDerivation.objects.filter(
+        parent_evaluation__channel__channel_branch=BENCHMARK_CHANNEL_BRANCH
+    ).exists()
+    assert NixChannel.objects.filter(channel_branch=BENCHMARK_CHANNEL_BRANCH).exists()
+
+
+def test_purge_training_corpus_empty(db: None) -> None:
+    assert not CveRecord.objects.filter(assigner__uuid=_TRAINING_ORG_UUID).exists()
+    assert not NixDerivation.objects.filter(
+        parent_evaluation__channel__channel_branch=BENCHMARK_CHANNEL_BRANCH
+    ).exists()
+
+    result = purge_training_corpus()
+
+    assert result == {}
+    assert not CveRecord.objects.filter(assigner__uuid=_TRAINING_ORG_UUID).exists()
+    assert not NixDerivation.objects.filter(
+        parent_evaluation__channel__channel_branch=BENCHMARK_CHANNEL_BRANCH
+    ).exists()
