@@ -259,6 +259,116 @@ def test_mixed_cpe_parts_skips_hardware_only_affected_products(
     assert not suggestion.derivations.filter(name__startswith="some_router").exists()
 
 
+def test_cpe_vendor_product_match_without_name_overlap(
+    make_container: Callable[..., Container],
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    """CPE vendor/product matching works when derivation name does not substring-match."""
+    container = make_container(
+        package_name="unrelated-cve-name",
+        product="also-unrelated",
+        cpes=["cpe:2.3:a:gnu:hello:2.12:*:*:*:*:*:*:*"],
+    )
+    drv = make_drv(
+        pname="hello-nix",
+        attribute="hello",
+        cpe_vendor="gnu",
+        cpe_product="hello",
+    )
+
+    assert build_new_links(container)
+    link = DerivationClusterProposalLink.objects.get(derivation=drv)
+    assert link.provenance_flags == ProvenanceFlags.CPE_MATCH
+    assert link.proposal.status == CVEDerivationClusterProposal.Status.PENDING
+
+
+def test_cpe_matches_all_pairs_from_multiple_cpes(
+    make_container: Callable[..., Container],
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    """Each CPE contributes its own (vendor, product) pair — not a cross product."""
+    container = make_container(
+        package_name="unrelated",
+        product="unrelated",
+        cpes=[
+            "cpe:2.3:a:gnu:hello:2.12:*:*:*:*:*:*:*",
+            "cpe:2.3:a:openssl:openssl:3.0.0:*:*:*:*:*:*:*",
+        ],
+    )
+    hello = make_drv(
+        pname="hello-nix",
+        attribute="hello",
+        cpe_vendor="gnu",
+        cpe_product="hello",
+    )
+    openssl = make_drv(
+        pname="openssl-nix",
+        attribute="openssl",
+        cpe_vendor="openssl",
+        cpe_product="openssl",
+    )
+    # Would match a bogus cross-product (gnu, openssl) if we merged lists independently.
+    make_drv(
+        pname="cross-product-trap",
+        attribute="cross_product_trap",
+        cpe_vendor="gnu",
+        cpe_product="openssl",
+    )
+
+    assert build_new_links(container)
+    proposal = CVEDerivationClusterProposal.objects.get(cve=container.cve)
+    matched = set(proposal.derivations.values_list("attribute", flat=True))
+    assert matched == {hello.attribute, openssl.attribute}
+
+
+def test_cpe_match_rejects_wrong_vendor(
+    make_container: Callable[..., Container],
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    container = make_container(
+        package_name="unrelated",
+        product="unrelated",
+        cpes=["cpe:2.3:a:gnu:hello:2.12:*:*:*:*:*:*:*"],
+    )
+    make_drv(
+        pname="hello-nix",
+        attribute="hello",
+        cpe_vendor="wrong_vendor",
+        cpe_product="hello",
+    )
+
+    assert build_new_links(container)
+    proposal = CVEDerivationClusterProposal.objects.get(cve=container.cve)
+    assert proposal.status == CVEDerivationClusterProposal.Status.REJECTED
+    assert (
+        proposal.rejection_reason
+        == CVEDerivationClusterProposal.RejectionReason.NO_MATCHES
+    )
+
+
+def test_cpe_match_combines_with_package_name_match(
+    make_container: Callable[..., Container],
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    container = make_container(
+        package_name="hello",
+        product="other",
+        cpes=["cpe:2.3:a:gnu:hello:2.12:*:*:*:*:*:*:*"],
+    )
+    drv = make_drv(
+        pname="hello",
+        attribute="hello",
+        cpe_vendor="gnu",
+        cpe_product="hello",
+    )
+
+    assert build_new_links(container)
+    link = DerivationClusterProposalLink.objects.get(derivation=drv)
+    assert link.provenance_flags == (
+        ProvenanceFlags.PACKAGE_NAME_MATCH | ProvenanceFlags.CPE_MATCH
+    )
+
+
 def test_ignore_tests(
     cve: Container,
     make_drv: Callable[..., NixDerivation],

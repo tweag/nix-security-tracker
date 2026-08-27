@@ -119,7 +119,7 @@ class CVEDerivationClusterProposal(TimeStampMixin):
 
     @classproperty
     def CURRENT_ALGORITHM_VERSION(cls) -> int:  # noqa: N802, N805
-        return 1
+        return 2
 
     cached: "shared.models.cached.CachedSuggestions"
 
@@ -735,6 +735,7 @@ def track_reference_overlay_delete(
 
 
 class ProvenanceFlags(IntFlag, boundary=STRICT):
+    CPE_MATCH = 1 << 7
     PACKAGE_NAME_MATCH = 1 << 0
     PRODUCT_MATCH = 1 << 6
     VERSION_CONSTRAINT_INRANGE = 1 << 1

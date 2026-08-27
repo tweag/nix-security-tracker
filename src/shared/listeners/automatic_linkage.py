@@ -146,7 +146,9 @@ def build_derivation_links(
             proposal=proposal,
             derivation=drv,
             provenance_flags=ProvenanceFlags(
-                getattr(drv, "package_match", 0) | getattr(drv, "product_match", 0)
+                getattr(drv, "package_match", 0)
+                | getattr(drv, "product_match", 0)
+                | getattr(drv, "cpe_match", 0)
             ),
         )
         for drv in derivations
@@ -164,7 +166,11 @@ def build_package_links(
             pkg_id = drv.package_link.package_id
         except PackageDerivation.DoesNotExist:
             continue
-        flags = getattr(drv, "package_match", 0) | getattr(drv, "product_match", 0)
+        flags = (
+            getattr(drv, "package_match", 0)
+            | getattr(drv, "product_match", 0)
+            | getattr(drv, "cpe_match", 0)
+        )
         package_flags[pkg_id] = package_flags.get(pkg_id, 0) | flags
 
     return [
@@ -175,6 +181,24 @@ def build_package_links(
         )
         for pkg_id, flags in package_flags.items()
     ]
+
+
+def _cpe_vendor_product_pairs(
+    filtered_affected: models.QuerySet,
+) -> set[tuple[str, str]]:
+    """Collect (vendor, product) pairs from non-hardware CPE strings on affected products."""
+    pairs: set[tuple[str, str]] = set()
+    for affected in filtered_affected.prefetch_related("cpes"):
+        for cpe in affected.cpes.all():
+            parsed = cpe.parsed
+            if parsed.is_hardware():
+                continue
+            for vendor, product in zip(
+                parsed.get_vendor(), parsed.get_product(), strict=False
+            ):
+                if vendor and product and vendor != "*" and product != "*":
+                    pairs.add((vendor, product))
+    return pairs
 
 
 def produce_linkage_candidates(
@@ -194,6 +218,7 @@ def produce_linkage_candidates(
         .values_list("product", flat=True)
         .distinct()
     )
+    cpe_pairs = _cpe_vendor_product_pairs(filtered_affected)
 
     package_q = Q()
     for name in package_names:
@@ -203,8 +228,16 @@ def produce_linkage_candidates(
     for product in products:
         product_q |= Q(name__icontains=product)
 
+    cpe_q = Q()
+    for vendor, product in cpe_pairs:
+        cpe_q |= Q(
+            metadata__cpe_vendor__iexact=vendor,
+            metadata__cpe_product__iexact=product,
+        )
+
+    match_q = package_q | product_q | cpe_q
     # This does not seem to happen in practice though
-    if not package_q | product_q:
+    if not match_q:
         return NixDerivation.objects.none()
 
     annotations = {}
@@ -220,6 +253,12 @@ def produce_linkage_candidates(
             default=Value(0),
             output_field=IntegerField(),
         )
+    if cpe_q:
+        annotations["cpe_match"] = Case(
+            When(cpe_q, then=Value(ProvenanceFlags.CPE_MATCH)),
+            default=Value(0),
+            output_field=IntegerField(),
+        )
 
     # Methodology:
     # We start with a large list and we remove things as we sort out that list.
@@ -232,7 +271,7 @@ def produce_linkage_candidates(
             attribute__startswith="tests.",
         )
         .filter(
-            package_q | product_q,
+            match_q,
             parent_evaluation__in=list(latest_complete_channels),
         )
         .select_related("metadata", "package_link")
