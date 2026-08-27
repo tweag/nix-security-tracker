@@ -120,3 +120,18 @@ manage import_matching_training_data --input ./training-data/
 ```
 
 Re-importing the same dump is idempotent per CVE ID.
+
+Score the current matcher against those labels (read-only; does not create proposals):
+
+```console
+manage benchmark_matching
+```
+
+Reports true positives, false positives, and SNR vs kept derivations and ignored package overlays.
+Prints one line per CVE by default.
+Use `--quiet` for the summary only, and `--limit N` for a sample.
+
+> [!NOTE]
+> There is no dedicated purge command yet.
+> Imported training data is marked by a fixed training-org UUID and the synthetic `benchmark` channel.
+> For a full corpus, swapping the local database (or development VM disk image) is usually simpler than hand-deleting the graph.

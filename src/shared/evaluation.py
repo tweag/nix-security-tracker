@@ -82,7 +82,9 @@ class EvaluatedAttribute(JSONWizard):
     system: str
 
     def as_key(self) -> DerivationKey:
-        """Unique dictionary key for a derivation (see :func:`derivation_as_key`)."""
+        """
+        Unique dictionary key for a derivation.
+        """
         return derivation_as_key(
             drv_path=self.drv_path,
             attr=self.attr,
