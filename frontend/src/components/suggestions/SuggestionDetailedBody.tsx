@@ -1,3 +1,4 @@
+import { BugIcon, LinkIcon, PackageIcon, UserIcon } from "lucide-preact";
 import type { Suggestion as SuggestionType } from "@/api/generated/models";
 import { AffectedProductsList } from "./AffectedProductsList";
 import { CategorizedMaintainersList } from "./CategorizedMaintainersList";
@@ -31,7 +32,10 @@ export function SuggestionDetailedBody({ suggestion, userCanEdit }: Props) {
         {/* References */}
         {categorized_url_references.original.length > 0 && (
           <div className="rounded border box column gap">
-            <h2 className="text-l bold text-gray">References</h2>
+            <h2 className="text-l bold text-gray row gap-small centered">
+              <LinkIcon size="1em" />
+              References
+            </h2>
             <CategorizedReferencesList
               categorizedReferences={categorized_url_references}
               suggestionId={id}
@@ -43,7 +47,10 @@ export function SuggestionDetailedBody({ suggestion, userCanEdit }: Props) {
         {/* Affected products */}
         {Object.keys(affected_products).length > 0 && (
           <div className="rounded border box column gap">
-            <h2 className="text-l bold text-gray">Affected products</h2>
+            <h2 className="text-l bold text-gray row gap-small centered">
+              <BugIcon size="1em" />
+              Affected products
+            </h2>
             <AffectedProductsList affectedProducts={affected_products} />
           </div>
         )}
@@ -51,7 +58,10 @@ export function SuggestionDetailedBody({ suggestion, userCanEdit }: Props) {
         {/* Packages */}
         {Object.keys(packages).length + Object.keys(ignored_packages).length > 0 && (
           <div className="rounded border box column gap">
-            <h2 className="text-l bold text-gray">Matching in nixpkgs</h2>
+            <h2 className="text-l bold text-gray row gap-small centered">
+              <PackageIcon size="1em" />
+              Matching in nixpkgs
+            </h2>
             <CategorizedPackagesList
               suggestionId={id}
               active={packages}
@@ -64,7 +74,10 @@ export function SuggestionDetailedBody({ suggestion, userCanEdit }: Props) {
         {/* Maintainers */}
         {categorized_maintainers.original.length > 0 && (
           <div className="rounded border box column gap">
-            <h2 className="text-l bold text-gray">Maintainers</h2>
+            <h2 className="text-l bold text-gray row gap-small centered">
+              <UserIcon size="1em" />
+              Maintainers
+            </h2>
             <CategorizedMaintainersList
               suggestionId={id}
               categorizedMaintainers={categorized_maintainers}
