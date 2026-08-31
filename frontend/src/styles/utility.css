@@ -328,6 +328,10 @@
   justify-content: flex-end;
 }
 
+.justify-center {
+  justify-content: center;
+}
+
 .spread {
   justify-content: space-between;
 }
