@@ -333,6 +333,7 @@ in
   ];
 
   virtualisation = {
+    qemu.enableSharedMemory = true;
     graphics = false;
     memorySize = 12 * 1024;
     cores = 2;
