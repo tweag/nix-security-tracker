@@ -111,7 +111,7 @@ In your [local configuration extension](#local-configuration-extensions), enable
 Then connect to the VM:
 
 ```console
-ssh root@localhost -p 50022
+ssh root@localhost -p 20022
 ```
 
 ## Formatting
