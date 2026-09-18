@@ -1,3 +1,4 @@
+{% load static %}
 {% load django_vite %}
 <!DOCTYPE html>
 <html lang="en">
@@ -9,6 +10,23 @@
     {% vite_asset 'src/main.tsx' %}
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div style="min-height: 100vh;
+                  display: flex;
+                  align-items: center;
+                  font-family: sans">
+        <div style="max-width: 30em; margin: auto; text-align: center;">
+          <img id="site-logo"
+               alt=""
+               aria-hidden="true"
+               height="100"
+               width="100"
+               src="{% static 'nixos-logo.svg' %}"
+               style="filter: brightness(0)" />
+          <p>Loading Nixpkgs security tracker...</p>
+          <p style="color: #aaa;">JavaScript must be enabled</p>
+        </div>
+      </div>
+    </div>
   </body>
 </html>
