@@ -1,5 +1,6 @@
-import { PackageIcon, XIcon } from "lucide-preact";
+import { PackageIcon, RssIcon, XIcon } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { useGetPackageExists } from "@/api/generated/endpoints";
 import styles from "./PackageFilterInput.module.css";
 
 const DEBOUNCE_PACKAGE_MS = 500;
@@ -24,6 +25,14 @@ export function PackageFilterInput({ packageFilter, setPackageFilter }: Props) {
 
   const active = local !== "";
 
+  // A package can have no matching suggestions but still exist (and have a feed).
+  // Existence is checked independently of search results.
+  const { data: packageExistsResult } = useGetPackageExists(packageFilter, {
+    query: { enabled: !!packageFilter },
+  });
+  const showFeed =
+    local === packageFilter && !!packageFilter && packageExistsResult?.exists === true;
+
   return (
     <div
       className={`row centered gap-small bg-gray-light rounded-full ${styles.pill} ${active ? "bg-nixos-blue text-white" : ""}`}
@@ -38,6 +47,21 @@ export function PackageFilterInput({ packageFilter, setPackageFilter }: Props) {
         className={styles.input}
         aria-label="Filter by package"
       />
+      {showFeed ? (
+        <a
+          href={`/feeds/package/${encodeURIComponent(packageFilter)}/`}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Atom feed for package '${packageFilter}'`}
+          className={styles.feed}
+        >
+          <RssIcon size="1em" />
+        </a>
+      ) : (
+        <span className={`${styles.feed} ${styles.hidden}`} aria-hidden="true">
+          <RssIcon size="1em" />
+        </span>
+      )}
       <button
         type="button"
         className={`cursor-pointer ${styles.clear}`}
