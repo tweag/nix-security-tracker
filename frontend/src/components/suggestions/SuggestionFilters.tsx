@@ -1,7 +1,7 @@
 import { LayersIcon } from "lucide-preact";
 import type { ListSuggestionsStatusItem } from "@/api/generated/models";
 import { ListSuggestionsStatusItem as Status } from "@/api/generated/models";
-import { ToggleGroup, type ToggleGroupOption } from "@/components/ui/ToggleGroup";
+import { PillToggleGroup, type ToggleGroupOption } from "@/components/ui/PillToggleGroup";
 import type { SuggestionListFilters } from "@/hooks/useSuggestionListFilters";
 import { PackageFilterInput } from "./PackageFilterInput";
 import { statusLabel } from "./SuggestionStatus";
@@ -75,7 +75,7 @@ export function SuggestionFilters({
 
   return (
     <div className="row gap row-gap-big wrap align-center" data-testid="suggestion-filters">
-      <ToggleGroup
+      <PillToggleGroup
         value={toggleValue}
         options={TOGGLE_OPTIONS}
         onItemClick={(value, event) => {

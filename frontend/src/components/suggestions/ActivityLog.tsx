@@ -202,7 +202,7 @@ export function ActivityLog({ suggestionId }: Props) {
       data-testid={`suggestion-${suggestionId}-activity-log`}
     >
       <summary>
-        <span className="details-closed inline-row gap-small baseline">
+        <span className="details-closed">
           {isFetching && <Spinner />}
           <span>
             {summaryVerb} <Timestamp iso={last.timestamp} />

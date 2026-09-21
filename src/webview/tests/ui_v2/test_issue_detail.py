@@ -39,7 +39,7 @@ def test_issue_detail_shows_github_issue_link(
         url="https://github.com/NixOS/nixpkgs/issues/1",
     )
     page.goto(live_server.url + ISSUE_DETAIL + f"/{issue.code}")
-    expect(page.get_by_role("link", name="GitHub issue")).to_have_attribute(
+    expect(page.get_by_role("link", name="GitHub")).to_have_attribute(
         "href", "https://github.com/NixOS/nixpkgs/issues/1"
     )
 

@@ -293,7 +293,7 @@ def test_suggestion_list_shows_collapsed_card_after_mutation_stops_matching_filt
     expect(
         collapsed.get_by_test_id(f"suggestion-{suggestion.pk}-status")
     ).to_be_visible()
-    expect(collapsed.get_by_role("link", name="Permalink")).to_be_visible()
+    expect(collapsed.get_by_role("link", name="CVE-2026-3061")).to_be_visible()
 
     # The full card (with status actions, package section, etc.) is gone.
     expect(

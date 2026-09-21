@@ -86,5 +86,5 @@ def test_issue_list_links_to_detail_page(
 ) -> None:
     page.goto(live_server.url + ISSUE_LIST)
     card = page.get_by_test_id(f"issue-{issue.code}")
-    card.get_by_role("link", name="Permalink").click()
+    card.get_by_role("link", name=issue.code).click()
     expect(page).to_have_url(live_server.url + ISSUE_LIST + f"/{issue.code}")
