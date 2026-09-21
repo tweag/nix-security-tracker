@@ -27,3 +27,13 @@
 .clear:disabled {
   visibility: hidden;
 }
+
+.feed {
+  color: inherit;
+  padding: 0;
+  display: flex;
+}
+
+.feed.hidden {
+  visibility: hidden;
+}

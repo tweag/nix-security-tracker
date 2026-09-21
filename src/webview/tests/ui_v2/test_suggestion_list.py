@@ -231,6 +231,35 @@ def test_suggestion_list_package_filter(
     expect(page.get_by_test_id(f"suggestion-{other.pk}")).not_to_be_visible()
 
 
+def test_suggestion_list_feed_link_shown_for_existing_package(
+    live_server: LiveServer,
+    page: Page,
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    """The atom feed link is shown for a package that exists."""
+    package = make_drv(pname="foo")
+
+    page.goto(live_server.url + SUGGESTION_LIST)
+    page.get_by_label("Filter by package").fill(package.attribute)
+
+    expect(
+        page.get_by_role("link", name=f"Atom feed for package '{package.attribute}'")
+    ).to_be_visible()
+
+
+def test_suggestion_list_feed_link_hidden_for_nonexistent_package(
+    live_server: LiveServer,
+    page: Page,
+) -> None:
+    """The atom feed link is hidden for a package name that doesn't exist."""
+    page.goto(live_server.url + SUGGESTION_LIST)
+    page.get_by_label("Filter by package").fill("nonexistent-package-xyz")
+
+    expect(
+        page.get_by_role("link", name=re.compile(r"^Atom feed for package"))
+    ).not_to_be_visible()
+
+
 def test_suggestion_list_deep_link_preselects_filter_widgets(
     live_server: LiveServer,
     page: Page,
