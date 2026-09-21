@@ -25,7 +25,7 @@ export function Home() {
         </p>
       </div>
       <h2 className="text-l bold">Workflow</h2>
-      <div className="column centered gap-small">
+      <div className="column centered gap-small" style="overflow: auto;">
         <div className="row gap-big centered">
           <div className="column centered gap-small">
             <img src="/static/cveLogo.svg" alt="" aria-hidden="true" style="height: 3em" />
