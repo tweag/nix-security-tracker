@@ -58,7 +58,7 @@ export function SuggestionStatus({ status, rejectionReason, issueCode, iconOnly 
           {rejectionReason && <span>({rejectionReasonLabel(rejectionReason)})</span>}
           {status === "published" && issueCode && (
             <span>
-              (<Link href={`/ui-v2/issues/${issueCode}`}>Issue</Link>)
+              (<Link href={`/issues/${issueCode}`}>Issue</Link>)
             </span>
           )}
         </>

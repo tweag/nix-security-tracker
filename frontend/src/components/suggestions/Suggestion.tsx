@@ -46,7 +46,7 @@ export function Suggestion({
     <>
       <div className="row gap-small centered">
         <ShieldIcon size="1em" />
-        <Link href={`/ui-v2/suggestions/by-id/${id}`}>{cve_id}</Link>
+        <Link href={`/suggestions/by-id/${id}`}>{cve_id}</Link>
       </div>
       <div>
         (<ExternalLink href={nvdUrl}>NVD</ExternalLink>)

@@ -33,22 +33,6 @@
       "unpack": false,
       "hash": "sha256-UhusNAZbyt7fJV/DhFUK4FKOmnTpG0R15YO2r+nDnMc="
     },
-    "htmx": {
-      "type": "GitRelease",
-      "repository": {
-        "type": "Git",
-        "url": "https://github.com/bigskysoftware/htmx.git"
-      },
-      "pre_releases": false,
-      "version_upper_bound": null,
-      "release_prefix": null,
-      "submodules": false,
-      "version": "v2.0.8",
-      "revision": "cf6609d4546f366d7931d984072ecf5071bf334f",
-      "url": null,
-      "hash": "sha256-hHBX3UkxRJTULzGsunUFQBYYrAKqmVdAHwj9LoCjTlg=",
-      "frozen": true
-    },
     "infra": {
       "type": "Git",
       "repository": {

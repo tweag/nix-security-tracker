@@ -6,9 +6,10 @@ from django.template.defaultfilters import truncatewords
 from github import Auth, Github
 from github.Issue import Issue as GithubIssue
 
+from shared.cvss import CvssFields, compute_cvss_fields
 from shared.models.cached import CachedSuggestions
+from shared.models.cve import Metric
 from shared.models.linkage import CVEDerivationClusterProposal
-from webview.templatetags.viewutils import severity_badge
 
 logger = logging.getLogger(__name__)
 
@@ -140,36 +141,40 @@ def create_gh_issue(
         else:
             return f"`@{maintainer}`"
 
+    def first_cvss_metric(
+        suggestion: CVEDerivationClusterProposal,
+    ) -> tuple[dict, CvssFields] | tuple[None, None]:
+        for metric in suggestion.cached.payload["metrics"]:
+            fields = compute_cvss_fields(metric)
+            if fields.base_score is not None:
+                return metric, fields
+        return None, None
+
     def severity_label(suggestion: CVEDerivationClusterProposal) -> str:
         """
         Short bold "<score> <SEVERITY>" label, or a fallback when no CVSS
         metric could be parsed. Shared between the full CVSS details block
         and the compact CVE bullet.
-        # NOTE(@fricklerhandwerk): We can't reuse the webview's `severity_badge`
-        # template tag here, since it renders HTML relying on page CSS classes
-        # that GitHub's markdown sanitizer would strip/not style.
         """
-        badge = severity_badge(suggestion.cached.payload["metrics"])
-        if badge:
-            metric = badge["cvss"]
-            return (
-                f"<strong>{metric['base_score']:.1f} {metric['base_severity']}</strong>"
-            )
+        _, fields = first_cvss_metric(suggestion)
+        if fields:
+            return f"<strong>{fields.base_score:.1f} {fields.base_severity}</strong>"
         else:
             return "(no CVSS data)"
 
     def cvss_details(suggestion: CVEDerivationClusterProposal) -> str:
-        badge = severity_badge(suggestion.cached.payload["metrics"])
-        if badge:
-            metric = badge["cvss"]
+        metric, fields = first_cvss_metric(suggestion)
+        if metric and fields:
             metrics = "\n".join(
-                [f"- {k}: {v}" for k, v in badge["human_readable"].items()]
+                f"- {hr['label']}: {hr['value']}"
+                for hr in (fields.human_readable or [])
             )
+            version = Metric.Format(metric["format"]).label
             return f"""
 <details>
 <summary>{severity_label(suggestion)} | {metric["vector_string"]}</summary>
 
-- CVSS version (CVSS): {metric["version"]}
+- CVSS version (CVSS): {version}
 {metrics}
 </details>"""
         else:
@@ -177,11 +182,9 @@ def create_gh_issue(
 
     def suggestion_link(suggestion: CVEDerivationClusterProposal) -> str:
         """
-        Link to the suggestion's own detail page in the new UI.
+        Link to the suggestion's own detail page in the frontend.
         """
-        return urljoin(
-            str(settings.BASE_URL), f"/ui-v2/suggestions/by-id/{suggestion.pk}"
-        )
+        return urljoin(str(settings.BASE_URL), f"/suggestions/by-id/{suggestion.pk}")
 
     def nvd_link(cve_id: str) -> str:
         return f"https://nvd.nist.gov/vuln/detail/{quote(cve_id)}"

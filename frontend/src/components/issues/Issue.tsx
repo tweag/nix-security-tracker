@@ -42,7 +42,7 @@ export function Issue({
     <>
       <div className="row gap-small centered">
         <GlobeCheckIcon size="1em" />
-        <Link href={`/ui-v2/issues/${code}`}>{code}</Link>
+        <Link href={`/issues/${code}`}>{code}</Link>
       </div>
       {github_issue_url && (
         <div>
