@@ -105,7 +105,7 @@ in
     frontend = mkOption {
       type = types.package;
       default = pkgs.callPackage ./frontend.nix { };
-      description = "Built frontend package (Preact/Vite UI served at /ui-v2/)";
+      description = "Built frontend package (Preact/Vite UI served at /)";
     };
     production = mkOption {
       type = types.bool;
