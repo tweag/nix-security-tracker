@@ -127,10 +127,13 @@ def test_accept_transitions_status_and_logs_activity(
     expect(actions.get_by_role("button", name="Accept")).to_be_hidden()
     expect(actions.get_by_role("button", name="Dismiss")).to_be_visible()
 
+    activity_log_toggle = as_committer.get_by_test_id(
+        f"suggestion-{suggestion.pk}-activity-log-toggle"
+    )
+    activity_log_toggle.click()
     activity_log = as_committer.get_by_test_id(
         f"suggestion-{suggestion.pk}-activity-log"
     )
-    activity_log.locator("summary").click()
     expect(activity_log.get_by_text("accepted", exact=False)).to_be_visible()
 
 

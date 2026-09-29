@@ -90,10 +90,13 @@ def test_package_ignore_moves_to_ignored_section_and_logs_activity(
     packages.get_by_text("Ignored packages", exact=False).click()
     expect(packages.get_by_role("button", name="Restore")).to_be_visible()
 
+    activity_log_toggle = as_committer.get_by_test_id(
+        f"suggestion-{suggestion.pk}-activity-log-toggle"
+    )
+    activity_log_toggle.click()
     activity_log = as_committer.get_by_test_id(
         f"suggestion-{suggestion.pk}-activity-log"
     )
-    activity_log.locator("summary").click()
     expect(activity_log.get_by_text("ignored package", exact=False)).to_be_visible()
 
 

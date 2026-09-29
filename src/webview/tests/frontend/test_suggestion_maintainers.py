@@ -75,10 +75,13 @@ def test_maintainer_ignore_moves_to_ignored_section_and_logs_activity(
     maintainers.get_by_text("Ignored maintainers", exact=False).click()
     expect(maintainers.get_by_role("button", name="Restore")).to_be_visible()
 
+    activity_log_toggle = as_committer.get_by_test_id(
+        f"suggestion-{cached_suggestion.pk}-activity-log-toggle"
+    )
+    activity_log_toggle.click()
     activity_log = as_committer.get_by_test_id(
         f"suggestion-{cached_suggestion.pk}-activity-log"
     )
-    activity_log.locator("summary").click()
     expect(activity_log.get_by_text("ignored maintainer", exact=False)).to_be_visible()
 
 
@@ -207,10 +210,13 @@ def test_maintainer_add_new_maintainer_from_github_succeeds(
     expect(maintainers.get_by_text("Alice DeBob")).to_be_visible()
     expect(maintainers.get_by_role("button", name="Delete")).to_be_visible()
 
+    activity_log_toggle = as_committer.get_by_test_id(
+        f"suggestion-{cached_suggestion.pk}-activity-log-toggle"
+    )
+    activity_log_toggle.click()
     activity_log = as_committer.get_by_test_id(
         f"suggestion-{cached_suggestion.pk}-activity-log"
     )
-    activity_log.locator("summary").click()
     expect(activity_log.get_by_text("added maintainer", exact=False)).to_be_visible()
 
 
@@ -278,8 +284,11 @@ def test_maintainer_delete_removes_added_maintainer_and_logs_activity(
         maintainers.get_by_text("Additional maintainers", exact=False)
     ).to_be_hidden()
 
+    activity_log_toggle = as_committer.get_by_test_id(
+        f"suggestion-{cached_suggestion.pk}-activity-log-toggle"
+    )
+    activity_log_toggle.click()
     activity_log = as_committer.get_by_test_id(
         f"suggestion-{cached_suggestion.pk}-activity-log"
     )
-    activity_log.locator("summary").click()
     expect(activity_log.get_by_text("deleted maintainer", exact=False)).to_be_visible()

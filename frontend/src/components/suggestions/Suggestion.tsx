@@ -9,7 +9,7 @@ import {
   DEFAULT_SUGGESTION_VIEW_MODE,
   type SuggestionViewMode,
 } from "@/hooks/useSuggestionViewMode";
-import { ActivityLog } from "./ActivityLog";
+import { ActivityLogPanel, ActivityLogToggle } from "./ActivityLog";
 import { SeverityBadge } from "./SeverityBadge";
 import { SuggestionCompactBody } from "./SuggestionCompactBody";
 import { SuggestionDetailedBody } from "./SuggestionDetailedBody";
@@ -39,6 +39,7 @@ export function Suggestion({
 
   const [ownViewMode, setOwnViewMode] = useState<SuggestionViewMode | undefined>(undefined);
   const viewMode = ownViewMode ?? inheritedViewMode;
+  const [activityLogOpen, setActivityLogOpen] = useState(false);
 
   const nvdUrl = `https://nvd.nist.gov/vuln/detail/${encodeURIComponent(cve_id)}`;
 
@@ -96,14 +97,21 @@ export function Suggestion({
       testId={`suggestion-${id}`}
     >
       {/* Header */}
-      <div className="column gap-small">
-        <div className="row gap spread align-start">
-          <SuggestionStatus
-            status={status}
-            rejectionReason={rejection_reason}
-            issueCode={issue_code}
-          />
-          <ActivityLog suggestionId={id} />
+      <div className="column gap">
+        <div className="column full-width">
+          <div className="row gap spread align-start">
+            <SuggestionStatus
+              status={status}
+              rejectionReason={rejection_reason}
+              issueCode={issue_code}
+            />
+            <ActivityLogToggle
+              suggestionId={id}
+              open={activityLogOpen}
+              onToggle={() => setActivityLogOpen((v) => !v)}
+            />
+          </div>
+          <ActivityLogPanel suggestionId={id} open={activityLogOpen} />
         </div>
 
         <details>
