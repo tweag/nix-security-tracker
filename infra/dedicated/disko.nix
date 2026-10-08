@@ -60,6 +60,22 @@ in
           type = "zfs_fs";
           mountpoint = "/nix/var/nix/db";
         };
+        "microvms" = {
+          type = "zfs_fs";
+          mountpoint = "/var/lib/microvms";
+        };
+        "microvms/sectracker" = {
+          type = "zfs_volume";
+          size = "200G";
+          options.volblocksize = "16K";
+          options.refreservation = "none";
+        };
+        "microvms/sectracker-staging" = {
+          type = "zfs_volume";
+          size = "150G";
+          options.volblocksize = "16K";
+          options.refreservation = "none";
+        };
         "reserved" = {
           type = "zfs_fs";
           options = {
