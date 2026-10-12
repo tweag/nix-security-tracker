@@ -94,7 +94,7 @@ rec {
   shell = pkgs.mkShellNoCC {
     packages = [
       vm
-      package
+      package.pythonEnv
       pkgs.nodejs
       pkgs.npins
       (import sources.agenix { inherit pkgs; }).agenix
