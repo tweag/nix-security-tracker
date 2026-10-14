@@ -86,6 +86,9 @@ class SuggestionFilterSet(filters.FilterSet):
 
     `status` accepts repeated query params (e.g. `?status=pending&status=accepted`) and is combined with OR.
     Combines with other filters with AND.
+
+    The creation date filters take whole days (`YYYY-MM-DD`) and both bounds are inclusive.
+    Setting both bounds to the same day selects the suggestions created on that day.
     """
 
     status = filters.MultipleChoiceFilter(
@@ -99,10 +102,26 @@ class SuggestionFilterSet(filters.FilterSet):
         method="filter_package",
         label="Filter by an active package attribute name (exact match)",
     )
+    created_at_after = filters.DateFilter(
+        field_name="created_at",
+        lookup_expr="date__gte",
+        label="Filter by creation on or after a day (YYYY-MM-DD)",
+    )
+    created_at_before = filters.DateFilter(
+        field_name="created_at",
+        lookup_expr="date__lte",
+        label="Filter by creation on or before a day (YYYY-MM-DD)",
+    )
 
     class Meta:
         model = CVEDerivationClusterProposal
-        fields = ["status", "in_issue_draft", "package"]
+        fields = [
+            "status",
+            "in_issue_draft",
+            "package",
+            "created_at_after",
+            "created_at_before",
+        ]
 
     def filter_package(self, queryset: QuerySet, name: str, value: str) -> QuerySet:
         return queryset.filter(cached__payload__packages__has_key=value)
@@ -122,7 +141,7 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
             return []
 
     def filter_queryset(self, queryset: QuerySet) -> QuerySet:  # pyright: ignore[reportIncompatibleMethodOverride]
-        # Filters (status/in_issue_draft/package) only apply to the list action.
+        # Filters only apply to the list action.
         # Other actions (retrieve, status, comment, ...) fetch a single suggestion by pk via get_object() and must not be affected by list-only filters.
         if self.action != "list":
             return queryset
