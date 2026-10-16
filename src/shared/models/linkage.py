@@ -564,12 +564,6 @@ class CVEDerivationClusterProposal(TimeStampMixin):
                     (SuggestionStatus.REJECTED, SuggestionStatus.ACCEPTED),
                     (SuggestionStatus.ACCEPTED, SuggestionStatus.REJECTED),
                     (SuggestionStatus.ACCEPTED, SuggestionStatus.PUBLISHED),
-                    # FIXME(@fricklerhandwerk): It's not desirable to allow this, but it happens when we want to undo a status change ad hoc.
-                    # The correct solution is to get rid of the concept of status altogether:
-                    # Whatever is done to a piece of data will determine which filter it appears in.
-                    # And then we can have a generic undo that will simply invert edit operations on the overlay data from the frontend.
-                    (SuggestionStatus.ACCEPTED, SuggestionStatus.PENDING),
-                    (SuggestionStatus.REJECTED, SuggestionStatus.PENDING),
                 ],
             ),
         ]
