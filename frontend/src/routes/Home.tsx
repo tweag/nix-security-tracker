@@ -97,10 +97,7 @@ export function Home() {
             </Link>
             <div>CVEs that users have bundled together for the next GitHub issue</div>
             <MoveDownIcon strokeWidth={0.8} size="2em" />
-            <Link
-              href="http://localhost:8000/issues"
-              className="box rounded border row gap-small centered"
-            >
+            <Link href="/issues" className="box rounded border row gap-small centered">
               <SuggestionStatusIcon status="published" size="1em" />
               Nixpkgs issues
             </Link>
