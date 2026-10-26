@@ -24,7 +24,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.issues.serializers import IssueSerializer
-from api.params import ACTIVITY_LOG_PARAMETER, activity_log_requested
+from api.params import (
+    ACTIVITY_LOG_PARAMETER,
+    SHARED_STATE_PARAMETER,
+    activity_log_requested,
+    shared_state_requested,
+)
 from api.serializers import ErrorDetailSerializer
 from api.suggestions.serializers import (
     ActivityLogEntrySerializer,
@@ -32,6 +37,7 @@ from api.suggestions.serializers import (
     BulkResultSerializer,
     IssueDraftPublishSerializer,
     MaintainerSerializer,
+    PaginatedSuggestionListSerializer,
     SuggestionBundleSerializer,
     SuggestionCategorizedMaintainersSerializer,
     SuggestionCategorizedPackagesSerializer,
@@ -44,6 +50,7 @@ from api.suggestions.serializers import (
     SuggestionReferenceUpdateSerializer,
     SuggestionSerializer,
     build_activity_log_map,
+    shared_state_to_dict,
 )
 from api.throttling import BulkRateThrottle
 from shared.auth import user_can_edit_suggestion
@@ -85,6 +92,15 @@ class SuggestionStatusSerializer(serializers.ModelSerializer):
 
 class SuggestionPagination(PageNumberPagination):
     page_size = 10  # TODO(@florentc): Allow the user to change it within limits
+
+    # What the whole filtered selection has in common, when requested and small enough.
+    # Set by the list action before pagination, since it describes the selection rather than the page.
+    shared: dict | None = None
+
+    def get_paginated_response(self, data: list) -> Response:
+        response = super().get_paginated_response(data)
+        cast(dict, response.data)["shared"] = self.shared
+        return response
 
 
 class SuggestionFilterSet(filters.FilterSet):
@@ -212,6 +228,11 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
             .order_by("-updated_at", "-created_at")
         )
 
+    def selection_is_filtered(self) -> bool:
+        """Whether the request narrows the selection down with at least one filter."""
+        request = cast(Request, self.request)
+        return bool(set(self.filterset_class.base_filters) & set(request.query_params))
+
     def get_bulk_queryset(self) -> QuerySet[CVEDerivationClusterProposal]:
         """
         The selection a bulk operation applies to, or an error explaining why there is none.
@@ -220,8 +241,7 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
         reach every suggestion, and a selection too large to be modified in a single
         transaction.
         """
-        request = cast(Request, self.request)
-        if not set(self.filterset_class.base_filters) & set(request.query_params):
+        if not self.selection_is_filtered():
             raise DRFValidationError(
                 {
                     "detail": "A bulk operation requires at least one filter: "
@@ -284,11 +304,23 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
     @extend_schema(
         operation_id="listSuggestions",
         description="List all suggestions (proposals linking CVEs to derivations), paginated and sorted by most recently modified or created first.",
-        parameters=[ACTIVITY_LOG_PARAMETER],
-        responses={200: SuggestionSerializer(many=True)},
+        parameters=[ACTIVITY_LOG_PARAMETER, SHARED_STATE_PARAMETER],
+        responses={200: PaginatedSuggestionListSerializer},
     )
     def list(self, request: Request) -> Response:
         queryset = self.filter_queryset(self.get_queryset())
+
+        if shared_state_requested(request):
+            # Describes the whole selection rather than the page, and only when a bulk
+            # operation would accept that selection at all: `get_bulk_queryset` refuses
+            # an unfiltered one, and one larger than it may affect.
+            paginator = cast(SuggestionPagination, self.paginator)
+            if (
+                self.selection_is_filtered()
+                and queryset.count() <= settings.API_BULK_MAX_AFFECTED
+            ):
+                paginator.shared = shared_state_to_dict(queryset.shared_state())
+
         page = self.paginate_queryset(queryset)
         objects = page if page is not None else list(queryset)
 

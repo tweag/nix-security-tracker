@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from copy import copy
+from dataclasses import dataclass
 from enum import STRICT, IntFlag
 from typing import Any
 
@@ -8,6 +9,7 @@ import pgtrigger
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import Q
+from django.db.models.fields.json import KeyTransform
 from django.db.models.signals import post_delete, post_save
 from django.db.utils import InternalError
 from django.dispatch import receiver
@@ -66,6 +68,89 @@ class BulkValidationError(Exception):
         self.errors = errors
         self.detail = detail
         super().__init__(detail or "Some suggestions do not accept this operation")
+
+
+class SharedValueState(models.TextChoices):
+    """Whether a value shared by a whole selection is active or ignored on all of it."""
+
+    ACTIVE = "active"
+    IGNORED = "ignored"
+
+
+@dataclass(frozen=True)
+class SharedValue:
+    """A package attribute, maintainer or reference held in the same state by a whole selection."""
+
+    state: SharedValueState
+    value: Any
+
+
+@dataclass(frozen=True)
+class SharedState:
+    """What a selection of suggestions has in common (see :meth:`shared_state`)."""
+
+    status: str | None
+    in_issue_draft: bool | None
+    # Empty string when every suggestion holds no comment, None when they differ.
+    comment: str | None
+    packages: list[SharedValue]
+    maintainers: list[SharedValue]
+    references: list[SharedValue]
+
+
+class JSONObjectKeys(models.Func):
+    """
+    The keys of the JSON object nested under `path`, as a JSON array of strings.
+
+    Lets a query read which packages a cached payload holds without carrying back the
+    packages themselves, which are an order of magnitude larger.
+    """
+
+    function = "jsonb_path_query_array"
+    template = "%(function)s(%(expressions)s, '$.%(path)s.keyvalue().key')"
+
+    def __init__(self, expression: str, path: str, **extra: Any) -> None:
+        super().__init__(
+            expression, path=path, output_field=models.JSONField(), **extra
+        )
+
+
+def _shared_values(
+    per_suggestion: "list[tuple[dict, dict]]",
+    sort_key: "Callable[[Any], Any]",
+    merge: "Callable[[list[Any]], Any]" = lambda values: values[0],
+) -> "list[SharedValue]":
+    """
+    Keep the values every suggestion holds, in the same state (intersection).
+
+    Each suggestion contributes its active values and its ignored values, keyed by
+    whatever identifies them. A value missing from one suggestion, or active in one and
+    ignored in another, belongs to neither intersection and is left out.
+
+    Only the key identifies a value, so the copies held by each suggestion may differ
+    (a reference carries the name and tags it was given on that suggestion, a maintainer
+    the handle known at the time). `merge` combines them into the one reported; by
+    default, the first suggestion's copy.
+    """
+    if not per_suggestion:
+        return []
+
+    shared = []
+    for state, index in (
+        (SharedValueState.ACTIVE, 0),
+        (SharedValueState.IGNORED, 1),
+    ):
+        keys = set.intersection(
+            *(set(suggestion[index]) for suggestion in per_suggestion)
+        )
+        shared += [
+            SharedValue(
+                state=state,
+                value=merge([suggestion[index][key] for suggestion in per_suggestion]),
+            )
+            for key in keys
+        ]
+    return sorted(shared, key=lambda shared_value: sort_key(shared_value.value))
 
 
 class CVEDerivationClusterProposalQuerySet(models.QuerySet):
@@ -240,6 +325,100 @@ class CVEDerivationClusterProposalQuerySet(models.QuerySet):
             lambda suggestion: suggestion.check_restore_reference(reference_url),
             lambda suggestion: suggestion.restore_reference(reference_url),
             fresh_cache=True,
+        )
+
+    def shared_state(self) -> "SharedState":
+        """
+        What every selected suggestion has in common, to expose possible bulk operations.
+
+        Maintainers added by hand are left out: the only bulk maintainer operations
+        ignore and restore the maintainers a suggestion came with.
+
+        Read from the cache as it stands without refreshing to stay cheap.
+        """
+        from shared.cache_suggestions import merge_url_references
+
+        def merge_references(refs: list[dict]) -> dict:
+            merged = merge_url_references(
+                refs[0]["url"], ((r["name"], r["tags"]) for r in refs)
+            )
+            return {**merged.model_dump(), "tags": sorted(merged.tags)}
+
+        rows = list(
+            self.annotate(
+                payload_package_keys=JSONObjectKeys("cached__payload", "packages"),
+                payload_original_package_keys=JSONObjectKeys(
+                    "cached__payload", "original_packages"
+                ),
+                payload_maintainers=KeyTransform(
+                    "categorized_maintainers", "cached__payload"
+                ),
+                payload_references=KeyTransform(
+                    "categorized_url_references", "cached__payload"
+                ),
+            ).values_list(
+                "status",
+                "in_issue_draft",
+                "comment",
+                "payload_package_keys",
+                "payload_original_package_keys",
+                "payload_maintainers",
+                "payload_references",
+            )
+        )
+
+        statuses = set()
+        drafts = set()
+        comments = set()
+        packages: list[tuple[dict, dict]] = []
+        maintainers: list[tuple[dict, dict]] = []
+        references: list[tuple[dict, dict]] = []
+        for (
+            status,
+            in_issue_draft,
+            comment,
+            active_packages,
+            original_packages,
+            cat_maintainers,
+            cat_references,
+        ) in rows:
+            statuses.add(status)
+            drafts.add(in_issue_draft)
+            comments.add(comment or "")
+            packages.append(
+                (
+                    {attribute: attribute for attribute in active_packages},
+                    {
+                        attribute: attribute
+                        for attribute in original_packages
+                        if attribute not in active_packages
+                    },
+                )
+            )
+            maintainers.append(
+                (
+                    {m["github_id"]: m for m in cat_maintainers["active"]},
+                    {m["github_id"]: m for m in cat_maintainers["ignored"]},
+                )
+            )
+            references.append(
+                (
+                    {r["url"]: r for r in cat_references["active"]},
+                    {r["url"]: r for r in cat_references["ignored"]},
+                )
+            )
+
+        return SharedState(
+            status=next(iter(statuses)) if len(statuses) == 1 else None,
+            in_issue_draft=next(iter(drafts)) if len(drafts) == 1 else None,
+            comment=next(iter(comments)) if len(comments) == 1 else None,
+            packages=_shared_values(packages, sort_key=lambda v: v),
+            maintainers=_shared_values(maintainers, sort_key=lambda v: v["github"]),
+            references=_shared_values(
+                references,
+                sort_key=lambda v: v["url"],
+                merge=merge_references,
+            ),
         )
 
 
