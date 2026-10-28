@@ -7,6 +7,8 @@ export type SuggestionListFilters = {
   statuses: ListSuggestionsStatusItem[];
   inIssueDraft: boolean;
   packageFilter: string;
+  affectedProduct: string;
+  affectedProductVersion: string;
   createdAtAfter: string;
   createdAtBefore: string;
 };
@@ -25,10 +27,16 @@ function parseDay(value: string | null): string {
 }
 
 function parseFilters(searchParams: URLSearchParams): SuggestionListFilters {
+  const affectedProduct = searchParams.get("affected_product") ?? "";
   return {
     statuses: searchParams.getAll("status").filter(isValidStatus),
     inIssueDraft: searchParams.get("in_issue_draft") === "true",
     packageFilter: searchParams.get("package") ?? "",
+    affectedProduct,
+    // The API rejects a version without a product with a 400, so a hand-edited URL drops it.
+    affectedProductVersion: affectedProduct
+      ? (searchParams.get("affected_product_version") ?? "")
+      : "",
     createdAtAfter: parseDay(searchParams.get("created_at_after")),
     createdAtBefore: parseDay(searchParams.get("created_at_before")),
   };
@@ -39,6 +47,7 @@ export function useSuggestionListFilters(): {
   setStatuses: (statuses: ListSuggestionsStatusItem[]) => void;
   setInIssueDraft: (inIssueDraft: boolean) => void;
   setPackageFilter: (packageFilter: string) => void;
+  setAffectedProductFilter: (product: string, version: string) => void;
   setCreatedAtRange: (after: string, before: string) => void;
 } {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -86,6 +95,24 @@ export function useSuggestionListFilters(): {
     });
   };
 
+  // The product and its version are written at once, since the version is meaningless without the product.
+  const setAffectedProductFilter = (product: string, version: string) => {
+    updateParams((next) => {
+      const trimmedProduct = product.trim();
+      const trimmedVersion = version.trim();
+      if (trimmedProduct) {
+        next.set("affected_product", trimmedProduct);
+      } else {
+        next.delete("affected_product");
+      }
+      if (trimmedProduct && trimmedVersion) {
+        next.set("affected_product_version", trimmedVersion);
+      } else {
+        next.delete("affected_product_version");
+      }
+    });
+  };
+
   // Both bounds are written at once: a change of filtering mode often moves or drops both of them.
   // It should be a single history entry.
   const setCreatedAtRange = (after: string, before: string) => {
@@ -108,6 +135,7 @@ export function useSuggestionListFilters(): {
     setStatuses,
     setInIssueDraft,
     setPackageFilter,
+    setAffectedProductFilter,
     setCreatedAtRange,
   };
 }

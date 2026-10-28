@@ -8,7 +8,8 @@
   background: transparent;
   color: inherit;
   font: inherit;
-  width: 12em;
+  /* NOTE(@florentc): Matches the affected product filter width (product + version inputs, minus the feed icon). */
+  width: 17em;
 }
 
 .input::placeholder {

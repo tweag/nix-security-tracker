@@ -41,11 +41,11 @@ export function PackageFilterInput({ packageFilter, setPackageFilter }: Props) {
       <input
         ref={inputRef}
         type="text"
-        placeholder="Filter by package…"
+        placeholder="Filter by matching package…"
         value={local}
         onInput={(e) => setLocal(e.currentTarget.value)}
         className={styles.input}
-        aria-label="Filter by package"
+        aria-label="Filter by matching package"
       />
       {showFeed ? (
         <a
