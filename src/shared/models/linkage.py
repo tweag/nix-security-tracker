@@ -8,7 +8,7 @@ import pghistory
 import pgtrigger
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.db.models.fields.json import KeyTransform
 from django.db.models.signals import post_delete, post_save
 from django.db.utils import InternalError
@@ -17,7 +17,7 @@ from django.utils.functional import classproperty
 from django.utils.translation import gettext_lazy as _
 
 import shared.models.cached
-from shared.models.cve import CveRecord, Reference
+from shared.models.cve import AffectedProduct, CveRecord, Reference
 from shared.models.nix_evaluation import NixDerivation, NixMaintainer, TimeStampMixin
 from shared.models.package import Package, PackageAttrpath
 
@@ -190,6 +190,28 @@ class CVEDerivationClusterProposalQuerySet(models.QuerySet):
         auto), and published suggestions used as matching training labels.
         """
         return self.exclude(status=CVEDerivationClusterProposal.Status.PENDING)
+
+    def with_affected_product(
+        self, name: str, version: str | None = None
+    ) -> "CVEDerivationClusterProposalQuerySet":
+        """
+        Suggestions whose CVE lists an affected product under this name, optionally with this exact version.
+
+        The name is the one suggestions display: the package name, or the product when there is none.
+        The version matches exactly any bound of a version entry of that same product, since versions follow no uniform scheme.
+        """
+        affected = AffectedProduct.objects.filter(
+            Q(package_name=name)
+            | ((Q(package_name__isnull=True) | Q(package_name="")) & Q(product=name)),
+            container__cve=OuterRef("cve"),
+        )
+        if version is not None:
+            affected = affected.filter(
+                Q(versions__version=version)
+                | Q(versions__less_than=version)
+                | Q(versions__less_equal=version)
+            )
+        return self.filter(Exists(affected))
 
     def _apply_to_each(
         self,

@@ -56,7 +56,10 @@ from api.throttling import BulkRateThrottle
 from shared.auth import user_can_edit_suggestion
 from shared.models import CVEDerivationClusterProposal, NixpkgsIssue
 from shared.models.cached import CachedSuggestions
-from shared.models.linkage import BulkValidationError
+from shared.models.linkage import (
+    BulkValidationError,
+    CVEDerivationClusterProposalQuerySet,
+)
 
 
 class CanEditSuggestion(BasePermission):
@@ -111,6 +114,8 @@ class SuggestionFilterSet(filters.FilterSet):
 
     The creation date filters take whole days (`YYYY-MM-DD`) and both bounds are inclusive.
     Setting both bounds to the same day selects the suggestions created on that day.
+
+    `affected_product_version` requires `affected_product`, and selects suggestions where that same affected product carries the version.
     """
 
     status = filters.MultipleChoiceFilter(
@@ -123,6 +128,14 @@ class SuggestionFilterSet(filters.FilterSet):
     package = filters.CharFilter(
         method="filter_package",
         label="Filter by an active package attribute name (exact match)",
+    )
+    affected_product = filters.CharFilter(
+        method="filter_affected_product",
+        label="Filter by an affected product name, as listed in `affected_products` (exact match)",
+    )
+    affected_product_version = filters.CharFilter(
+        method="filter_affected_product_version",
+        label="Filter by a version or version bound of the affected product (exact match, requires affected_product)",
     )
     created_at_after = filters.DateFilter(
         field_name="created_at",
@@ -141,12 +154,32 @@ class SuggestionFilterSet(filters.FilterSet):
             "status",
             "in_issue_draft",
             "package",
+            "affected_product",
+            "affected_product_version",
             "created_at_after",
             "created_at_before",
         ]
 
     def filter_package(self, queryset: QuerySet, name: str, value: str) -> QuerySet:
         return queryset.filter(cached__payload__packages__has_key=value)
+
+    def filter_affected_product(
+        self, queryset: CVEDerivationClusterProposalQuerySet, name: str, value: str
+    ) -> QuerySet:
+        version = self.form.cleaned_data.get("affected_product_version") or None
+        return queryset.with_affected_product(value, version)
+
+    def filter_affected_product_version(
+        self, queryset: QuerySet, name: str, value: str
+    ) -> QuerySet:
+        # NOTE(@florentc): The version must belong to the filtered affected product, so the product filter applies both.
+        if not self.form.cleaned_data.get("affected_product"):
+            raise DRFValidationError(
+                {
+                    "detail": "Filtering by affected_product_version requires affected_product."
+                }
+            )
+        return queryset
 
 
 # The list filters, as they appear on the bulk operations.
@@ -168,6 +201,16 @@ BULK_FILTER_PARAMETERS = [
         name="package",
         type=str,
         description="Select suggestions holding this active package attribute name (exact match).",
+    ),
+    OpenApiParameter(
+        name="affected_product",
+        type=str,
+        description="Select suggestions whose CVE lists this affected product name, as in `affected_products` (exact match).",
+    ),
+    OpenApiParameter(
+        name="affected_product_version",
+        type=str,
+        description="Select suggestions where the affected product carries this version or version bound (exact match, requires affected_product).",
     ),
 ]
 
@@ -305,7 +348,10 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
         operation_id="listSuggestions",
         description="List all suggestions (proposals linking CVEs to derivations), paginated and sorted by most recently modified or created first.",
         parameters=[ACTIVITY_LOG_PARAMETER, SHARED_STATE_PARAMETER],
-        responses={200: PaginatedSuggestionListSerializer},
+        responses={
+            200: PaginatedSuggestionListSerializer,
+            400: ErrorDetailSerializer,
+        },
     )
     def list(self, request: Request) -> Response:
         queryset = self.filter_queryset(self.get_queryset())
