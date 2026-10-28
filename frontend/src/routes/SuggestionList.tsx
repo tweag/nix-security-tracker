@@ -45,8 +45,14 @@ function suggestionMatchesFilters(
 export function SuggestionList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const page = parsePage(searchParams);
-  const { filters, setStatuses, setInIssueDraft, setPackageFilter, setCreatedAtRange } =
-    useSuggestionListFilters();
+  const {
+    filters,
+    setStatuses,
+    setInIssueDraft,
+    setPackageFilter,
+    setAffectedProductFilter,
+    setCreatedAtRange,
+  } = useSuggestionListFilters();
   const { viewMode, setViewMode } = useSuggestionListViewMode();
 
   const { data, isLoading, isError, error } = useListSuggestions({
@@ -54,6 +60,8 @@ export function SuggestionList() {
     status: filters.statuses.length > 0 ? filters.statuses : undefined,
     in_issue_draft: filters.inIssueDraft || undefined,
     package: filters.packageFilter || undefined,
+    affected_product: filters.affectedProduct || undefined,
+    affected_product_version: filters.affectedProductVersion || undefined,
     created_at_after: filters.createdAtAfter || undefined,
     created_at_before: filters.createdAtBefore || undefined,
     activity_log: true,
@@ -63,6 +71,7 @@ export function SuggestionList() {
     filters.inIssueDraft &&
     filters.statuses.length === 0 &&
     !filters.packageFilter &&
+    !filters.affectedProduct &&
     !filters.createdAtAfter &&
     !filters.createdAtBefore &&
     (data?.count ?? 0) > 0;
@@ -82,16 +91,17 @@ export function SuggestionList() {
 
   return (
     <div className="column gap-big centered">
-      <div className="column gap">
+      <div className="column gap-big full-width">
         <SuggestionFilters
           filters={filters}
           setStatuses={setStatuses}
           setInIssueDraft={setInIssueDraft}
           setPackageFilter={setPackageFilter}
+          setAffectedProductFilter={setAffectedProductFilter}
           setCreatedAtRange={setCreatedAtRange}
         />
         <IssueDraftPanel open={showIssueDraftPanel} />
-        <div className="row gap centered justify-right">
+        <div className="row gap centered grow justify-right">
           <div className="row gap-small centered">
             <EyeIcon size="1em" />
             <span>View</span>
