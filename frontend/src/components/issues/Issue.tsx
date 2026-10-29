@@ -9,6 +9,7 @@ import {
   DEFAULT_SUGGESTION_VIEW_MODE,
   type SuggestionViewMode,
 } from "@/hooks/useSuggestionViewMode";
+import { issuePath } from "@/routes/paths";
 import { ExternalLink } from "../ui/ExternalLink";
 import { LegendCard } from "../ui/LegendCard";
 import { GitHubIssueState } from "./GitHubIssueState";
@@ -43,7 +44,7 @@ export function Issue({
     <>
       <div className="row gap-small centered">
         <GlobeCheckIcon size="1em" />
-        <Link href={`/issues/${code}`}>{code}</Link>
+        <Link href={issuePath(code)}>{code}</Link>
       </div>
       {github_issue_url && (
         /* FIXME(@fricklerhandwerk): Move the GitHub issue state into the card once the issue activity log lands, so the legend carries no variable data. */

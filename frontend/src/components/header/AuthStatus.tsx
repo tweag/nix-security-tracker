@@ -4,6 +4,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Menu } from "@/components/ui/Menu";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { login, logout, useAuth } from "@/hooks/useAuth";
+import { paths } from "@/routes/paths";
 import styles from "./AuthStatus.module.css";
 import { NotificationLink } from "./NotificationLink";
 
@@ -49,13 +50,13 @@ export function AuthStatus() {
             value: "subscriptions",
             label: "Subscriptions",
             icon: <BellIcon size="1em" />,
-            onSelect: () => setLocation("/user/subscriptions"),
+            onSelect: () => setLocation(paths.userSubscriptions),
           },
           {
             value: "tokens",
             label: "API Tokens",
             icon: <KeyRoundIcon size="1em" />,
-            onSelect: () => setLocation("/user/tokens"),
+            onSelect: () => setLocation(paths.userTokens),
           },
           { type: "separator" },
           {

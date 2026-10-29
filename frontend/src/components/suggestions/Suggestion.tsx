@@ -9,6 +9,7 @@ import {
   DEFAULT_SUGGESTION_VIEW_MODE,
   type SuggestionViewMode,
 } from "@/hooks/useSuggestionViewMode";
+import { suggestionPath } from "@/routes/paths";
 import { ActivityLogPanel, ActivityLogToggle } from "./ActivityLog";
 import { SeverityBadge } from "./SeverityBadge";
 import { SuggestionCompactBody } from "./SuggestionCompactBody";
@@ -47,7 +48,7 @@ export function Suggestion({
     <>
       <div className="row gap-small centered">
         <ShieldIcon size="1em" />
-        <Link href={`/suggestions/by-id/${id}`}>{cve_id}</Link>
+        <Link href={suggestionPath(id)}>{cve_id}</Link>
       </div>
       <div>
         (<ExternalLink href={nvdUrl}>NVD</ExternalLink>)
