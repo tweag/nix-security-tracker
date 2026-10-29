@@ -2,6 +2,7 @@ import { LayersIcon, MoveDownIcon, UserCogIcon, UserIcon, UserShieldIcon } from 
 import { Link } from "wouter-preact";
 import { SuggestionStatusIcon } from "@/components/suggestions/SuggestionStatusIcon";
 import { ExternalLink } from "@/components/ui/ExternalLink";
+import { paths } from "@/routes/paths";
 
 export function Home() {
   return (
@@ -48,7 +49,7 @@ export function Home() {
         </div>
         <MoveDownIcon strokeWidth={0.8} size="2em" />
         <Link
-          href="/suggestions?status=pending"
+          href={`${paths.suggestions}?status=pending`}
           className="box rounded border row gap-small centered justify-center"
           style="min-width: 20em"
         >
@@ -61,7 +62,7 @@ export function Home() {
             <div>Team rejects</div>
             <MoveDownIcon strokeWidth={0.8} size="2em" />
             <Link
-              href="/suggestions?status=rejected"
+              href={`${paths.suggestions}?status=rejected`}
               className="box rounded border row gap-small centered"
             >
               <SuggestionStatusIcon status="rejected" size="1em" />
@@ -74,7 +75,7 @@ export function Home() {
             <div>Team accepts</div>
             <MoveDownIcon strokeWidth={0.8} size="2em" />
             <Link
-              href="/suggestions?status=accepted"
+              href={`${paths.suggestions}?status=accepted`}
               className="box rounded border row gap-small centered"
             >
               <SuggestionStatusIcon status="accepted" size="1em" />
@@ -89,7 +90,7 @@ export function Home() {
             <div>Bundle related suggestions</div>
             <MoveDownIcon strokeWidth={0.8} size="2em" />
             <Link
-              href="/suggestions?in_issue_draft=true"
+              href={`${paths.suggestions}?in_issue_draft=true`}
               className="box rounded border row gap-small centered"
             >
               <LayersIcon size="1em" />
@@ -97,7 +98,7 @@ export function Home() {
             </Link>
             <div>CVEs that users have bundled together for the next GitHub issue</div>
             <MoveDownIcon strokeWidth={0.8} size="2em" />
-            <Link href="/issues" className="box rounded border row gap-small centered">
+            <Link href={paths.issues} className="box rounded border row gap-small centered">
               <SuggestionStatusIcon status="published" size="1em" />
               Nixpkgs issues
             </Link>
@@ -135,7 +136,7 @@ export function Home() {
           <UserIcon size="2em" />
           <p>
             If you use NixOS or otherwise rely on software from Nixpkgs,{" "}
-            <Link href="/user/subscriptions">subscribe to notifications</Link> on published
+            <Link href={paths.userSubscriptions}>subscribe to notifications</Link> on published
             vulnerabilities.
           </p>
         </div>

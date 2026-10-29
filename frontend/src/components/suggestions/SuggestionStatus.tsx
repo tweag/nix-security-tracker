@@ -4,6 +4,7 @@ import type {
   SuggestionRejectionReason,
   SuggestionStatusEnum,
 } from "@/api/generated/models";
+import { issuePath } from "@/routes/paths";
 import { SuggestionStatusIcon } from "./SuggestionStatusIcon";
 
 type Props = {
@@ -58,7 +59,7 @@ export function SuggestionStatus({ status, rejectionReason, issueCode, iconOnly 
           {rejectionReason && <span>({rejectionReasonLabel(rejectionReason)})</span>}
           {status === "published" && issueCode && (
             <span>
-              (<Link href={`/issues/${issueCode}`}>Issue</Link>)
+              (<Link href={issuePath(issueCode)}>Issue</Link>)
             </span>
           )}
         </>
