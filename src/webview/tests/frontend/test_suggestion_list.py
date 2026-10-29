@@ -12,7 +12,7 @@ from shared.models.cve import Container
 from shared.models.linkage import CVEDerivationClusterProposal, ProvenanceFlags
 from shared.models.nix_evaluation import NixDerivation
 
-from .routes import SUGGESTION_LIST
+from .routes import SUGGESTION_DETAIL, SUGGESTION_LIST
 
 
 def make_suggestions(
@@ -584,3 +584,125 @@ def test_suggestion_list_affected_product_clear_resets_both_inputs(
     )
     expect(page.get_by_label("Filter by affected product version")).to_have_value("")
     expect(page).not_to_have_url(re.compile(r"affected_product"))
+
+
+def test_suggestion_list_package_shortcut_sets_package_filter(
+    live_server: LiveServer,
+    page: Page,
+    make_drv: Callable[..., NixDerivation],
+    make_container: Callable[..., Container],
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    """The shortcut next to a matching package filters the list by that package."""
+    package1 = make_drv(pname="foo")
+    package2 = make_drv(pname="bar")
+    matching = make_cached_suggestion(
+        container=make_container(cve_id="CVE-2026-3301"),
+        drvs={package1: ProvenanceFlags.PACKAGE_NAME_MATCH},
+    )
+    other = make_cached_suggestion(
+        container=make_container(cve_id="CVE-2026-3302"),
+        drvs={package2: ProvenanceFlags.PACKAGE_NAME_MATCH},
+    )
+
+    page.goto(live_server.url + SUGGESTION_LIST)
+    page.get_by_test_id(f"suggestion-{matching.pk}").get_by_role(
+        "link", name=f"Filter suggestions by package '{package1.attribute}'"
+    ).click()
+
+    expect(page).to_have_url(
+        re.compile(rf"[?&]package={re.escape(package1.attribute)}(&|$)")
+    )
+    expect(page.get_by_label("Filter by matching package")).to_have_value(
+        package1.attribute
+    )
+    expect(page.get_by_test_id(f"suggestion-{matching.pk}")).to_be_visible()
+    expect(page.get_by_test_id(f"suggestion-{other.pk}")).not_to_be_visible()
+
+
+def test_suggestion_list_affected_product_shortcut_sets_affected_product_filter(
+    live_server: LiveServer,
+    page: Page,
+    make_container: Callable[..., Container],
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    """The shortcut next to an affected product filters the list by that product."""
+    matching = make_cached_suggestion(
+        container=make_container(cve_id="CVE-2026-3311", package_name="libfoo")
+    )
+    other = make_cached_suggestion(
+        container=make_container(cve_id="CVE-2026-3312", package_name="libbar")
+    )
+
+    page.goto(live_server.url + SUGGESTION_LIST)
+    page.get_by_test_id(f"suggestion-{matching.pk}").get_by_role(
+        "link", name="Filter suggestions by affected product 'libfoo'"
+    ).click()
+
+    expect(page).to_have_url(re.compile(r"[?&]affected_product=libfoo(&|$)"))
+    expect(page.get_by_label("Filter by affected product", exact=True)).to_have_value(
+        "libfoo"
+    )
+    expect(page.get_by_test_id(f"suggestion-{matching.pk}")).to_be_visible()
+    expect(page.get_by_test_id(f"suggestion-{other.pk}")).not_to_be_visible()
+
+
+def test_suggestion_list_shortcut_keeps_other_filters(
+    live_server: LiveServer,
+    page: Page,
+    make_container: Callable[..., Container],
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    """A shortcut replaces its own filter, keeps the others, and drops the stale version and page."""
+    suggestion = make_cached_suggestion(
+        container=make_container(
+            cve_id="CVE-2026-3321", package_name="libfoo", affected_version="1.0"
+        )
+    )
+
+    query = urlencode(
+        {
+            "status": "pending",
+            "affected_product": "libfoo",
+            "affected_product_version": "1.0",
+        }
+    )
+    page.goto(live_server.url + SUGGESTION_LIST + "?" + query)
+    link = page.get_by_test_id(f"suggestion-{suggestion.pk}").get_by_role(
+        "link", name="Filter suggestions by affected product 'libfoo'"
+    )
+    expect(link).to_have_attribute(
+        "href", re.compile(r"status=pending&affected_product=libfoo$")
+    )
+    link.click()
+
+    expect(page).to_have_url(re.compile(r"[?&]status=pending(&|$)"))
+    expect(page).not_to_have_url(re.compile(r"affected_product_version"))
+    expect(page.get_by_label("Filter by affected product version")).to_have_value("")
+
+
+def test_suggestion_detail_shortcut_opens_list_with_only_that_filter(
+    live_server: LiveServer,
+    page: Page,
+    make_drv: Callable[..., NixDerivation],
+    make_container: Callable[..., Container],
+    make_cached_suggestion: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    """From a suggestion page, a shortcut opens the suggestion list filtered by that value alone."""
+    package = make_drv(pname="foo")
+    suggestion = make_cached_suggestion(
+        container=make_container(cve_id="CVE-2026-3331"),
+        drvs={package: ProvenanceFlags.PACKAGE_NAME_MATCH},
+    )
+
+    page.goto(live_server.url + SUGGESTION_DETAIL + f"/{suggestion.pk}?foo=bar")
+    page.get_by_role(
+        "link", name=f"Filter suggestions by package '{package.attribute}'"
+    ).click()
+
+    expect(page).to_have_url(
+        live_server.url
+        + SUGGESTION_LIST
+        + "?"
+        + urlencode({"package": package.attribute})
+    )
