@@ -30,7 +30,10 @@ class VerdictChange:
     branch: str | None
     verdict: str | None
     fix_commit: str | None = None
-    comment: str = ""
+    # Whether the request names a fix commit; if not, a `fixed` verdict keeps its own.
+    fix_commit_given: bool = False
+    # None keeps an existing verdict's comment.
+    comment: str | None = None
 
 
 def check_verdicts(
@@ -167,7 +170,7 @@ def write_verdicts(
                 attrpath=attrpath,
                 branch_id=change.branch,
                 verdict=change.verdict,
-                comment=change.comment,
+                comment=change.comment or "",
                 fix_commit=change.fix_commit,
                 author=author,
             )
@@ -176,8 +179,12 @@ def write_verdicts(
             continue
         old = _data(current)
         current.verdict = change.verdict
-        current.comment = change.comment
-        current.fix_commit = change.fix_commit
+        if change.comment is not None:
+            current.comment = change.comment
+        if change.fix_commit_given:
+            current.fix_commit = change.fix_commit
+        elif change.verdict != Verdict.Kind.FIXED:
+            current.fix_commit = None
         if _data(current) == old:
             continue
         current.author = author

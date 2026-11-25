@@ -53,6 +53,8 @@ function patchAttribute(attribute: MatchedAttribute, change: Change): MatchedAtt
   if (!change.attrpaths.includes(attribute.attrpath)) return attribute;
   const now = new Date().toISOString();
   const others = attribute.verdicts.filter((v) => v.branch !== change.branch);
+  // The server keeps the comment, and the fix commit of a `fixed` verdict.
+  const current = attribute.verdicts.find((v) => v.branch === change.branch);
   const verdicts: Verdict[] =
     change.verdict === null
       ? others
@@ -61,8 +63,8 @@ function patchAttribute(attribute: MatchedAttribute, change: Change): MatchedAtt
           {
             branch: change.branch,
             verdict: change.verdict,
-            fix_commit: null,
-            comment: "",
+            fix_commit: change.verdict === "fixed" ? (current?.fix_commit ?? null) : null,
+            comment: current?.comment ?? "",
             author: null,
             created_at: now,
             updated_at: now,

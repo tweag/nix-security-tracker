@@ -1219,6 +1219,7 @@ def _verdict_change(data: dict) -> VerdictChange:
         attrpaths=data["package_attributes"],
         branch=data["branch"],
         verdict=data["verdict"],
-        fix_commit=data["fix_commit"],
-        comment=data["comment"],
+        fix_commit=data.get("fix_commit"),
+        fix_commit_given="fix_commit" in data,
+        comment=data.get("comment"),
     )

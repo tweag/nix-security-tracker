@@ -258,3 +258,30 @@ def test_attribute_list_is_capped(
     )
     assert response.status_code == 400
     assert "no more than 200" in str(response.data["package_attributes"])
+
+
+def test_changing_a_verdict_keeps_its_comment(
+    committer_client: APIClient, candidates: CVEDerivationClusterProposal
+) -> None:
+    """The menu sends only the verdict: what it does not change stays."""
+
+    def patch(**fields: Any) -> Verdict:
+        response = committer_client.patch(
+            url(candidates.pk), body(package_attributes=["foo"]) | fields, format="json"
+        )
+        assert response.status_code == 204, response.data
+        return Verdict.objects.get(attrpath="foo")
+
+    v = patch(verdict="fixed", fix_commit=SHA, comment="fixed by the 2.0 bump")
+    assert (v.comment, v.fix_commit) == ("fixed by the 2.0 bump", SHA)
+    v = patch(verdict="fixed")
+    assert (v.comment, v.fix_commit) == ("fixed by the 2.0 bump", SHA)
+    # A fix commit belongs to a `fixed` verdict only.
+    v = patch(verdict="wontfix")
+    assert (v.verdict, v.comment, v.fix_commit) == (
+        "wontfix",
+        "fixed by the 2.0 bump",
+        None,
+    )
+    v = patch(verdict="wontfix", comment="")
+    assert v.comment == ""

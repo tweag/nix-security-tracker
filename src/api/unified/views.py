@@ -1,3 +1,4 @@
+import uuid
 from collections import Counter
 from typing import Any, cast
 
@@ -21,11 +22,11 @@ from api.unified.serializers import (
     PossiblyFixedSerializer,
     StillAffectedSerializer,
 )
+from api.unified.verdicts import VerdictChange, write_verdicts
 from shared.derived_state import (
     PossiblyFixed,
     possibly_fixed_keys,
     possibly_fixed_rows,
-    set_verdict,
 )
 from shared.exposure import tracked_branches
 from shared.locking import lock_for_write
@@ -133,15 +134,15 @@ class PossiblyFixedViewSet(viewsets.GenericViewSet):
             )
             if (exposure.pk, exposure.branch_id) not in in_queue:
                 raise RowNotInQueue()
-            set_verdict(
-                exposure.suggestion,
-                exposure.attrpath,
-                verdict,
-                user,
-                branch=exposure.branch,
-                comment=data.get("comment", ""),
+            change = VerdictChange(
+                attrpaths=[exposure.attrpath],
+                branch=exposure.branch_id,
+                verdict=verdict,
                 fix_commit=data.get("fix_commit"),
+                fix_commit_given="fix_commit" in data,
+                comment=data.get("comment"),
             )
+            write_verdicts(exposure.suggestion, change, user, uuid.uuid4())
         return Response(status=204)
 
     @extend_schema(

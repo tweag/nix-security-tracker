@@ -28,7 +28,8 @@ export function PossiblyFixedRow({ row, userCanEdit }: Props) {
   function submitConfirm(event: Event) {
     event.preventDefault();
     if (!commitValid) return;
-    confirm.mutate({ id: row.id, data: { fix_commit: commit || null } });
+    // Left out, an existing fix commit stays.
+    confirm.mutate({ id: row.id, data: commit ? { fix_commit: commit } : {} });
   }
 
   return (

@@ -322,11 +322,16 @@ class VerdictUpdateSerializer(serializers.Serializer):
     fix_commit = FixCommitField(
         required=False,
         allow_null=True,
-        default=None,
-        help_text="Only with `fixed`: the full commit sha of the fix.",
+        help_text=(
+            "Only with `fixed`: the full commit sha of the fix. "
+            "Left out, a `fixed` verdict keeps its fix commit; any other verdict has none."
+        ),
     )
     comment = serializers.CharField(
-        required=False, allow_blank=True, default="", max_length=1000
+        required=False,
+        allow_blank=True,
+        max_length=1000,
+        help_text="Left out, an existing verdict keeps its comment.",
     )
 
     def validate(self, attrs: dict) -> dict:
@@ -372,15 +377,20 @@ class ConfirmFixedSerializer(serializers.Serializer):
     fix_commit = FixCommitField(
         required=False,
         allow_null=True,
-        default=None,
-        help_text="Full commit sha of the fix, if known.",
+        help_text="Full commit sha of the fix, if known; left out, an existing one stays.",
     )
     comment = serializers.CharField(
-        required=False, allow_blank=True, default="", max_length=1000
+        required=False,
+        allow_blank=True,
+        max_length=1000,
+        help_text="Left out, an existing verdict keeps its comment.",
     )
 
 
 class StillAffectedSerializer(serializers.Serializer):
     comment = serializers.CharField(
-        required=False, allow_blank=True, default="", max_length=1000
+        required=False,
+        allow_blank=True,
+        max_length=1000,
+        help_text="Left out, an existing verdict keeps its comment.",
     )
