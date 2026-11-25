@@ -350,6 +350,45 @@ def test_queue_excludes_confirmed(world: World, author: User) -> None:  # noqa: 
     )
 
 
+def test_queue_still_affected_answers_until_next_fix(
+    world: World,  # noqa: F811
+    author: User,
+) -> None:
+    fixed_world(world)
+    set_verdict(world.suggestion, "foo", V.AFFECTED, author, branch=world.branch)
+    assert possibly_fixed_queue() == []
+    d = derive_states([world.suggestion.pk])[world.suggestion.pk]
+    assert (d.state, d.possibly_fixed) == (DerivedState.TRACKING, [])
+    # Affected again, then fixed again: the new fix is a new question.
+    world.apply(world.package("1.9"))
+    assert possibly_fixed_queue() == []
+    world.apply(world.package("2.1"))
+    (row,) = possibly_fixed_queue()
+    assert (row.old_version, row.new_version) == ("1.9", "2.1")
+
+
+def test_queue_keeps_fix_after_later_all_branches_affected(
+    world: World,  # noqa: F811
+    author: User,
+) -> None:
+    """Accepting a suggestion records `affected` on all branches; that is not "still affected"."""
+    fixed_world(world)
+    set_verdict(world.suggestion, "foo", V.AFFECTED, author)
+    assert len(possibly_fixed_queue()) == 1
+
+
+def test_queue_keeps_fix_after_earlier_affected_verdict(
+    world: World,  # noqa: F811
+    author: User,
+) -> None:
+    world.match()
+    world.package("1.5")
+    world.reconcile()
+    set_verdict(world.suggestion, "foo", V.AFFECTED, author)
+    world.apply(world.package("2.0"))
+    assert len(possibly_fixed_queue()) == 1
+
+
 def test_queue_keeps_published(world: World) -> None:  # noqa: F811
     fixed_world(world)
     for status in (Status.ACCEPTED, Status.PUBLISHED):

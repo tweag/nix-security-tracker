@@ -306,6 +306,8 @@ class SuggestionFacts:
     verdicts: list[VerdictFact] = field(default_factory=list)
     exposures: list[Exposure] = field(default_factory=list)
     became_affected: dict[tuple[str, str], datetime] = field(default_factory=dict)
+    # Last time each (attribute, branch) was observed to become unaffected after affected.
+    became_unaffected: dict[tuple[str, str], datetime] = field(default_factory=dict)
 
 
 @dataclass
@@ -377,7 +379,9 @@ def derive_state(facts: SuggestionFacts) -> Derived:
                 exposure is not None
                 and branch_id is not None
                 and _was_fixed_or_gone(exposure)
-                and not (eff.verdict and eff.verdict.verdict in CONFIRMING_FIX)
+                and not fix_settled(
+                    eff.verdict, facts.became_unaffected.get((attr, branch_id))
+                )
             ):
                 result.possibly_fixed.append((attr, branch_id))
 
@@ -393,6 +397,26 @@ def derive_state(facts: SuggestionFacts) -> Derived:
 def candidates_of(facts: SuggestionFacts) -> set[str]:
     """Attributes with an active match or an explicit verdict."""
     return set(facts.matched) | {v.attrpath for v in facts.verdicts}
+
+
+def fix_settled(verdict: VerdictFact | None, fixed_at: datetime | None) -> bool:
+    """
+    Whether a verdict answers an observed fix: one that confirms it, or an `affected`
+    ("still affected") for that branch given after the fix was observed. An all-branches
+    `affected`, such as the one accepting a suggestion records, does not answer a fix on one
+    branch; neither does one from before the fix. A later fix reopens the question.
+    """
+    if verdict is None:
+        return False
+    if verdict.verdict in CONFIRMING_FIX:
+        return True
+    return (
+        verdict.verdict == VerdictKind.AFFECTED
+        and verdict.branch_id is not None
+        and verdict.updated_at is not None
+        and fixed_at is not None
+        and verdict.updated_at > fixed_at
+    )
 
 
 def _was_fixed_or_gone(e: Exposure) -> bool:
@@ -423,16 +447,22 @@ def load_facts(suggestion_ids: Collection[int]) -> dict[int, SuggestionFacts]:
         facts[sid].verdicts.append(VerdictFact(attr, branch_id, verdict, updated_at))
     for e in Exposure.objects.filter(suggestion_id__in=ids):
         facts[e.suggestion_id].exposures.append(e)
-    for sid, attr, branch_id, at in (
+    for sid, attr, branch_id, kind, at in (
         TrackerEvent.objects.filter(
             suggestion_id__in=ids,
-            kind=TrackerEvent.Kind.EXPOSURE_BECAME_AFFECTED,
+            kind__in=(
+                TrackerEvent.Kind.EXPOSURE_BECAME_AFFECTED,
+                TrackerEvent.Kind.EXPOSURE_BECAME_UNAFFECTED,
+            ),
             branch__isnull=False,
         )
-        .values_list("suggestion_id", "attrpath", "branch_id")
+        .values_list("suggestion_id", "attrpath", "branch_id", "kind")
         .annotate(at=Max("created_at"))
     ):
-        facts[sid].became_affected[(attr, branch_id)] = at
+        if kind == TrackerEvent.Kind.EXPOSURE_BECAME_AFFECTED:
+            facts[sid].became_affected[(attr, branch_id)] = at
+        else:
+            facts[sid].became_unaffected[(attr, branch_id)] = at
     return facts
 
 
@@ -507,7 +537,8 @@ def possibly_fixed_queue(
 ) -> list[PossiblyFixed]:
     """
     Exposures that were affected and are now observed unaffected (`fixed_evaluation` set),
-    on attributes that are still candidates, without a verdict confirming the fix. Removal
+    on attributes that are still candidates, without a verdict answering the fix (see
+    `fix_settled`). Removal
     is not listed here: a package that disappeared is not a fix. Oldest fixes first.
     """
     rows = (
@@ -530,7 +561,7 @@ def possibly_fixed_queue(
         if e.attrpath not in candidates_of(f):
             continue
         v = pick_verdict(f.verdicts, e.attrpath, e.branch_id)
-        if v is not None and v.verdict in CONFIRMING_FIX:
+        if fix_settled(v, f.became_unaffected.get((e.attrpath, e.branch_id))):
             continue
         assert e.fixed_evaluation is not None
         queue.append(
