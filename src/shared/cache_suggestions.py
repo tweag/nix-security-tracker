@@ -258,7 +258,9 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
     prefetched_metrics = Metric.objects.filter(container__cve=suggestion.cve).order_by(
         "-format"
     )
-    original_packages = channel_structure(all_versions, derivations)
+    original_packages = channel_structure(
+        all_versions, derivations, observed_statuses(suggestion)
+    )
     maintainer_overlays = list(
         suggestion.maintainer_overlays.select_related("maintainer").all()
     )
@@ -343,12 +345,35 @@ def src_position_url(commit_sha1: str, position: str | None) -> str | None:
     return None
 
 
+def observed_statuses(
+    suggestion: CVEDerivationClusterProposal,
+) -> dict[tuple[str, str], tuple[str, str | None]]:
+    """(attribute, branch) -> (observed status, version) of the suggestion's present exposures."""
+    from shared.models.matching import Exposure
+
+    return {
+        (attr, branch): (observed, version)
+        for attr, branch, observed, version in Exposure.objects.filter(
+            suggestion=suggestion, present=True
+        ).values_list("attrpath", "branch_id", "observed", "version")
+    }
+
+
 def channel_structure(
-    version_constraints: list[Version], derivations: list[NixDerivation]
+    version_constraints: list[Version],
+    derivations: list[NixDerivation],
+    observed: dict[tuple[str, str], tuple[str, str | None]] | None = None,
 ) -> dict[str, CachedSuggestion.Package]:
     """
     For a list of derivations and a list of version constraints that all belong to the same package, massage the data so that it can be rendered easily in the suggestions view
+
+    The status on a branch is the `Exposure` of the attribute there (`observed`), when it
+    describes the version shown: per-product scoped ranges, lower bounds, `changes`,
+    `defaultStatus` and `knownVulnerabilities` (`shared.versions`). Otherwise, e.g. a published
+    suggestion showing the version at publication while the exposure follows the branch, it is
+    the status of the CVE's pooled constraints, as before.
     """
+    observed = observed or {}
     packages = dict()
     for derivation in derivations:
         attribute_path = derivation.attribute
@@ -363,12 +388,18 @@ def channel_structure(
                 CachedSuggestion.Maintainer.model_validate(to_dict(m))
                 for m in derivation.metadata.prefetched_maintainers
             ]
-        status = is_version_affected(
+        pooled = is_version_affected(
             [c.affects(package_version) for c in version_constraints]
         )
         src_position = get_src_position(derivation)
         updated = derivation.parent_evaluation.updated_at
         for branch in derivation.parent_evaluation.on_branches.all():
+            exposure = observed.get((attribute_path, branch.name))
+            status = (
+                Version.Status(exposure[0])
+                if exposure is not None and exposure[1] == package_version
+                else pooled
+            )
             packages[attribute_path].branches[branch.name] = (
                 CachedSuggestion.PackageOnBranch(
                     version=package_version,

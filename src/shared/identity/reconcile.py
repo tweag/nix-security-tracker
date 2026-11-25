@@ -69,7 +69,6 @@ def reconcile_suggestions(
     Reconcile these suggestions with one universe and views built in batches, through the
     pipeline (`shared.pipeline.rematch`), so exposures, links, status and cache follow.
     """
-    from shared.cache_suggestions import cache_new_suggestions
     from shared.pipeline import rematch
 
     universe = Universe.tracked()
@@ -92,8 +91,6 @@ def reconcile_suggestions(
                 universe=universe,
                 actor=actor,
             )
-            if not outcome.frozen:
-                cache_new_suggestions(suggestion)
             results[suggestion.pk] = outcome.matches or ReconcileResult(
                 batch=uuid.uuid4()
             )

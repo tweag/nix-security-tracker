@@ -574,9 +574,8 @@ def test_evaluation_to_cached_payload(
     assert exposure.fixed_evaluation == evaluation
     payload = CachedSuggestions.objects.get(proposal=pending).payload
     branch = payload["packages"]["foo"]["branches"]["master"]
-    # The chip still comes from the cache's own classifier (`Version.affects`), which does not
-    # infer "unaffected" outside the range; `Exposure` does.
-    assert (branch["version"], branch["status"]) == ("2.0", "unknown")
+    # The chip comes from the exposure: the pooled classifier said "unknown" here.
+    assert (branch["version"], branch["status"]) == ("2.0", "unaffected")
     assert derive_states([pending.pk])[pending.pk].state == DerivedState.POSSIBLY_FIXED
     pending.refresh_from_db()
     assert pending.status == Status.PENDING
@@ -645,3 +644,51 @@ def test_mapping_change_reaches_links_and_cache(
     pending.refresh_from_db()
     assert "x" in linked(pending)
     assert "x" in pending.cached.payload["packages"]
+
+
+def _range_1_to_2(suggestion: CVEDerivationClusterProposal) -> None:
+    """Affected in [1.0, 2.0), unaffected otherwise."""
+    Version.objects.filter(affectedproduct__container__cve=suggestion.cve).update(
+        version="1.0", less_than="2.0"
+    )
+    AffectedProduct.objects.filter(container__cve=suggestion.cve).update(
+        default_status="unaffected", default_status_recorded=True
+    )
+    reconcile_exposures(suggestion, TrackerEvent.Cause.CVE_UPDATE)
+
+
+def test_cached_status_honours_lower_bound_through_exposure(
+    pending: CVEDerivationClusterProposal,
+    snapshot: Callable[..., NixEvaluation],
+) -> None:
+    """0.5 is below the range: the pooled classifier said affected, the exposure says not."""
+    _range_1_to_2(pending)
+    snapshot({"foo": ("foo", "0.5"), "foo-cli": ("foo", "1.0"), "x": ("x", "1")})
+    packages = CachedSuggestions.objects.get(proposal=pending).payload["packages"]
+    assert packages["foo"]["branches"]["master"]["status"] == "unaffected"
+    assert packages["foo-cli"]["branches"]["master"]["status"] == "affected"
+
+
+def test_published_suggestion_keeps_status_of_its_frozen_version(
+    pending: CVEDerivationClusterProposal,
+    snapshot: Callable[..., NixEvaluation],
+) -> None:
+    """Links stay at the version of publication; the exposure follows the branch."""
+    _range_1_to_2(pending)
+    pending.change_status(Status.ACCEPTED)
+    CVEDerivationClusterProposal.objects.filter(pk=pending.pk).update(
+        status=Status.PUBLISHED
+    )
+    snapshot({"foo": ("foo", "2.0"), "foo-cli": ("foo", "1.0"), "x": ("x", "1")})
+
+    foo = CachedSuggestions.objects.get(proposal=pending).payload["packages"]["foo"]
+    assert (
+        foo["branches"]["master"]["version"],
+        foo["branches"]["master"]["status"],
+    ) == (
+        "1.0",
+        "affected",
+    )
+    assert Exposure.objects.get(suggestion=pending, attrpath="foo").observed == (
+        Exposure.Observed.UNAFFECTED
+    )

@@ -215,6 +215,11 @@ class RematchResult:
     reopened: bool = False
 
     @property
+    def needs_cache(self) -> bool:
+        """Links or matches may have moved, or an exposure (the shown status) changed."""
+        return not self.frozen or bool(self.exposures and self.exposures.touched)
+
+    @property
     def changed(self) -> bool:
         return bool(
             (self.matches and self.matches.events)
@@ -347,6 +352,8 @@ def rematch(
         ):
             with pghistory.context(system=True):
                 pghistory.create_event(suggestion, label="rematch")
+        if result.needs_cache:
+            cache_new_suggestions(suggestion)
     return result
 
 
@@ -392,8 +399,6 @@ def refresh_suggestion(
         evaluation=evaluation,
         exposures=bool(matchers),
     )
-    if not result.frozen:
-        cache_new_suggestions(suggestion)
     return result
 
 
@@ -514,16 +519,21 @@ def apply_evaluation(
     rematch_ids = sorted({sid for sid, _ in referencing} | selected)
     for suggestion in CVEDerivationClusterProposal.objects.filter(pk__in=rematch_ids):
         rematch(suggestion, Cause.EVALUATION, evaluation=evaluation)
-        cache_new_suggestions(suggestion)
         outcome.rematched.append(suggestion.pk)
 
+    # Exposures changed: the shown status changes, also on published suggestions, whose links
+    # stay frozen; dismissed suggestions have no exposure updates.
     touched = set(exposure_result.touched) - set(rematch_ids)
-    for suggestion in CVEDerivationClusterProposal.objects.filter(
-        pk__in=touched
-    ).filter(open_for_projection_q()):
-        project_links(suggestion)
+    open_ids = set(
+        CVEDerivationClusterProposal.objects.filter(pk__in=touched)
+        .filter(open_for_projection_q())
+        .values_list("pk", flat=True)
+    )
+    for suggestion in CVEDerivationClusterProposal.objects.filter(pk__in=touched):
+        if suggestion.pk in open_ids:
+            project_links(suggestion)
+            outcome.projected.append(suggestion.pk)
         cache_new_suggestions(suggestion)
-        outcome.projected.append(suggestion.pk)
 
     done = set(rematch_ids) | touched
     behind = (
