@@ -1,11 +1,41 @@
 from django.contrib.postgres import fields
 from django.contrib.postgres.indexes import GinIndex
 from django.db import models
+from django.db.models import Func, Q, Value
 from django.db.models.functions import Lower
 from django.utils.translation import gettext_lazy as _
 
+from shared.matching.names import (
+    ATTR_PARENT_RE,
+    LANGUAGE_PREFIX_RE,
+    SEPARATORS_RE,
+    URL_SCHEME_RE,
+    URL_TAIL_RE,
+)
 from shared.models.nix_evaluation import NixEvaluation, NixpkgsBranch
 from shared.models.package import Package
+
+
+def _regexp_replace(expression: Func | str, pattern: str, flags: str = "") -> Func:
+    args = [expression, Value(pattern), Value("")]
+    if flags:
+        args.append(Value(flags))
+    return Func(*args, function="regexp_replace")
+
+
+def _normalise_name(expression: Func) -> Func:
+    """SQL twin of `shared.matching.names.normalise_name` on a lowercased expression."""
+    return Func(
+        Func(
+            expression,
+            Value(SEPARATORS_RE),
+            Value("-"),
+            Value("g"),
+            function="regexp_replace",
+        ),
+        Value("-"),
+        function="btrim",
+    )
 
 
 class BranchPackageQuerySet(models.QuerySet):
@@ -59,6 +89,25 @@ class BranchPackage(models.Model):
     package = models.ForeignKey(
         Package, null=True, on_delete=models.SET_NULL, related_name="+"
     )
+    # Matching keys, computed by the database so that writers need not know about them.
+    # See `shared.matching.names` for the Python twins used on the CVE side.
+    match_pname = models.GeneratedField(
+        expression=_normalise_name(_regexp_replace(Lower("pname"), LANGUAGE_PREFIX_RE)),
+        output_field=models.CharField(max_length=255),
+        db_persist=True,
+    )
+    match_attr = models.GeneratedField(
+        expression=_normalise_name(Lower(_regexp_replace("attrpath", ATTR_PARENT_RE))),
+        output_field=models.CharField(max_length=255),
+        db_persist=True,
+    )
+    match_homepage = models.GeneratedField(
+        expression=_regexp_replace(
+            _regexp_replace(Lower("homepage"), URL_SCHEME_RE), URL_TAIL_RE
+        ),
+        output_field=models.CharField(max_length=2048, null=True),
+        db_persist=True,
+    )
 
     class Meta:  # type: ignore[override]
         constraints = [
@@ -84,6 +133,24 @@ class BranchPackage(models.Model):
             ),
             models.Index(
                 fields=["branch", "present"], name="branchpackage_branch_present"
+            ),
+            models.Index(fields=["match_pname"], name="branchpackage_match_pname"),
+            GinIndex(
+                fields=["match_pname"],
+                opclasses=["gin_trgm_ops"],
+                name="branchpackage_match_pname_trgm",
+            ),
+            models.Index(fields=["match_attr"], name="branchpackage_match_attr"),
+            models.Index(
+                fields=["match_homepage"],
+                condition=Q(match_homepage__isnull=False),
+                name="branchpackage_match_homepage",
+            ),
+            # A few hundred rows per branch list known vulnerabilities.
+            models.Index(
+                fields=["branch"],
+                condition=~Q(known_vulnerabilities=[]),
+                name="branchpackage_known_vulns",
             ),
         ]
 
