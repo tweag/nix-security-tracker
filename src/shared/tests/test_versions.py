@@ -82,10 +82,10 @@ CASES: list[tuple[str, ProductVersions, str | None, Status, Reason]] = [
         Reason.VERSION_RANGE,
     ),
     (
-        "missing defaultStatus is unknown",
+        "missing defaultStatus outside affected ranges",
         product(entry(A, "0", lt="1.2")),
         "1.3",
-        K,
+        U,
         Reason.DEFAULT_STATUS,
     ),
     # Lower bounds meaning "from the beginning".
@@ -524,9 +524,38 @@ def test_no_products() -> None:
     assert classify("1.0", []).reason == Reason.NO_RANGE
 
 
-def test_missing_default_override() -> None:
+def test_absent_default_is_inferred_from_affected_ranges() -> None:
     prod = product(entry(A, "0", lt="1.2"))
-    assert classify_product("1.3", prod, missing_default=U).status == U
+    result = classify_product("1.3", prod)
+    assert (result.status, result.reason, result.inferred) == (
+        U,
+        Reason.DEFAULT_STATUS,
+        True,
+    )
+    strict = classify_product("1.3", prod, strict=True)
+    assert (strict.status, strict.inferred) == (K, False)
+
+
+@pytest.mark.parametrize(
+    "prod",
+    [
+        # An explicit defaultStatus is never overridden.
+        product(entry(A, "0", lt="1.2"), default=K),
+        # Lists of exact versions name tested versions, not the whole affected set.
+        product(entry(A, "1.0"), entry(A, "1.1")),
+        # An unaffected or unknown entry means the record is not a list of affected ranges.
+        product(entry(A, "0", lt="1.2"), entry(K, "2.0", lt="3.0")),
+    ],
+)
+def test_absent_default_not_inferred(prod: ProductVersions) -> None:
+    result = classify_product("1.5", prod)
+    assert (result.status, result.inferred) == (K, False)
+
+
+def test_inference_does_not_hide_undecidable_entries() -> None:
+    prod = product(entry(A, "2.0", lt="2.0.5"), entry(A, "3.0", lt="3.0.2"))
+    result = classify_product("2.0.5-unstable-2026-01-02", prod)
+    assert (result.status, result.reason) == (K, Reason.UNPARSEABLE)
 
 
 @pytest.mark.django_db
@@ -545,3 +574,24 @@ def test_classify_affected_product_rows() -> None:
     # Pooled the old way, b's range would make 2.1.0 affected.
     assert classify_affected_products("3.0.1", [a, b]).status == A
     assert classify_affected_products("3.0.1", [a]).status == U
+
+
+@pytest.mark.django_db
+def test_rows_absent_default_and_changes() -> None:
+    def make(recorded: bool | None, **fields: object) -> AffectedProduct:
+        ap = AffectedProduct.objects.create(
+            product="a", default_status="unknown", default_status_recorded=recorded
+        )
+        ap.versions.add(Version.objects.create(status="affected", **fields))
+        return ap
+
+    ranged = {"version": "1.0", "less_than": "2.0"}
+    # Absent at ingestion: inferred. Not recorded (older rows): the stored "unknown".
+    assert classify_affected_products("2.1", [make(False, **ranged)]).status == U
+    assert classify_affected_products("2.1", [make(None, **ranged)]).status == K
+    assert classify_affected_products("2.1", [make(True, **ranged)]).status == K
+    with_changes = make(
+        True, **ranged, changes=[{"at": "1.5", "status": "unaffected"}, {"bad": 1}]
+    )
+    assert classify_affected_products("1.6", [with_changes]).status == U
+    assert classify_affected_products("1.4", [with_changes]).status == A

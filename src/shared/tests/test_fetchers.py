@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from shared.fetchers import make_cpe, make_metric
+from shared.fetchers import make_affected_product, make_cpe, make_metric, make_version
 from shared.models.cve import Cpe, Metric
 
 
@@ -52,3 +52,26 @@ def test_make_cpe_discards_malformed(
 
     assert not Cpe.objects.filter(name="not-a-cpe").exists()
     assert "Discarding malformed CPE" in caplog.text
+
+
+def test_make_affected_product_records_absent_default_status(db: None) -> None:
+    absent = make_affected_product({"product": "foo", "versions": []})
+    given = make_affected_product(
+        {"product": "foo", "defaultStatus": "unknown", "versions": []}
+    )
+    assert (absent.default_status, absent.default_status_recorded) == ("unknown", False)
+    assert (given.default_status, given.default_status_recorded) == ("unknown", True)
+
+
+def test_make_version_keeps_changes(db: None) -> None:
+    changes = [{"at": "4.36.2F", "status": "unaffected"}]
+    version = make_version(
+        {
+            "version": "4.36.0",
+            "lessThanOrEqual": "4.36.1F",
+            "status": "affected",
+            "changes": changes,
+        }
+    )
+    assert version.changes == changes
+    assert make_version({"version": "1.0", "status": "affected"}).changes is None

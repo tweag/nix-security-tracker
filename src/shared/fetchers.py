@@ -152,6 +152,7 @@ def make_version(data: dict[str, Any]) -> models.Version:
     ctx["version_type"] = data.get("versionType")
     ctx["less_than"] = data.get("lessThan")
     ctx["less_equal"] = data.get("lessThanOrEqual")
+    ctx["changes"] = data.get("changes")
 
     return models.Version.objects.create(**ctx)
 
@@ -195,6 +196,7 @@ def make_affected_product(data: dict[str, Any]) -> models.AffectedProduct:
     ctx["default_status"] = data.get(
         "defaultStatus", models.AffectedProduct.Status.UNKNOWN
     )
+    ctx["default_status_recorded"] = "defaultStatus" in data
 
     obj = models.AffectedProduct.objects.create(**ctx)
     obj.platforms.set(map(make_platform, data.get("platforms", [])))

@@ -231,6 +231,8 @@ class Version(models.Model):
     version = models.CharField(max_length=1024, null=True)
     less_than = models.CharField(max_length=1024, null=True)
     less_equal = models.CharField(max_length=1024, null=True)
+    # The record's `changes` (status changes inside the range); null for rows ingested before it was kept.
+    changes = models.JSONField(null=True)
 
     def version_constraint_str(self) -> str | None:
         """
@@ -321,6 +323,9 @@ class AffectedProduct(models.Model):
     default_status = models.CharField(
         max_length=126, choices=Status.choices, default=Status.UNKNOWN
     )
+    # Whether the record gave `defaultStatus` (absent means "unknown" per schema, but the
+    # classifier reads it differently); null for rows ingested before this was recorded.
+    default_status_recorded = models.BooleanField(null=True)
     versions = models.ManyToManyField(Version)
     cpes = models.ManyToManyField(Cpe)
     modules = models.ManyToManyField(Module)

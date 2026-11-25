@@ -132,6 +132,8 @@ class Classification:
     detail: str = ""
     silent: bool = False
     """The product has no version data comparable to any package version (git-only, none)."""
+    inferred: bool = False
+    """`unaffected` inferred from being outside every listed affected range, without `defaultStatus`."""
 
 
 # --- Version parsing -------------------------------------------------------------------------
@@ -474,13 +476,18 @@ def _sorted_changes(changes: Iterable[Change]) -> list[Change]:
 def classify_product(
     version: str | None,
     product: ProductVersions,
-    missing_default: Status = Status.UNKNOWN,
+    strict: bool = False,
 ) -> Classification:
     """
     Classify `version` against one affected product, following the CVE JSON 5 rule:
     the first entry whose range contains the version gives the status (adjusted by its
-    `changes`); if none does, `defaultStatus` applies, and `missing_default` if it is absent
-    (the schema says "unknown").
+    `changes`); if none does, `defaultStatus` applies.
+
+    When `defaultStatus` is absent the schema says "unknown". Unless `strict`, a product whose
+    usable entries are all `affected` and include at least one range is read as listing its
+    affected ranges, so a version outside all of them is `unaffected` with `inferred` set.
+    Lists of exact versions alone do not qualify: in real records they often name only the
+    versions someone tested.
 
     Deviations, all towards "unknown" rather than a false "unaffected":
     - Placeholder entries (`version: "n/a"` and the like, no upper bound) are skipped. A product
@@ -560,7 +567,19 @@ def classify_product(
             detail=f"{parsed.text} in {range_}",
         )
 
-    fallback = default if default is not None else missing_default
+    inferred = (
+        default is None
+        and not strict
+        and all(e.status == Status.AFFECTED for e, _ in ranged)
+        and any(not r.is_exact for _, r in ranged)
+    )
+    fallback = (
+        default
+        if default is not None
+        else Status.UNAFFECTED
+        if inferred
+        else Status.UNKNOWN
+    )
     if blocker := next(((e, r) for e, r in undecided if e.status != fallback), None):
         return _undecidable(product, parsed, *blocker)
     listed = ", ".join(str(r) for _, r in ranged)
@@ -569,6 +588,7 @@ def classify_product(
         Reason.DEFAULT_STATUS,
         product,
         detail=f"{parsed.text} outside {listed}",
+        inferred=inferred,
     )
 
 
@@ -591,7 +611,7 @@ def _undecidable(
 def classify(
     version: str | None,
     products: Sequence[ProductVersions],
-    missing_default: Status = Status.UNKNOWN,
+    strict: bool = False,
 ) -> Classification:
     """
     Classify `version` against the affected products a match came from.
@@ -610,7 +630,7 @@ def classify(
     groups: dict[str | int, list[Classification]] = {}
     for i, product in enumerate(products):
         groups.setdefault(product.key or i, []).append(
-            classify_product(version, product, missing_default)
+            classify_product(version, product, strict)
         )
     results: list[Classification] = []
     for group in groups.values():
@@ -649,7 +669,8 @@ def products_from_rows(
     """
     Build classifier input from `AffectedProduct` rows.
     Entries are taken in insertion order (`Version.pk`), which is the record's order.
-    `defaultStatus` absent and "unknown" are indistinguishable after ingestion.
+    `defaultStatus` absent and "unknown" are only distinguishable for rows ingested since
+    `default_status_recorded` exists; older rows read as their stored value.
     """
     return [
         ProductVersions(
@@ -660,11 +681,15 @@ def products_from_rows(
                     less_than=v.less_than,
                     less_equal=v.less_equal,
                     version_type=v.version_type,
+                    changes=_changes(v.changes),
                     id=v.pk,
                 )
                 for v in sorted(ap.versions.all(), key=lambda v: v.pk)
             ],
-            default_status=Status(ap.default_status),
+            # Rows ingested before this was recorded fall back to the stored value.
+            default_status=None
+            if ap.default_status_recorded is False
+            else Status(ap.default_status),
             key=product_key(ap.vendor, ap.product, ap.package_name),
             distribution=is_distribution_product(
                 ap.vendor, ap.product, ap.collection_url
@@ -675,8 +700,23 @@ def products_from_rows(
     ]
 
 
+def _changes(data: object) -> tuple[Change, ...]:
+    """`changes` as stored at ingestion; malformed items are skipped."""
+    if not isinstance(data, list):
+        return ()
+    return tuple(
+        Change(str(c["at"]), Status(c["status"]))
+        for c in data
+        if isinstance(c, dict)
+        and isinstance(c.get("at"), str)
+        and c.get("status") in Status._value2member_map_
+    )
+
+
 def classify_affected_products(
-    version: str | None, affected_products: Iterable["AffectedProduct"]
+    version: str | None,
+    affected_products: Iterable["AffectedProduct"],
+    strict: bool = False,
 ) -> Classification:
     """Classify a package version against the given `AffectedProduct` rows."""
-    return classify(version, products_from_rows(affected_products))
+    return classify(version, products_from_rows(affected_products), strict)
