@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 BASE_WEIGHTS: dict[str, float] = {
     "nixpkgs-cpe": 1.0,
     "known-vuln": 1.0,
+    # `ProductMapping(relation=same)`: a human or a reviewed rule said so.
+    "curated": 1.0,
+    "rules": 1.0,
     "repo-url": 0.9,
     "name-exact": 0.8,
     "name-trigram": 0.7,
