@@ -53,11 +53,11 @@ class NixpkgsCpe(Matcher):
     limit = 500
 
     def hits(self, view: CveView, universe: Universe) -> Iterable[Hit]:
-        pairs: dict[tuple[str, str], tuple[ViewProduct, str]] = {}
+        pairs: dict[tuple[str, str], list[tuple[ViewProduct, str]]] = {}
         for product in view.matchable:
             for vendor, name in sorted(product.cpe_pairs):
-                pairs.setdefault(
-                    (vendor.lower(), name.lower()), (product, f"{vendor}:{name}")
+                pairs.setdefault((vendor.lower(), name.lower()), []).append(
+                    (product, f"{vendor}:{name}")
                 )
         condition = _any(Q(cpe_v=v, cpe_p=p) for v, p in pairs)
         if condition is None:
@@ -72,17 +72,17 @@ class NixpkgsCpe(Matcher):
             "cpe_product",
         )
         for attrpath, branch, vendor, name in rows:
-            product, cve_value = pairs[(vendor.lower(), name.lower())]
-            yield Hit(
-                attrpath,
-                branch,
-                1.0,
-                product,
-                "cpe",
-                cve_value,
-                "cpe",
-                f"{vendor}:{name}",
-            )
+            for product, cve_value in pairs[(vendor.lower(), name.lower())]:
+                yield Hit(
+                    attrpath,
+                    branch,
+                    1.0,
+                    product,
+                    "cpe",
+                    cve_value,
+                    "cpe",
+                    f"{vendor}:{name}",
+                )
 
 
 @register
@@ -130,12 +130,16 @@ class KnownVulnerability(Matcher):
 
 def _terms(
     view: CveView, min_length: int = 1
-) -> dict[str, tuple[ViewProduct, NameTerm]]:
-    terms: dict[str, tuple[ViewProduct, NameTerm]] = {}
+) -> dict[str, list[tuple[ViewProduct, NameTerm]]]:
+    """
+    Name terms and every product naming them: a veto on one product must not remove the
+    hits another product with the same name produces.
+    """
+    terms: dict[str, list[tuple[ViewProduct, NameTerm]]] = {}
     for product in view.matchable:
         for name in product.names:
             if len(name.term) >= min_length:
-                terms.setdefault(name.term, (product, name))
+                terms.setdefault(name.term, []).append((product, name))
     return terms
 
 
@@ -185,18 +189,18 @@ class NameExact(Matcher):
                 (match_attr, "attrpath", attrpath),
             ):
                 if key in terms:
-                    product, name = terms[key]
-                    cve_field, cve_value = _name_evidence(name)
-                    yield Hit(
-                        attrpath,
-                        branch,
-                        self.DERIVED_SCORE if _is_derived(name) else 1.0,
-                        product,
-                        cve_field,
-                        cve_value,
-                        pkg_field,
-                        pkg_value,
-                    )
+                    for product, name in terms[key]:
+                        cve_field, cve_value = _name_evidence(name)
+                        yield Hit(
+                            attrpath,
+                            branch,
+                            self.DERIVED_SCORE if _is_derived(name) else 1.0,
+                            product,
+                            cve_field,
+                            cve_value,
+                            pkg_field,
+                            pkg_value,
+                        )
                     break
 
 
@@ -226,7 +230,7 @@ class NameTrigram(Matcher):
                 "SELECT set_config('pg_trgm.similarity_threshold', %s, true)",
                 [str(self.THRESHOLD)],
             )
-            for term, (product, name) in terms.items():
+            for term, named in terms.items():
                 rows = self._fetch(
                     universe.packages()
                     .filter(TrigramSimilar(_column("match_pname"), Value(term)))
@@ -237,19 +241,20 @@ class NameTrigram(Matcher):
                     "pname",
                     "similarity",
                 )
-                cve_field, cve_value = _name_evidence(name)
                 for attrpath, branch, pname, similarity in rows:
-                    yield Hit(
-                        attrpath,
-                        branch,
-                        min(1.0, similarity),
-                        product,
-                        cve_field,
-                        cve_value,
-                        "pname",
-                        pname,
-                        similarity,
-                    )
+                    for product, name in named:
+                        cve_field, cve_value = _name_evidence(name)
+                        yield Hit(
+                            attrpath,
+                            branch,
+                            min(1.0, similarity),
+                            product,
+                            cve_field,
+                            cve_value,
+                            "pname",
+                            pname,
+                            similarity,
+                        )
 
 
 @register
@@ -280,8 +285,10 @@ class NamePrefix(Matcher):
             "match_pname",
         )
         for attrpath, branch, pname, match_pname in rows:
-            for term, (product, name) in terms.items():
-                if match_pname.startswith(f"{term}-"):
+            for term, named in terms.items():
+                if not match_pname.startswith(f"{term}-"):
+                    continue
+                for product, name in named:
                     cve_field, cve_value = _name_evidence(name)
                     yield Hit(
                         attrpath,
@@ -315,14 +322,16 @@ class NameSubstring(Matcher):
     MIN_INDEXED_LENGTH = 3
 
     def hits(self, view: CveView, universe: Universe) -> Iterable[Hit]:
-        terms: dict[str, tuple[ViewProduct, str, str]] = {}
+        terms: dict[str, list[tuple[ViewProduct, str, str]]] = {}
         for product in view.matchable:
             for cve_field, value in (
                 ("package_name", product.fields.package_name),
                 ("product", product.fields.product),
             ):
                 if value:
-                    terms.setdefault(value.lower(), (product, cve_field, value))
+                    terms.setdefault(value.lower(), []).append(
+                        (product, cve_field, value)
+                    )
         indexed = [t for t in terms if len(t) >= self.MIN_INDEXED_LENGTH]
         short = [t for t in terms if len(t) < self.MIN_INDEXED_LENGTH]
         for group in (indexed, short):
@@ -338,8 +347,9 @@ class NameSubstring(Matcher):
             for attrpath, branch, pname in rows:
                 lowered = pname.lower()
                 for term in group:
-                    if term in lowered:
-                        product, cve_field, value = terms[term]
+                    if term not in lowered:
+                        continue
+                    for product, cve_field, value in terms[term]:
                         yield Hit(
                             attrpath,
                             branch,
@@ -369,23 +379,25 @@ class RepoUrl(Matcher):
     limit = 50
 
     def hits(self, view: CveView, universe: Universe) -> Iterable[Hit]:
-        homepages: dict[str, tuple[ViewProduct, str, str]] = {}
-        attr_sets: dict[tuple[str, str], tuple[ViewProduct, str]] = {}
+        homepages: dict[str, list[tuple[ViewProduct, str, str]]] = {}
+        attr_sets: dict[tuple[str, str], list[tuple[ViewProduct, str]]] = {}
         for product in view.matchable:
             fields = product.fields
             for repo in product.repos:
-                homepages.setdefault(repo, (product, "repo", fields.repo or repo))
+                homepages.setdefault(repo, []).append(
+                    (product, "repo", fields.repo or repo)
+                )
             ecosystem = ecosystem_for(fields.collection_url)
             if ecosystem is None or not fields.package_name:
                 continue
             for page in registry_pages(ecosystem, fields.package_name):
-                homepages.setdefault(
-                    page, (product, "package_name", fields.package_name)
+                homepages.setdefault(page, []).append(
+                    (product, "package_name", fields.package_name)
                 )
             if ecosystem.attr_set_re:
                 name = ecosystem_package_name(ecosystem, fields.package_name)
-                attr_sets.setdefault(
-                    (name, ecosystem.attr_set_re), (product, fields.package_name)
+                attr_sets.setdefault((name, ecosystem.attr_set_re), []).append(
+                    (product, fields.package_name)
                 )
 
         if homepages:
@@ -397,17 +409,17 @@ class RepoUrl(Matcher):
                 "match_homepage",
             )
             for attrpath, branch, homepage, key in rows:
-                product, cve_field, cve_value = homepages[key]
-                yield Hit(
-                    attrpath,
-                    branch,
-                    1.0,
-                    product,
-                    cve_field,
-                    cve_value,
-                    "homepage",
-                    homepage,
-                )
+                for product, cve_field, cve_value in homepages[key]:
+                    yield Hit(
+                        attrpath,
+                        branch,
+                        1.0,
+                        product,
+                        cve_field,
+                        cve_value,
+                        "homepage",
+                        homepage,
+                    )
 
         condition = _any(
             Q(match_attr=name, attrpath__regex=attr_set) for name, attr_set in attr_sets
@@ -420,8 +432,10 @@ class RepoUrl(Matcher):
                 "match_attr",
             )
             for attrpath, branch, key in rows:
-                for (name, attr_set), (product, package_name) in attr_sets.items():
-                    if name == key and re.match(attr_set, attrpath):
+                for (name, attr_set), named in attr_sets.items():
+                    if name != key or not re.match(attr_set, attrpath):
+                        continue
+                    for product, package_name in named:
                         yield Hit(
                             attrpath,
                             branch,
@@ -432,6 +446,10 @@ class RepoUrl(Matcher):
                             "attrpath",
                             attrpath,
                         )
+
+
+# Registers `curated` and `rules`; they live apart because they read mappings, not names.
+from shared.matching import mapped  # noqa: E402, F401
 
 
 def matchers_for(slugs: Iterable[str] | None = None) -> list[Matcher]:

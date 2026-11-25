@@ -10,6 +10,7 @@ from typing import NamedTuple
 from cpe import CPE
 from django.db.models import Prefetch, QuerySet
 
+from shared.identity.mappings import NO_MAPPINGS, MappingRule, Mappings, load_mappings
 from shared.matching.names import (
     NON_NAMES,
     ecosystem_for,
@@ -240,6 +241,18 @@ class CveView:
     # Suggestion-level screens of today's `resolve_linkage_candidates`, not acted on here.
     exclusively_hosted_service: bool = False
     tags: frozenset[str] = field(default_factory=frozenset)
+    # `ProductMapping`s on the keys of the products.
+    mappings: Mappings = NO_MAPPINGS
+
+    def veto(self, product: ViewProduct | None, attrpath: str) -> MappingRule | None:
+        """
+        The mapping that removes `attrpath` as a candidate coming from `product`, if any. Only
+        the keys of that product count: a CVE naming two products, one vetoed, keeps the other's
+        candidates. Candidates from no product (`known-vuln`) are never vetoed.
+        """
+        if product is None or not self.mappings:
+            return None
+        return self.mappings.veto(product.keys, attrpath)
 
     @property
     def hardware_only(self) -> bool:
@@ -338,7 +351,7 @@ def _containers_prefetch() -> Prefetch:
 
 
 def build_cve_views(cves: QuerySet[CveRecord] | Iterable[str]) -> dict[str, CveView]:
-    """Views of many CVEs, by CVE id, in a constant number of queries (six)."""
+    """Views of many CVEs, by CVE id, in a constant number of queries (seven)."""
     queryset = (
         cves
         if isinstance(cves, QuerySet)
@@ -349,13 +362,19 @@ def build_cve_views(cves: QuerySet[CveRecord] | Iterable[str]) -> dict[str, CveV
     containers: dict[str, list[Container]] = {}
     for record in records:
         containers.setdefault(record.cve_id, []).extend(record.container.all())
-    return {
+    views = {
         cve_id: view_from_containers(cve_id, found)
         for cve_id, found in containers.items()
     }
+    mappings = load_mappings(
+        key for view in views.values() for p in view.products for key in p.keys
+    )
+    if not mappings:
+        return views
+    return {cve_id: replace(view, mappings=mappings) for cve_id, view in views.items()}
 
 
 def build_cve_view(cve: CveRecord | str) -> CveView:
-    """View of one CVE, in six queries."""
+    """View of one CVE, in seven queries."""
     cve_id = cve if isinstance(cve, str) else cve.cve_id
     return build_cve_views([cve_id]).get(cve_id) or CveView(cve_id=cve_id, products=())

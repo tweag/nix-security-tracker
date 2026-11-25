@@ -5,9 +5,12 @@ Per-attribute score of a suggestion: noisy-OR over its active matches,
 
 import logging
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from typing import Any
 
+from shared.identity.keys import stored_or_derived_keys
+from shared.identity.mappings import Mappings, load_mappings
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.matching import Match
 
@@ -46,13 +49,39 @@ class RankedAttribute:
     score: float
     # Contributing active matches, strongest first.
     matches: tuple[Match, ...]
+    # Mappings (`MappingRule.describe()`) that vetoed the other active matches of this
+    # attribute; an attribute all of whose matches are vetoed has score 0 and no `matches`.
+    vetoed_by: tuple[dict[str, Any], ...] = ()
 
 
-def rank_matches(matches: Iterable[Match]) -> list[RankedAttribute]:
-    """Group matches by attribute and rank attributes by noisy-OR score, then name."""
+# Product keys of an affected product pk, as `shared.identity.mappings.Key` tuples.
+ProductKeysOf = Mapping[int, frozenset[tuple[str, str, str]]]
+
+
+def rank_matches(
+    matches: Iterable[Match],
+    mappings: Mappings | None = None,
+    keys_of: ProductKeysOf | None = None,
+) -> list[RankedAttribute]:
+    """
+    Group matches by attribute and rank attributes by noisy-OR score, then name. With
+    `mappings`, a match whose evidence comes from an affected product that a mapping vetoes
+    for that attribute does not contribute (the same rule `Matcher.run` applies).
+    """
     by_attr: dict[str, list[Match]] = {}
+    vetoes: dict[str, list[dict[str, Any]]] = {}
     for match in matches:
-        by_attr.setdefault(match.attrpath, []).append(match)
+        rule = None
+        product = match.evidence.get("affected_product")
+        if mappings and keys_of and product in keys_of:
+            rule = mappings.veto(keys_of[product], match.attrpath)
+        by_attr.setdefault(match.attrpath, [])
+        if rule is None:
+            by_attr[match.attrpath].append(match)
+        elif (described := rule.describe()) not in vetoes.setdefault(
+            match.attrpath, []
+        ):
+            vetoes[match.attrpath].append(described)
     ranked = [
         RankedAttribute(
             attrpath=attrpath,
@@ -63,6 +92,7 @@ def rank_matches(matches: Iterable[Match]) -> list[RankedAttribute]:
                     key=lambda m: (-weight_of(m.matcher) * m.score, m.matcher),
                 )
             ),
+            vetoed_by=tuple(vetoes.get(attrpath, ())),
         )
         for attrpath, attr_matches in by_attr.items()
     ]
@@ -71,5 +101,15 @@ def rank_matches(matches: Iterable[Match]) -> list[RankedAttribute]:
 
 
 def rank_attributes(suggestion: CVEDerivationClusterProposal) -> list[RankedAttribute]:
-    """Ranked attributes of a suggestion with their contributing active matches, in one query."""
-    return rank_matches(Match.objects.active().filter(suggestion=suggestion))
+    """
+    Ranked attributes of a suggestion with their contributing active matches. Vetoes apply
+    here too, so a mapping takes effect in the ranking before reconciliation has retracted
+    the matches it vetoes (four queries; one when there are no matches).
+    """
+    matches = list(Match.objects.active().filter(suggestion=suggestion))
+    products = {
+        pk for m in matches if isinstance(pk := m.evidence.get("affected_product"), int)
+    }
+    keys_of = stored_or_derived_keys(products) if products else {}
+    mappings = load_mappings(k for keys in keys_of.values() for k in keys)
+    return rank_matches(matches, mappings, keys_of)

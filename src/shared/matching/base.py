@@ -37,6 +37,9 @@ class MatcherResult:
     truncated: int = 0
     # Whether `truncated` is exact; False when a query hit `ROW_CEILING`.
     truncated_exact: bool = True
+    # Attributes every hit of which a `ProductMapping` vetoed, with the deciding mapping
+    # (`MappingRule.describe()`). Vetoed hits count against no limit.
+    vetoed: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -78,6 +81,8 @@ class Hit(NamedTuple):
     pkg_field: str
     pkg_value: str
     similarity: float | None = None
+    # Further evidence, e.g. the `ProductMapping` behind a `curated` hit.
+    extra: dict[str, Any] | None = None
 
     def evidence(self) -> dict[str, Any]:
         evidence: dict[str, Any] = (
@@ -93,6 +98,8 @@ class Hit(NamedTuple):
         }
         if self.similarity is not None:
             evidence["similarity"] = round(self.similarity, 3)
+        if self.extra:
+            evidence |= self.extra
         return evidence
 
     def reason(self) -> tuple[Any, ...]:
@@ -168,9 +175,24 @@ class Matcher(ABC):
         self._ceiling_hit = False
 
     def run(self, view: CveView, universe: Universe) -> MatcherResult:
+        """Hits minus those a `ProductMapping` vetoes, one candidate per attribute."""
         self._ceiling_hit = False
-        hits = list(self.hits(view, universe))
-        return aggregate(hits, self.limit, ceiling_hit=self._ceiling_hit)
+        hits: list[Hit] = []
+        vetoed: dict[str, dict[str, Any]] = {}
+        for hit in self.hits(view, universe):
+            rule = view.veto(hit.product, hit.attrpath)
+            if rule is None:
+                hits.append(hit)
+            else:
+                vetoed.setdefault(hit.attrpath, rule.describe())
+        result = aggregate(hits, self.limit, ceiling_hit=self._ceiling_hit)
+        found = {hit.attrpath for hit in hits}
+        result.vetoed = {
+            attrpath: rule
+            for attrpath, rule in sorted(vetoed.items())
+            if attrpath not in found
+        }
+        return result
 
     def candidates(self, view: CveView, universe: Universe) -> list[Candidate]:
         return self.run(view, universe).candidates

@@ -218,11 +218,15 @@ def reconcile_matches(
                 ):
                     to_retract.append(match.pk)
                     outcome.retracted.append((slug, attrpath))
+                    vetoed: dict[str, Any] = {}
+                    if attrpath in result.vetoed:
+                        vetoed["vetoed_by"] = result.vetoed[attrpath]
                     event(
                         TrackerEvent.Kind.MATCH_RETRACTED,
                         slug,
                         attrpath,
                         score=match.score,
+                        **vetoed,
                     )
 
         Match.objects.bulk_create(to_create)

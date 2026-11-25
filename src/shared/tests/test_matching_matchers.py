@@ -29,6 +29,8 @@ def test_registry_has_initial_matchers() -> None:
         "name-prefix",
         "name-substring",
         "repo-url",
+        "curated",
+        "rules",
     }
 
 

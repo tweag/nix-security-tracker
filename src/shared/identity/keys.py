@@ -64,3 +64,17 @@ def persist_product_keys(affected: Sequence[AffectedProduct]) -> int:
     ]
     created = Through.objects.bulk_create(links, ignore_conflicts=True)
     return len(created)
+
+
+def stored_or_derived_keys(affected: Iterable[int]) -> dict[int, frozenset[KeySpec]]:
+    """Keys per affected product pk: the persisted ones, or derived for rows without any (three queries)."""
+    rows = AffectedProduct.objects.filter(pk__in=list(affected)).prefetch_related(
+        "cpes", "product_keys"
+    )
+    result: dict[int, frozenset[KeySpec]] = {}
+    for row in rows:
+        stored = frozenset(
+            KeySpec(k.kind, k.vendor, k.product) for k in row.product_keys.all()
+        )
+        result[row.pk] = stored or product_keys(ProductFields.of(row))
+    return result
