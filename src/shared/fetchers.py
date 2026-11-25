@@ -9,6 +9,7 @@ from uuid import UUID
 
 import pgpubsub
 import pgtrigger
+from cpe import CPE
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Exists, OuterRef
@@ -379,6 +380,110 @@ class Reconciliation:
     products_unchanged: int = 0
 
 
+CpeCriterion = tuple[
+    str, bool, bool, bool, str | None, str | None, str | None, str | None
+]
+
+
+def cpe_applicability_criteria(data: dict[str, Any]) -> list[CpeCriterion]:
+    """
+    The distinct criteria of a container's `cpeApplicability`, in order of appearance:
+    (criteria, vulnerable, negated, conjunctive, start including, start excluding, end including, end excluding).
+    """
+    seen: dict[CpeCriterion, None] = {}
+    for config in data.get("cpeApplicability", []):
+        nodes = config.get("nodes", [])
+        config_and = config.get("operator") == "AND" and len(nodes) > 1
+        for node in nodes:
+            matches = node.get("cpeMatch", [])
+            negated = bool(node.get("negate", node.get("negated", False)))
+            conjunctive = config_and or (
+                node.get("operator") == "AND" and len(matches) > 1
+            )
+            for match in matches:
+                criteria = match.get("criteria")
+                if not criteria:
+                    continue
+                key: CpeCriterion = (
+                    criteria,
+                    bool(match.get("vulnerable", True)),
+                    negated,
+                    conjunctive,
+                    match.get("versionStartIncluding"),
+                    match.get("versionStartExcluding"),
+                    match.get("versionEndIncluding"),
+                    match.get("versionEndExcluding"),
+                )
+                seen[key] = None
+    return list(seen)
+
+
+def _make_cpe_applicability(
+    container: models.Container, criterion: CpeCriterion
+) -> models.CpeApplicability | None:
+    criteria, vulnerable, negated, conjunctive, vsi, vse, vei, vee = criterion
+    try:
+        parsed = CPE(criteria)
+        part, vendor, product, version = (
+            parsed.get_part()[0],
+            parsed.get_vendor()[0],
+            parsed.get_product()[0],
+            parsed.get_version()[0],
+        )
+    except (NotImplementedError, ValueError, IndexError) as e:
+        logger.warning("Discarding malformed CPE criteria %r: %s", criteria, e)
+        return None
+    return models.CpeApplicability(
+        container=container,
+        criteria=criteria,
+        part=part,
+        vendor=vendor,
+        product=product,
+        version=version,
+        vulnerable=vulnerable,
+        negated=negated,
+        conjunctive=conjunctive,
+        version_start_including=vsi,
+        version_start_excluding=vse,
+        version_end_including=vei,
+        version_end_excluding=vee,
+    )
+
+
+def _stored_criterion(obj: models.CpeApplicability) -> CpeCriterion:
+    return (
+        obj.criteria,
+        obj.vulnerable,
+        obj.negated,
+        obj.conjunctive,
+        obj.version_start_including,
+        obj.version_start_excluding,
+        obj.version_end_including,
+        obj.version_end_excluding,
+    )
+
+
+def reconcile_cpe_applicability(
+    container: models.Container, data: dict[str, Any]
+) -> bool:
+    """Bring the stored criteria in line with `data`, keeping rows still present. Returns whether anything changed."""
+    stored = {_stored_criterion(obj): obj for obj in container.cpe_applicability.all()}
+    incoming = cpe_applicability_criteria(data)
+    wanted = set(incoming)
+    gone = [obj.pk for key, obj in stored.items() if key not in wanted]
+    new = [
+        row
+        for key in incoming
+        if key not in stored
+        if (row := _make_cpe_applicability(container, key)) is not None
+    ]
+    if gone:
+        models.CpeApplicability.objects.filter(pk__in=gone).delete()
+    if new:
+        models.CpeApplicability.objects.bulk_create(new)
+    return bool(gone or new)
+
+
 def _container_notify_triggers() -> list[str]:
     return [
         f"{models.Container._meta.label}:{trigger.name}"
@@ -555,6 +660,8 @@ def _update_container(
     if had_hosted_tag != (HOSTED_SERVICE_TAG in data.get("tags", [])):
         result.matching_changed = True
     _reconcile_products(obj, data.get("affected", []), result)
+    if reconcile_cpe_applicability(obj, data):
+        result.matching_changed = True
     result.containers_updated += 1
 
 
@@ -569,7 +676,11 @@ def _delete_container(obj: models.Container, result: Reconciliation) -> None:
 
 
 def _carries_matching_data(data: dict[str, Any]) -> bool:
-    return bool(data.get("affected")) or HOSTED_SERVICE_TAG in data.get("tags", [])
+    return (
+        bool(data.get("affected"))
+        or bool(cpe_applicability_criteria(data))
+        or HOSTED_SERVICE_TAG in data.get("tags", [])
+    )
 
 
 def _org_key(uuid: str | None) -> str | None:
@@ -704,6 +815,11 @@ def make_container(
     obj = models.Container.objects.create(cve=cve, **_container_fields(data, _type))
     _set_container_content(obj, data)
     obj.affected.set(make_hashed_product(entry) for entry in data.get("affected", []))
+    models.CpeApplicability.objects.bulk_create(
+        row
+        for criterion in cpe_applicability_criteria(data)
+        if (row := _make_cpe_applicability(obj, criterion)) is not None
+    )
     return obj
 
 

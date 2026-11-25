@@ -12,6 +12,7 @@ from shared.listeners.automatic_linkage import build_new_links
 from shared.models.cve import (
     AffectedProduct,
     Container,
+    CpeApplicability,
     CveRecord,
     Description,
     Reference,
@@ -400,3 +401,104 @@ def test_duplicate_records(db: None, suggested: int | None) -> None:
     for r in records:
         bound = Version.objects.filter(affectedproduct__container__cve=r).get()
         assert bound.less_than == ("9" if r == expected else "1.2")
+
+
+def applicability(*nodes: list[dict[str, Any]], operator: str | None = None) -> dict:
+    config: dict[str, Any] = {
+        "nodes": [
+            {"operator": "OR", "negate": False, "cpeMatch": matches}
+            for matches in nodes
+        ]
+    }
+    if operator is not None:
+        config["operator"] = operator
+    return config
+
+
+def with_applicability(*configs: dict[str, Any]) -> dict[str, Any]:
+    data = record()
+    data["containers"]["cna"]["cpeApplicability"] = list(configs)
+    return data
+
+
+FOO_CPE = "cpe:2.3:a:acme:foo:*:*:*:*:*:*:*:*"
+BAR_CPE = "cpe:2.3:a:acme:bar:*:*:*:*:*:*:*:*"
+
+
+def foo_range(end: str = "1.2") -> dict[str, Any]:
+    return {
+        "vulnerable": True,
+        "criteria": FOO_CPE,
+        "versionStartIncluding": "0",
+        "versionEndExcluding": end,
+    }
+
+
+def test_cpe_applicability_is_parsed(db: None) -> None:
+    data = with_applicability(
+        applicability(
+            [foo_range(), foo_range(), {"vulnerable": True, "criteria": "x"}]
+        ),
+        applicability(
+            [{"vulnerable": True, "criteria": BAR_CPE}],
+            [
+                {
+                    "vulnerable": False,
+                    "criteria": "cpe:2.3:o:linux:linux_kernel:-:*:*:*:*:*:*:*",
+                }
+            ],
+            operator="AND",
+        ),
+    )
+
+    cve = make_cve(data)
+
+    rows = CpeApplicability.objects.filter(container__cve=cve).order_by("pk")
+    assert [
+        (r.part, r.vendor, r.product, r.version, r.vulnerable, r.conjunctive)
+        for r in rows
+    ] == [
+        ("a", "acme", "foo", "*", True, False),
+        ("a", "acme", "bar", "*", True, True),
+        ("o", "linux", "linux_kernel", "-", False, True),
+    ]
+    assert (rows[0].version_start_including, rows[0].version_end_excluding) == (
+        "0",
+        "1.2",
+    )
+
+
+def test_cpe_applicability_change_is_reconciled(db: None) -> None:
+    cve = make_cve(
+        with_applicability(
+            applicability([foo_range(), {"vulnerable": True, "criteria": BAR_CPE}])
+        )
+    )
+    bar = CpeApplicability.objects.get(product="bar")
+
+    result = reconcile_cve(
+        cve,
+        with_applicability(
+            applicability([foo_range("1.3"), {"vulnerable": True, "criteria": BAR_CPE}])
+        ),
+    )
+
+    assert result.matching_changed
+    assert CpeApplicability.objects.get(product="bar").pk == bar.pk
+    assert CpeApplicability.objects.get(product="foo").version_end_excluding == "1.3"
+    assert updates_notified() == 1
+
+
+def test_cpe_applicability_arrives_on_legacy_rows(db: None) -> None:
+    data = with_applicability(applicability([foo_range()]))
+    cve = make_cve(data)
+    CpeApplicability.objects.all().delete()
+    CveRecord.objects.update(content_hash=None)
+    Container.objects.update(content_hash=None)
+    cve.refresh_from_db()
+
+    result = reconcile_cve(cve, data)
+
+    assert result.matching_changed
+    assert CpeApplicability.objects.filter(container__cve=cve).count() == 1
+    assert updates_notified() == 1

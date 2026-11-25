@@ -429,6 +429,38 @@ class Container(models.Model):
         ]
 
 
+class CpeApplicability(models.Model):
+    """
+    One criterion of a container's `cpeApplicability` (CVE JSON 5.1), parsed once at ingestion.
+
+    Deduplicated per container. The tree of configurations and nodes is flattened: a criterion that only
+    applies together with others (an `AND` configuration, typically "application X on platform Y") is
+    marked `conjunctive`, one in a negated node `negated`.
+    """
+
+    container = models.ForeignKey(
+        Container, related_name="cpe_applicability", on_delete=models.CASCADE
+    )
+    criteria = models.CharField(max_length=2048)
+    # Parsed from `criteria` with the `cpe` library, as returned by it (CPE escaping kept).
+    part = models.CharField(max_length=1)
+    vendor = models.CharField(max_length=512)
+    product = models.CharField(max_length=2048)
+    version = models.CharField(max_length=1024)
+    vulnerable = models.BooleanField()
+    negated = models.BooleanField(default=False)
+    conjunctive = models.BooleanField(default=False)
+    version_start_including = models.CharField(max_length=1024, null=True)
+    version_start_excluding = models.CharField(max_length=1024, null=True)
+    version_end_including = models.CharField(max_length=1024, null=True)
+    version_end_excluding = models.CharField(max_length=1024, null=True)
+
+    class Meta:  # type: ignore[override]
+        indexes = [
+            Index(fields=["vendor", "product"], name="cpeapplicability_vp_idx"),
+        ]
+
+
 ###
 #
 # Internal models
