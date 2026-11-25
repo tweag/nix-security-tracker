@@ -367,7 +367,7 @@ def _event(
     )
 
 
-def _lock(suggestion_ids: Iterable[int]) -> None:
+def lock_suggestions(suggestion_ids: Iterable[int]) -> None:
     """Serialise exposure writers per suggestion until the end of the transaction."""
     ids = sorted(set(suggestion_ids))
     if not ids:
@@ -504,7 +504,7 @@ def reconcile_exposures(
     run = _Run(cause=cause, batch=result.batch)
     branches = tracked_branches()
     with transaction.atomic():
-        _lock([suggestion.pk])
+        lock_suggestions([suggestion.pk])
         status, rejection = CVEDerivationClusterProposal.objects.values_list(
             "status", "rejection_reason"
         ).get(pk=suggestion.pk)
@@ -628,7 +628,7 @@ def apply_branch_changes(
             for c in changes.filter(attrpath__in=attrs).select_related("old_evaluation")
         }
         with transaction.atomic():
-            _lock(chunk)
+            lock_suggestions(chunk)
             ctx = _load_context(chunk, attrs)
             packages = {
                 p.attrpath: p
