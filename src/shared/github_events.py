@@ -139,7 +139,7 @@ class PullRequest:
         fragment.base_ref_name()
         fragment.merge_commit.oid()
         fragment.base_repository.name_with_owner()
-        labels = fragment.labels(first=20)
+        labels = fragment.labels(first=10)
         select_page_info(labels)
         cls.select_labels(labels.nodes)
         timeline = fragment.timeline_items(first=20, item_types=cls.TIMELINE_TYPES)
@@ -392,7 +392,7 @@ class Issue:
         select_page_info(timeline)
         cls.select_timeline(timeline.nodes)
         references = fragment.timeline_items(
-            first=20, item_types=cls.REFERENCE_TYPES, __alias__="references"
+            first=10, item_types=cls.REFERENCE_TYPES, __alias__="references"
         )
         select_page_info(references)
         cls.select_references(references.nodes)
