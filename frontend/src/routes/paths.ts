@@ -12,6 +12,7 @@ export const paths = {
   issues,
   issue: `${issues}/:code`,
   notifications: "/notifications",
+  possiblyFixed: "/possibly-fixed",
   user,
   userSubscriptions: `${user}/subscriptions`,
   userTokens: `${user}/tokens`,

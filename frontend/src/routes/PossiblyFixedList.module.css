@@ -1,0 +1,16 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th {
+  text-align: left;
+  padding: var(--space-xs);
+  border-bottom: var(--border-thin) solid var(--gray);
+}
+
+.table td {
+  padding: var(--space-xs);
+  vertical-align: baseline;
+  border-bottom: var(--border-thin) solid var(--light-gray);
+}

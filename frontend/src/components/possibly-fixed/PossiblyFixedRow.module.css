@@ -1,0 +1,12 @@
+.attrpath {
+  overflow-wrap: anywhere;
+}
+
+.formRow td {
+  background-color: var(--light-gray);
+}
+
+.commitInput {
+  width: 28em;
+  max-width: 100%;
+}

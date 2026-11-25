@@ -1,14 +1,15 @@
 import { TabList, TabsRoot, TabTrigger } from "@ark-ui/react";
-import { GlobeCheckIcon, ShieldIcon } from "lucide-preact";
+import { GlobeCheckIcon, HistoryIcon, ShieldIcon } from "lucide-preact";
 import { useLocation } from "wouter-preact";
 import { paths } from "@/routes/paths";
 import styles from "./NavTabs.module.css";
 
-type NavTab = "suggestions" | "issues";
+type NavTab = "suggestions" | "issues" | "possibly-fixed";
 
 function getActiveTab(path: string): NavTab | "" {
   if (path.startsWith(paths.suggestions)) return "suggestions";
   if (path.startsWith(paths.issues)) return "issues";
+  if (path.startsWith(paths.possiblyFixed)) return "possibly-fixed";
   return "";
 }
 
@@ -42,6 +43,14 @@ export function NavTabs() {
         >
           <GlobeCheckIcon size="1.5em" />
           <span className="no-line-breaks">Nixpkgs Issues</span>
+        </TabTrigger>
+        <TabTrigger
+          value="possibly-fixed"
+          onClick={() => setLocation(paths.possiblyFixed)}
+          className={`column centered ${styles.tab} cursor-pointer`}
+        >
+          <HistoryIcon size="1.5em" />
+          <span className="no-line-breaks">Possibly fixed</span>
         </TabTrigger>
       </TabList>
     </TabsRoot>

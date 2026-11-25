@@ -11,6 +11,7 @@ import { Home } from "@/routes/Home";
 import { IssueDetail } from "@/routes/IssueDetail";
 import { IssueList } from "@/routes/IssueList";
 import { NotificationCenter } from "@/routes/NotificationCenter";
+import { PossiblyFixedList } from "@/routes/PossiblyFixedList";
 import { paths } from "@/routes/paths";
 import { SuggestionDetail } from "@/routes/SuggestionDetail";
 import { SuggestionDetailByCve } from "@/routes/SuggestionDetailByCve";
@@ -47,6 +48,7 @@ export function App() {
             <Route path={paths.issue} component={IssueDetail} />
             <Route path={paths.issues} component={IssueList} />
             <Route path={paths.notifications} component={NotificationCenter} />
+            <Route path={paths.possiblyFixed} component={PossiblyFixedList} />
             <Route path={paths.home} component={Home} />
             <Route path={paths.user}>
               <Redirect to={paths.userSubscriptions} />
