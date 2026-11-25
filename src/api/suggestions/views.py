@@ -654,7 +654,9 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
             "or remove it with `verdict: null`. "
             "Fails without modifying anything if any attribute has neither a match nor an exposure on the suggestion, "
             "if the branch is not tracked, or, on removal, if an attribute has no verdict there. "
-            "Setting a verdict an attribute already has is a no-op."
+            "Setting a verdict an attribute already has is a no-op. "
+            "An all-branches `irrelevant` ignores the package as the packages endpoint does (it leaves the package list and a published issue); "
+            "replacing or removing it restores the package. A branch-specific `irrelevant` keeps the package listed."
         ),
         request=VerdictUpdateSerializer,
         responses={

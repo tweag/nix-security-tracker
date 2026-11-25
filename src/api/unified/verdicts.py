@@ -12,9 +12,14 @@ from django.db.models import QuerySet
 
 from shared.derived_state import remove_verdict, set_verdict
 from shared.exposure import tracked_branches
-from shared.models.linkage import BulkValidationError, CVEDerivationClusterProposal
+from shared.models.linkage import (
+    BulkValidationError,
+    CVEDerivationClusterProposal,
+    PackageOverlay,
+)
 from shared.models.matching import Exposure, Match, Verdict
 from shared.models.nix_evaluation import NixpkgsBranch
+from shared.models.package import PackageAttrpath
 
 
 @dataclass(frozen=True)
@@ -113,6 +118,58 @@ def apply_verdicts(
                     fix_commit=change.fix_commit,
                     batch=batch,
                 )
+        if change.branch is None:
+            sync_ignore_overlays(suggestion, change.attrpaths)
+
+
+def sync_ignore_overlays(
+    suggestion: CVEDerivationClusterProposal, attrpaths: Iterable[str]
+) -> None:
+    """
+    Make the package list agree with the verdicts: an attribute is ignored (overlay, hidden
+    from the cached package list and so from a published issue) exactly when it has an
+    all-branches `irrelevant` verdict, as `ignore_packages` / `restore_packages` leave it.
+    A branch-specific `irrelevant` leaves the package listed: it is still relevant elsewhere.
+    Attributes the package list does not show (no link) have nothing to hide.
+    """
+    attrpaths = list(attrpaths)
+    irrelevant = set(
+        Verdict.objects.filter(
+            suggestion=suggestion,
+            attrpath__in=attrpaths,
+            branch=None,
+            verdict=Verdict.Kind.IRRELEVANT,
+        ).values_list("attrpath", flat=True)
+    )
+    overlays = set(
+        suggestion.package_overlays.filter(
+            package_attribute__in=attrpaths, type=PackageOverlay.Type.IGNORED
+        ).values_list("package_attribute", flat=True)
+    )
+    suggestion.ensure_fresh_cache()
+    listed = suggestion.cached.payload["original_packages"]
+    to_ignore = [a for a in sorted(irrelevant - overlays) if a in listed]
+    to_restore = overlays - irrelevant
+    if not to_ignore and not to_restore:
+        return
+    package_ids = dict(
+        PackageAttrpath.objects.filter(attrpath__in=to_ignore).values_list(
+            "attrpath", "package_id"
+        )
+    )
+    for attr in to_ignore:
+        if attr in package_ids:
+            suggestion.package_overlays.get_or_create(
+                package_attribute=attr,
+                defaults={
+                    "type": PackageOverlay.Type.IGNORED,
+                    "package_id": package_ids[attr],
+                },
+            )
+    suggestion.package_overlays.filter(
+        package_attribute__in=to_restore, type=PackageOverlay.Type.IGNORED
+    ).delete()
+    suggestion._recompute_package_cache()  # pyright: ignore[reportPrivateUsage]
 
 
 def bulk_apply_verdicts(
