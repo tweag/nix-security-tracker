@@ -95,6 +95,16 @@ def test_normalise_name() -> None:
         ("git://git@gitlab.com:gitlab-org/gitlab.git", "gitlab.com/gitlab-org/gitlab"),
         ("github.com/foo/bar", "github.com/foo/bar"),
         ("https://github.com", None),
+        # GitLab projects can be in nested groups.
+        (
+            "https://gitlab.freedesktop.org/xorg/lib/libxi",
+            "gitlab.freedesktop.org/xorg/lib/libxi",
+        ),
+        (
+            "https://gitlab.gnome.org/GNOME/glib/-/tree/main/gio",
+            "gitlab.gnome.org/gnome/glib",
+        ),
+        ("https://gitlab.com/group/-/issues", None),
         (
             "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
             "git.kernel.org/pub/scm/linux/kernel/git/stable/linux",

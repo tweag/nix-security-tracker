@@ -96,6 +96,17 @@ FORGE_HOSTS = frozenset(
         "gitea.com",
     }
 )
+# GitLab instances, whose projects can sit in nested groups (`xorg/lib/libx11`); a project URL
+# ends where `/-/` starts.
+GITLAB_HOSTS = frozenset(
+    {
+        "gitlab.com",
+        "gitlab.gnome.org",
+        "gitlab.freedesktop.org",
+        "invent.kde.org",
+        "salsa.debian.org",
+    }
+)
 
 
 def normalise_repo(url: str | None) -> str | None:
@@ -122,7 +133,13 @@ def normalise_repo(url: str | None) -> str | None:
         parts = [p for p in path.split("/") if p]
         if len(parts) < 2:
             return None
-        path = "/".join(parts[:2])
+        if host in GITLAB_HOSTS:
+            project = parts[: parts.index("-")] if "-" in parts else parts
+            if len(project) < 2:
+                return None
+            path = "/".join(project)
+        else:
+            path = "/".join(parts[:2])
         path = _url_tail.sub("", path, count=1)
     return f"{host}/{path}" if path else host
 

@@ -87,3 +87,50 @@ def test_view_reads_persisted_keys(make_container: Callable[..., Container]) -> 
     product.product_keys.add(stored)
     view = build_cve_view(container.cve)
     assert view.products[0].keys == {KeySpec("cna", "", "old")}
+
+
+def test_collection_url_with_package_name_is_not_a_repository() -> None:
+    from shared.matching.view import ProductFields, product_keys
+
+    keys = product_keys(
+        ProductFields(
+            vendor="Red Hat",
+            product="Red Hat Enterprise Linux 9",
+            package_name="sudo",
+            collection_url="https://access.redhat.com/downloads/content/package-browser",
+        )
+    )
+    assert {k.kind for k in keys} == {"cna", "purl"}
+    assert (
+        KeySpec(
+            "purl",
+            "https://access.redhat.com/downloads/content/package-browser",
+            "sudo",
+        )
+        in keys
+    )
+
+
+def test_resync_drops_links_no_longer_derived(db: None) -> None:
+    product = make_affected_product({"vendor": "acme", "product": "widget"})
+    stale, _ = ProductKey.objects.get_or_create(kind="repo", vendor="x", product="y")
+    product.product_keys.add(stale)
+    call_command("backfill_product_keys", "--all", stdout=StringIO())
+    assert keys(product) == {("cna", "acme", "widget")}
+
+
+def test_qualified_package_name_in_a_collection_path_is_not_a_repository() -> None:
+    from shared.matching.view import ProductFields, repositories
+
+    assert (
+        repositories(
+            ProductFields(
+                package_name="openshift/ose-rhel-coreos-9",
+                collection_url="https://access.redhat.com/downloads/content/package-browser",
+            )
+        )
+        == ()
+    )
+    assert repositories(
+        ProductFields(package_name="owner/repo", collection_url="https://github.com")
+    ) == ("github.com/owner/repo",)

@@ -50,12 +50,26 @@ def keys_of(affected: Sequence[AffectedProduct]) -> dict[int, frozenset[KeySpec]
     return {row.pk: product_keys(ProductFields.of(row)) for row in affected}
 
 
-def persist_product_keys(affected: Sequence[AffectedProduct]) -> int:
+def persist_product_keys(
+    affected: Sequence[AffectedProduct], *, replace: bool = False
+) -> int:
     """
-    Attach the derived keys to each affected product, additively and idempotently.
+    Attach the derived keys to each affected product, idempotently. With `replace`, also drop
+    links derivation no longer produces (after a change to `product_keys`); keys from another
+    source attached through `attach_product_keys` would have to be re-attached afterwards.
     Returns the number of (affected product, key) links offered.
     """
-    return attach_product_keys(keys_of(affected))
+    derived = keys_of(affected)
+    offered = attach_product_keys(derived)
+    if replace:
+        ids = get_or_create_keys(spec for specs in derived.values() for spec in specs)
+        stale = Q()
+        for row, specs in derived.items():
+            stale |= Q(affectedproduct_id=row) & ~Q(
+                productkey_id__in=[ids[spec.capped()] for spec in specs]
+            )
+        Through.objects.filter(stale).delete()
+    return offered
 
 
 def attach_product_keys(links: Mapping[int, Iterable[KeySpec]]) -> int:

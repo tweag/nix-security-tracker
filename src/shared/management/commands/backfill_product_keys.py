@@ -16,7 +16,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--all",
             action="store_true",
-            help="Also revisit rows that already have keys (after a change to key derivation)",
+            help="Resync every row, also dropping links derivation no longer produces "
+            "(after a change to key derivation)",
         )
 
     def handle(self, *args: Any, **options: Any) -> None:
@@ -37,7 +38,7 @@ class Command(BaseCommand):
             if not batch:
                 break
             with transaction.atomic():
-                links += persist_product_keys(batch)
+                links += persist_product_keys(batch, replace=options["all"])
             total += len(batch)
             last = batch[-1].pk
             if options["verbosity"] > 1:

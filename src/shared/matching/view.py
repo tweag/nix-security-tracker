@@ -164,13 +164,14 @@ def repositories(fields: ProductFields) -> tuple[str, ...]:
     candidates = [normalise_repo(fields.repo)]
     if fields.collection_url:
         collection = normalise_repo(fields.collection_url)
+        host = fields.collection_url.strip().split("://", 1)[-1].rstrip("/")
         # `collectionURL: https://github.com/owner/repo`, or `https://github.com` + `owner/repo`.
-        if collection and collection.count("/") >= 2:
+        # With a `packageName` a collection URL with a path is the collection the package is in
+        # (`https://access.redhat.com/downloads/content/package-browser`), not its repository.
+        if collection and collection.count("/") >= 2 and not fields.package_name:
             candidates.append(collection)
-        elif collection and fields.package_name and "/" in fields.package_name:
-            candidates.append(
-                normalise_repo(f"https://{collection}/{fields.package_name}")
-            )
+        elif "/" not in host and fields.package_name and "/" in fields.package_name:
+            candidates.append(normalise_repo(f"https://{host}/{fields.package_name}"))
     if fields.package_name:
         candidates.append(go_module_repo(fields.package_name))
     for repo in candidates:
