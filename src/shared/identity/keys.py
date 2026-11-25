@@ -3,7 +3,7 @@ Persist the `ProductKey` rows `product_keys()` derives from affected products, s
 mappings, reverse matching and curation can find CVEs by product identity in SQL.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 
 from django.db.models import Q
 
@@ -55,15 +55,23 @@ def persist_product_keys(affected: Sequence[AffectedProduct]) -> int:
     Attach the derived keys to each affected product, additively and idempotently.
     Returns the number of (affected product, key) links offered.
     """
-    derived = keys_of(affected)
-    ids = get_or_create_keys(spec for specs in derived.values() for spec in specs)
-    links = [
+    return attach_product_keys(keys_of(affected))
+
+
+def attach_product_keys(links: Mapping[int, Iterable[KeySpec]]) -> int:
+    """
+    Link affected products (by pk) to these keys, creating missing keys; additive and
+    idempotent. A second source of keys (e.g. container-level `cpeApplicability` pairs via
+    `cpe_pair_keys`) attaches through here.
+    """
+    wanted = {row: {spec.capped() for spec in specs} for row, specs in links.items()}
+    ids = get_or_create_keys(spec for specs in wanted.values() for spec in specs)
+    rows = [
         Through(affectedproduct_id=row, productkey_id=ids[spec])
-        for row, specs in derived.items()
+        for row, specs in wanted.items()
         for spec in specs
     ]
-    created = Through.objects.bulk_create(links, ignore_conflicts=True)
-    return len(created)
+    return len(Through.objects.bulk_create(rows, ignore_conflicts=True))
 
 
 def stored_or_derived_keys(affected: Iterable[int]) -> dict[int, frozenset[KeySpec]]:

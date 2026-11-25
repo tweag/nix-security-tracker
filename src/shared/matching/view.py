@@ -118,10 +118,8 @@ def product_keys(fields: ProductFields) -> frozenset[KeySpec]:
     keys: set[KeySpec] = set()
     for cpe_name in fields.cpes:
         parsed = parse_cpe(cpe_name)
-        if parsed.is_hardware:
-            continue
-        for vendor, product in parsed.pairs:
-            keys.add(KeySpec(ProductKey.Kind.CPE, norm(vendor), norm(product)))
+        if not parsed.is_hardware:
+            keys |= cpe_pair_keys(parsed.pairs)
     vendor = norm(fields.vendor) if _usable(fields.vendor) else ""
     if _usable(fields.product):
         keys.add(KeySpec(ProductKey.Kind.CNA, vendor, norm(fields.product)))
@@ -145,6 +143,19 @@ def product_keys(fields: ProductFields) -> frozenset[KeySpec]:
         if owner and name:
             keys.add(KeySpec(ProductKey.Kind.REPO, owner, name))
     return frozenset(key.capped() for key in keys)
+
+
+def cpe_pair_keys(pairs: Iterable[tuple[str, str]]) -> frozenset[KeySpec]:
+    """
+    `cpe` keys of non-hardware CPE (vendor, product) pairs. The one place CPE keys are made:
+    pairs from another source (the container-level `cpeApplicability` CPEs) go through here too.
+    """
+    norm = ProductKey.normalise
+    return frozenset(
+        KeySpec(ProductKey.Kind.CPE, norm(vendor), norm(product)).capped()
+        for vendor, product in pairs
+        if vendor and product
+    )
 
 
 def repositories(fields: ProductFields) -> tuple[str, ...]:
