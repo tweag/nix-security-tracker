@@ -288,7 +288,7 @@ def produce_linkage_candidates(
         .filter(
             match_q,
             metadata__isnull=False,
-            parent_evaluation__in=NixEvaluation.objects.latest_completed_per_branch(),
+            parent_evaluation__in=NixEvaluation.objects.current(),
         )
         .select_related("metadata", "package_link")
         .annotate(**annotations)

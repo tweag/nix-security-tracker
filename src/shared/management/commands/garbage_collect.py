@@ -6,6 +6,8 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandParser, DjangoHelpFormatter
 from django.db import connection, models
 from django.db.models import (
+    Exists,
+    OuterRef,
     Q,
     QuerySet,
 )
@@ -25,9 +27,11 @@ from shared.models import (  # type: ignore
 )
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.nix_evaluation import (
+    NixChannel,
     NixDerivation,
     NixDerivationMeta,
     NixEvaluation,
+    NixpkgsBranch,
 )
 from shared.models.package import PackageAttrpath
 
@@ -208,9 +212,20 @@ class Command(BaseCommand):
                 cve_links_proposals__isnull=False,
             ).values_list("id", flat=True)
         )
-        stale_evaluations = NixEvaluation.objects.filter(
-            state=NixEvaluation.EvaluationState.COMPLETED,
-        ).exclude(pk__in=NixEvaluation.objects.latest_completed_per_branch())
+        # Keep the current evaluation of each tracked branch and anything newer that is not snapshotted yet.
+        # Also keep the latest by completion time, which is what consumers fall back to before the first snapshot.
+        current_or_newer = NixpkgsBranch.objects.filter(
+            evaluations=OuterRef("pk"),
+            channels__state__in=NixChannel.TRACKED_STATES,
+            current_evaluation__created_at__lte=OuterRef("created_at"),
+        )
+        stale_evaluations = (
+            NixEvaluation.objects.filter(
+                state=NixEvaluation.EvaluationState.COMPLETED,
+            )
+            .exclude(pk__in=NixEvaluation.objects.latest_completed_per_branch())
+            .exclude(Exists(current_or_newer))
+        )
 
         _merge(
             totals,

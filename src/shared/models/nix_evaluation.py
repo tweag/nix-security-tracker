@@ -6,7 +6,7 @@ from django.contrib.postgres.indexes import BTreeIndex, GinIndex
 from django.contrib.postgres.search import SearchVectorField
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
-from django.db.models import F, Window
+from django.db.models import F, OuterRef, Q, Subquery, Window
 from django.db.models.functions import RowNumber
 from django.utils.translation import gettext_lazy as _
 from pgtrigger import UpdateSearchVector
@@ -238,6 +238,35 @@ class NixEvaluationQuerySet(models.QuerySet):
             state=NixEvaluation.EvaluationState.COMPLETED,
             on_branches__channels__state__in=NixChannel.TRACKED_STATES,
         ).latest_per_branch()
+
+    def current(self) -> "NixEvaluationQuerySet":
+        """
+        The current evaluation of every tracked branch, by its explicit pointer.
+        Until a branch's first snapshot sets the pointer, its latest completed evaluation by completion time.
+        """
+        tracked = NixpkgsBranch.objects.filter(
+            channels__state__in=NixChannel.TRACKED_STATES
+        )
+        latest_completed = (
+            NixEvaluation.objects.filter(
+                on_branches=OuterRef("pk"),
+                state=NixEvaluation.EvaluationState.COMPLETED,
+            )
+            .order_by("-updated_at")
+            .values("pk")[:1]
+        )
+        return self.filter(
+            Q(
+                pk__in=tracked.filter(current_evaluation__isnull=False).values(
+                    "current_evaluation"
+                )
+            )
+            | Q(
+                pk__in=tracked.filter(current_evaluation__isnull=True)
+                .annotate(latest=Subquery(latest_completed))
+                .values("latest")
+            )
+        )
 
 
 class NixEvaluation(TimeStampMixin):

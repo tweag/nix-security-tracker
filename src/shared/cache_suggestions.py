@@ -251,7 +251,7 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
         # Oldest first, primary key is tie breaker.
         # That way the most recent information will end up being displayed.
         # Sorting in the database is surely faster than conditional update in Python, since there's a low limit of `settings.MAX_MATCHES`
-        .order_by("parent_evaluation__updated_at", "pk")
+        .order_by("parent_evaluation__created_at", "parent_evaluation_id", "pk")
         .all()
     )
 
@@ -388,7 +388,8 @@ def group_attributes_by_package(
     """
     # Oldest first, so the most recent package of an attribute wins.
     oldest_first = sorted(
-        derivations, key=lambda d: (d.parent_evaluation.updated_at, d.pk)
+        derivations,
+        key=lambda d: (d.parent_evaluation.created_at, d.parent_evaluation_id, d.pk),
     )
     # Every derivation has a package: matching only picks derivations with metadata, and caching clusters them.
     package_of: dict[str, PackageModel] = {

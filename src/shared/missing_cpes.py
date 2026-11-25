@@ -83,7 +83,7 @@ def missing_cpes() -> list[MissingCPEs]:
         product,
     ) in NixDerivation.objects.filter(
         attribute__in=candidates,
-        parent_evaluation__in=NixEvaluation.objects.latest_completed_per_branch(),
+        parent_evaluation__in=NixEvaluation.objects.current(),
     ).values_list(
         "attribute",
         "parent_evaluation__commit_sha1",
