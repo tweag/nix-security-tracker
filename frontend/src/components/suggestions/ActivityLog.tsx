@@ -2,12 +2,16 @@ import { FormatRelativeTime } from "@ark-ui/react";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
+  ChevronsDownIcon,
+  GavelIcon,
+  GitCompareIcon,
   InboxIcon,
   LinkIcon,
   type LucideIcon,
   PackageMinusIcon,
   PackagePlusIcon,
   RefreshCwIcon,
+  ScaleIcon,
   Trash2Icon,
   UnlinkIcon,
   UserMinusIcon,
@@ -17,6 +21,7 @@ import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { useGetSuggestionActivityLog } from "@/api/generated/endpoints";
 import { type ActivityLogEntry, SuggestionStatusEnum } from "@/api/generated/models";
+import { causeLabel, phraseChange, summariseChanges } from "@/components/matching/trackerPhrases";
 import { Collapsible } from "@/components/ui/Collapsible";
 import { ExternalLink } from "@/components/ui/ExternalLink";
 import { InlineIcon } from "@/components/ui/InlineIcon";
@@ -41,6 +46,12 @@ type Props = {
 
 type ObjectItem = { key: string; node: ComponentChildren };
 
+// Changes of a tracker batch shown at once when it is expanded.
+const SHOWN_CHANGES = 25;
+
+const trackerGroups = ["matches", "exposures", "verdicts", "mixed"] as const;
+type TrackerGroup = (typeof trackerGroups)[number];
+
 const operations = ["ignore", "restore", "add", "delete"] as const;
 type Operation = (typeof operations)[number];
 
@@ -50,12 +61,17 @@ type ActionCategory =
   | { kind: "reference"; restored: boolean }
   | { kind: "maintainer"; op: Operation }
   | { kind: "rematch" }
+  | { kind: "tracker"; group: TrackerGroup }
   | { kind: "status"; value: SuggestionStatusEnum | null };
 
 // FIXME(@fricklerhandwerk): The API should return the action as an enum, so the category can be looked up exhaustively instead of guessed from substrings.
 function classifyAction(entry: ActivityLogEntry): ActionCategory {
   if (entry.action === "create") return { kind: "create" };
   if (entry.action === "rematch") return { kind: "rematch" };
+  if (entry.action.startsWith("tracker.")) {
+    const group = trackerGroups.find((g) => entry.action === `tracker.${g}`) ?? "mixed";
+    return { kind: "tracker", group };
+  }
   if (entry.action.startsWith("package.")) {
     return { kind: "package", restored: entry.action.includes("restore") };
   }
@@ -104,6 +120,15 @@ function actionIcon(
       )[category.op];
     case "rematch":
       return RefreshCwIcon;
+    case "tracker":
+      return (
+        {
+          matches: ScaleIcon,
+          exposures: GitCompareIcon,
+          verdicts: GavelIcon,
+          mixed: RefreshCwIcon,
+        } satisfies Record<TrackerGroup, LucideIcon>
+      )[category.group];
   }
 }
 
@@ -128,6 +153,15 @@ function actionName(entry: ActivityLogEntry): string {
       )[category.op];
     case "rematch":
       return "rematched";
+    case "tracker":
+      return (
+        {
+          matches: "matching changed",
+          exposures: "versions changed",
+          verdicts: "set verdicts",
+          mixed: "model changed",
+        } satisfies Record<TrackerGroup, string>
+      )[category.group];
     case "status":
       return category.value
         ? (
@@ -144,7 +178,22 @@ function actionName(entry: ActivityLogEntry): string {
 
 // Items batched into a single entry (e.g. several packages ignored at once), along with the kind label used to describe them (e.g. "packages").
 // null means the entry doesn't carry a list of objects.
-function entryObjectGroup(entry: ActivityLogEntry): { kind: string; items: ObjectItem[] } | null {
+function entryObjectGroup(
+  entry: ActivityLogEntry,
+): { kind: string; items: ObjectItem[]; summary?: ComponentChildren } | null {
+  if (entry.changes && entry.changes.length > 0) {
+    const changes = entry.changes;
+    return {
+      kind: "changes",
+      items: changes.map((change, i) => ({ key: String(i), node: phraseChange(change) })),
+      summary: (
+        <>
+          {summariseChanges(changes)}
+          {entry.cause && <span className="text-gray"> · {causeLabel(entry.cause)}</span>}
+        </>
+      ),
+    };
+  }
   if (entry.package_names && entry.package_names.length > 0) {
     return {
       kind: "packages",
@@ -208,7 +257,9 @@ function EntryRow({ entry }: { entry: ActivityLogEntry }) {
   const items = group?.items ?? null;
   const expandable = !!items && items.length > 1;
   const [expanded, setExpanded] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const icon = entryIcon(entry);
+  const shownItems = items && !showAll ? items.slice(0, SHOWN_CHANGES) : items;
 
   function toggle() {
     if (expandable) setExpanded((v) => !v);
@@ -218,10 +269,14 @@ function EntryRow({ entry }: { entry: ActivityLogEntry }) {
     items.length > 1 ? (
       <span>
         <InlineIcon icon={expanded ? ChevronDownIcon : ChevronRightIcon} />
-        {items.length} {group?.kind}
+        {group?.summary ?? (
+          <>
+            {items.length} {group?.kind}
+          </>
+        )}
       </span>
     ) : (
-      items[0].node
+      (group?.summary ?? items[0].node)
     )
   ) : (
     entryObject(entry)
@@ -260,15 +315,38 @@ function EntryRow({ entry }: { entry: ActivityLogEntry }) {
       </tr>
       {expandable &&
         expanded &&
-        items?.map((item) => (
-          <tr key={item.key} className={styles.objectRow}>
-            <td />
-            <td />
-            <td />
-            <td />
-            <td>{item.node}</td>
-          </tr>
-        ))}
+        shownItems?.map((item) =>
+          group?.summary ? (
+            // Tracker changes are long sentences: they go under the summary, not in a column of their own.
+            <tr key={item.key} className={styles.objectRow}>
+              <td />
+              <td />
+              <td />
+              <td colSpan={2}>{item.node}</td>
+            </tr>
+          ) : (
+            <tr key={item.key} className={styles.objectRow}>
+              <td />
+              <td />
+              <td />
+              <td />
+              <td>{item.node}</td>
+            </tr>
+          ),
+        )}
+      {expandable && expanded && items && items.length > SHOWN_CHANGES && !showAll && (
+        <tr className={styles.objectRow}>
+          <td />
+          <td />
+          <td />
+          <td colSpan={2}>
+            <button type="button" className="btn-plain" onClick={() => setShowAll(true)}>
+              <InlineIcon icon={ChevronsDownIcon} />
+              Show all {items.length} {group?.kind}
+            </button>
+          </td>
+        </tr>
+      )}
     </>
   );
 }
