@@ -13,6 +13,7 @@ from .matching import (
     Match,
     ProductKey,
     ProductMapping,
+    SuggestionDerivedState,
     TrackerEvent,
     Verdict,
 )
@@ -23,6 +24,7 @@ from .snapshot import BranchPackage, BranchPackageChange
 __all__ = [
     "BranchPackage",
     "BranchPackageChange",
+    "SuggestionDerivedState",
     "Exposure",
     "Match",
     "ProductKey",

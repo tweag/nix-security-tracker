@@ -1,3 +1,4 @@
+import pgtrigger
 from django.contrib.auth.models import User
 from django.contrib.postgres.indexes import GinIndex
 from django.db import models
@@ -12,6 +13,8 @@ from shared.models.nix_evaluation import (
     NixpkgsBranch,
     TimeStampMixin,
 )
+
+DERIVED_STATE_TABLE = "shared_suggestionderivedstate"
 
 FIX_COMMIT_VALID = Q(fix_commit__isnull=True) | Q(fix_commit__regex=SHA1_COMMIT_REGEX)
 
@@ -356,6 +359,56 @@ class TrackerEvent(models.Model):
             ),
             models.Index(fields=["batch"], name="trackerevent_batch"),
         ]
+        triggers = [
+            # Every change of a match, exposure or verdict has an event (invariant 3), so the
+            # events mark which suggestions' derived state must be recomputed.
+            pgtrigger.Trigger(
+                name="derived_state_stale_on_event",
+                level=pgtrigger.Statement,
+                when=pgtrigger.After,
+                operation=pgtrigger.Insert,
+                referencing=pgtrigger.Referencing(new="new_events"),
+                func=f"""
+                    INSERT INTO {DERIVED_STATE_TABLE} (suggestion_id, state, stale, updated_at)
+                    SELECT DISTINCT suggestion_id, '', true, now() FROM new_events
+                    ON CONFLICT (suggestion_id) DO UPDATE SET stale = true;
+                    RETURN NULL;
+                """,
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.kind} {self.attrpath} ({self.cause})"
+
+
+class SuggestionDerivedState(models.Model):
+    """
+    The derived state of a suggestion (`shared.derived_state.derive_state`), stored so lists can
+    filter on it. Database triggers mark a row `stale` whenever its inputs change (a tracker
+    event, a status or rejection reason change); `flush_derived_states` recomputes stale rows
+    and every writer calls it before committing. `recompute_derived_state` checks for drift.
+    """
+
+    suggestion = models.OneToOneField(
+        CVEDerivationClusterProposal,
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name="derived",
+    )
+    # A `DerivedState` value; "" until first computed.
+    state = models.CharField(max_length=16, blank=True, db_index=True)
+    stale = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:  # type: ignore[override]
+        db_table = DERIVED_STATE_TABLE
+        indexes = [
+            models.Index(
+                fields=["stale"],
+                condition=Q(stale=True),
+                name="derivedstate_stale",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.suggestion_id}: {self.state}{' (stale)' if self.stale else ''}"

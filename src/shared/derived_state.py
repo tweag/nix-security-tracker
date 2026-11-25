@@ -5,6 +5,8 @@ Decisions and derived state over the unified model (section 3.2 of the matching 
 - `effective_status`: verdict (branch-specific over all-branches) if present, else observation.
 - `derive_state` / `derive_states`: the derived suggestion state of the report's table.
 - `possibly_fixed_queue`: exposures observed fixed that no verdict confirms yet.
+- `flush_derived_states`: store the derived state of suggestions whose inputs changed
+  (`SuggestionDerivedState`); every writer calls it before committing.
 
 Every human decision is a real `Verdict`: ignoring a package writes `irrelevant`, accepting or
 publishing a suggestion writes `affected` for the attributes shown and not ignored
@@ -23,10 +25,17 @@ from enum import StrEnum
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.db.models import Max
+from django.utils import timezone
 
 from shared.exposure import dismissed_q, is_dismissed, lock_suggestions
 from shared.models.linkage import CVEDerivationClusterProposal
-from shared.models.matching import Exposure, Match, TrackerEvent, Verdict
+from shared.models.matching import (
+    Exposure,
+    Match,
+    SuggestionDerivedState,
+    TrackerEvent,
+    Verdict,
+)
 from shared.models.nix_evaluation import NixEvaluation, NixpkgsBranch
 
 Observed = Exposure.Observed
@@ -214,6 +223,7 @@ def _verdict_event(
         data=data,
         batch=batch or uuid.uuid4(),
     )
+    flush_derived_states()
 
 
 # --- Effective status -----------------------------------------------------------------------
@@ -424,6 +434,36 @@ def load_facts(suggestion_ids: Collection[int]) -> dict[int, SuggestionFacts]:
     ):
         facts[sid].became_affected[(attr, branch_id)] = at
     return facts
+
+
+def flush_derived_states(limit: int | None = None) -> int:
+    """
+    Recompute the stored derived state of suggestions marked stale (by the triggers on tracker
+    events and on status changes), within the caller's transaction, so a writer that calls
+    this before committing leaves its suggestions consistent. Rows another transaction holds
+    are skipped; that transaction flushes them itself. Returns how many were recomputed.
+    """
+    with transaction.atomic():
+        stale = (
+            SuggestionDerivedState.objects.filter(stale=True)
+            .select_for_update(skip_locked=True)
+            .order_by("pk")
+            .values_list("suggestion_id", flat=True)
+        )
+        ids = list(stale[:limit] if limit is not None else stale)
+        if not ids:
+            return 0
+        now = timezone.now()
+        SuggestionDerivedState.objects.bulk_update(
+            [
+                SuggestionDerivedState(
+                    suggestion_id=pk, state=d.state, stale=False, updated_at=now
+                )
+                for pk, d in derive_states(ids).items()
+            ],
+            ["state", "stale", "updated_at"],
+        )
+        return len(ids)
 
 
 def derive_states(suggestion_ids: Collection[int]) -> dict[int, Derived]:

@@ -8,6 +8,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
+from shared.derived_state import flush_derived_states
 from shared.exposure import (
     Cause,
     _load_context,
@@ -92,6 +93,7 @@ class Command(BaseCommand):
                 break
             with transaction.atomic():
                 counts = self.backfill(batch, branches, not options["no_reconcile"])
+                counts["derived_states"] = flush_derived_states()
             for key, value in counts.items():
                 totals[key] += value
             cursor = batch[-1][0]

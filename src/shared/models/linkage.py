@@ -1070,10 +1070,14 @@ class CVEDerivationClusterProposal(TimeStampMixin):
             )
 
     def save(self, *args: Any, **kwargs: Any) -> None:
+        from shared.derived_state import flush_derived_states
+
         # Automatically remove from issue draft when changing status away from accepted
         if self.status != SuggestionStatus.ACCEPTED:
             self.in_issue_draft = False
         super().save(*args, **kwargs)
+        # A status change marked the stored derived state stale (database trigger).
+        flush_derived_states()
 
     class Meta:  # type: ignore[override]
         triggers = [
@@ -1081,6 +1085,24 @@ class CVEDerivationClusterProposal(TimeStampMixin):
                 name="status_fsm",
                 field="status",
                 transitions=STATUS_TRANSITIONS + TRACKER_TRANSITIONS,
+            ),
+            # See `SuggestionDerivedState`: a new suggestion or a status change makes it stale.
+            pgtrigger.Trigger(
+                name="derived_state_stale_on_status",
+                when=pgtrigger.After,
+                operation=pgtrigger.Insert | pgtrigger.Update,
+                func="""
+                    IF TG_OP = 'INSERT'
+                        OR OLD.status IS DISTINCT FROM NEW.status
+                        OR OLD.rejection_reason IS DISTINCT FROM NEW.rejection_reason
+                    THEN
+                        INSERT INTO shared_suggestionderivedstate
+                            (suggestion_id, state, stale, updated_at)
+                        VALUES (NEW.id, '', true, now())
+                        ON CONFLICT (suggestion_id) DO UPDATE SET stale = true;
+                    END IF;
+                    RETURN NULL;
+                """,
             ),
             pgtrigger.Protect(
                 name="reopen_machine_rejection_only",

@@ -692,3 +692,95 @@ def test_published_suggestion_keeps_status_of_its_frozen_version(
     assert Exposure.objects.get(suggestion=pending, attrpath="foo").observed == (
         Exposure.Observed.UNAFFECTED
     )
+
+
+# --- Stored derived state ---------------------------------------------------------------------
+
+
+def stored_state(suggestion: CVEDerivationClusterProposal) -> str:
+    from shared.models.matching import SuggestionDerivedState
+
+    return SuggestionDerivedState.objects.get(suggestion=suggestion).state
+
+
+def assert_derived_states_consistent() -> None:
+    from shared.models.matching import SuggestionDerivedState
+
+    assert not SuggestionDerivedState.objects.filter(stale=True).exists()
+    ids = list(CVEDerivationClusterProposal.objects.values_list("pk", flat=True))
+    stored = dict(SuggestionDerivedState.objects.values_list("suggestion_id", "state"))
+    assert stored == {pk: str(d.state) for pk, d in derive_states(ids).items()}
+
+
+def test_every_writer_keeps_the_stored_derived_state(
+    make_container: Callable[..., Container],
+    snapshot: Callable[..., NixEvaluation],
+    make_product_key: Callable[..., Any],
+    committer: Any,
+) -> None:
+    from shared.derived_state import remove_verdict, set_verdict
+    from shared.identity.reconcile import reconcile_mapping_change
+    from shared.models.matching import ProductMapping, Verdict
+
+    snapshot({"foo": ("foo", "1.0"), "foo-cli": ("foo", "1.0"), "x": ("x", "1")})
+    # Creation.
+    assert build_new_links(make_container(package_name="foo", product=None))
+    assert build_new_links(make_container(cve_id="CVE-2025-0002", package_name="nope"))
+    assert_derived_states_consistent()
+    suggestion = CVEDerivationClusterProposal.objects.get(cve__cve_id="CVE-2025-0001")
+    rejected = CVEDerivationClusterProposal.objects.get(cve__cve_id="CVE-2025-0002")
+    assert stored_state(suggestion) == DerivedState.NEEDS_TRIAGE
+    assert stored_state(rejected) == DerivedState.NO_CANDIDATES
+    # Verdicts, ignore and restore.
+    set_verdict(suggestion, "foo", Verdict.Kind.NOT_AFFECTED, committer)
+    assert_derived_states_consistent()
+    remove_verdict(suggestion, "foo", committer)
+    cache_new_suggestions(suggestion)
+    suggestion.ignore_packages(["foo-cli"], committer)
+    assert_derived_states_consistent()
+    # Status changes.
+    suggestion.change_status(Status.ACCEPTED, author=committer)
+    assert_derived_states_consistent()
+    assert stored_state(suggestion) == DerivedState.TRACKING
+    # Evaluation (exposures, re-match, projection).
+    snapshot({"foo": ("foo", "1.1"), "foo-cli": ("foo", "1.0"), "x": ("x", "2")})
+    assert_derived_states_consistent()
+    # Re-match and mapping-driven reconciliation, reopening the rejection.
+    persist_product_keys(list(AffectedProduct.objects.all()))
+    mapping = ProductMapping.objects.create(
+        product_key=make_product_key("nope", "", "cna"),
+        relation=ProductMapping.Relation.SAME,
+        attrpath="x",
+        source=ProductMapping.Source.CURATED,
+    )
+    refresh_suggestion(rejected, matchers=["curated"])
+    rejected.refresh_from_db()
+    assert rejected.status == Status.PENDING
+    assert_derived_states_consistent()
+    reconcile_mapping_change(mapping)
+    assert_derived_states_consistent()
+    # Backfill.
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    call_command("backfill_unified_model", stdout=StringIO())
+    assert_derived_states_consistent()
+
+
+def test_recompute_command_reports_and_fixes_drift(
+    pending: CVEDerivationClusterProposal,
+) -> None:
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from shared.models.matching import SuggestionDerivedState
+
+    SuggestionDerivedState.objects.filter(suggestion=pending).update(state="resolved")
+    out = StringIO()
+    with pytest.raises(SystemExit):
+        call_command("recompute_derived_state", "--check", stdout=out)
+    assert "wrong 1" in out.getvalue()
+    call_command("recompute_derived_state", stdout=StringIO())
+    assert_derived_states_consistent()
