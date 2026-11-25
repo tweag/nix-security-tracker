@@ -1,7 +1,12 @@
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
-from api.unified.serializers import DERIVED_STATE_CHOICES
+from api.unified.matching import evidence_of, mapping_of
+from api.unified.serializers import (
+    DERIVED_STATE_CHOICES,
+    MappingRefSerializer,
+    MatchEvidenceSerializer,
+)
 from api.unified.states import derived_state_map
 from shared.cvss import compute_cvss_fields
 from shared.logs.batches import (
@@ -15,10 +20,12 @@ from shared.logs.batches import (
 )
 from shared.logs.events import remove_canceling_events
 from shared.logs.fetchers import fetch_suggestion_events
+from shared.logs.tracker import TrackerEntry, fetch_tracker_entries
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
     SharedValueState,
 )
+from shared.models.matching import Exposure, TrackerEvent, Verdict
 
 
 class SuggestionReferenceUpdateSerializer(serializers.Serializer):
@@ -215,8 +222,69 @@ class ActivityLogReferenceSerializer(serializers.Serializer):
     name = serializers.CharField(allow_null=True)
 
 
+class TrackerChangeSerializer(serializers.Serializer):
+    """
+    One change the matching model recorded. Which fields are set depends on `kind`:
+    match_* carry `matcher`, `score` (and `old_score`, `evidence`); exposure_* carry
+    `branch`, versions, statuses and reasons; verdict_* carry `verdict` and `old_verdict`.
+    """
+
+    kind = serializers.ChoiceField(choices=TrackerEvent.Kind.choices)
+    attrpath = serializers.CharField()
+    branch = serializers.CharField(allow_null=True)
+    matcher = serializers.CharField(allow_null=True)
+    evaluation_commit = serializers.CharField(
+        allow_null=True, help_text="Commit of the evaluation that caused the change."
+    )
+    old_version = serializers.CharField(allow_null=True)
+    new_version = serializers.CharField(allow_null=True)
+    old_status = serializers.ChoiceField(
+        choices=Exposure.Observed.choices, allow_null=True
+    )
+    new_status = serializers.ChoiceField(
+        choices=Exposure.Observed.choices, allow_null=True
+    )
+    old_reason = serializers.ChoiceField(
+        choices=Exposure.Reason.choices, allow_null=True
+    )
+    new_reason = serializers.ChoiceField(
+        choices=Exposure.Reason.choices, allow_null=True
+    )
+    detail = serializers.CharField(
+        allow_null=True, help_text="The classifier's decision, e.g. the deciding range."
+    )
+    inferred = serializers.BooleanField()
+    regression = serializers.BooleanField(
+        help_text="Affected again after having been seen fixed."
+    )
+    fix_candidate = serializers.BooleanField(
+        help_text="Became unaffected after affected: now in the possibly-fixed queue."
+    )
+    score = serializers.FloatField(allow_null=True)
+    old_score = serializers.FloatField(allow_null=True)
+    evidence = MatchEvidenceSerializer(allow_null=True)
+    matcher_truncated = serializers.IntegerField(
+        allow_null=True,
+        help_text="The matcher dropped this many attributes beyond its limit in that run.",
+    )
+    verdict = serializers.ChoiceField(choices=Verdict.Kind.choices, allow_null=True)
+    old_verdict = serializers.ChoiceField(choices=Verdict.Kind.choices, allow_null=True)
+    fix_commit = serializers.CharField(allow_null=True)
+    comment = serializers.CharField(allow_null=True, allow_blank=True)
+    vetoed_by = MappingRefSerializer(
+        allow_null=True,
+        help_text="For a retraction: the `not_same` mapping that vetoed the match.",
+    )
+    via = serializers.CharField(
+        allow_null=True,
+        help_text="For verdicts: the action they came with (accept, ignore, reject).",
+    )
+
+
 class ActivityLogEntrySerializer(serializers.Serializer):
-    action = serializers.CharField()
+    action = serializers.CharField(
+        help_text="Besides the suggestion's own actions: `tracker.matches`, `tracker.exposures`, `tracker.verdicts` or `tracker.mixed` for a batch of matching-model changes."
+    )
     timestamp = serializers.DateTimeField()
     username = serializers.CharField(allow_null=True)
     status_value = serializers.CharField(allow_null=True, default=None)
@@ -224,6 +292,17 @@ class ActivityLogEntrySerializer(serializers.Serializer):
     package_names = serializers.ListField(child=serializers.CharField(), default=list)
     maintainers = MaintainerSerializer(many=True, default=list)
     references = ActivityLogReferenceSerializer(many=True, default=list)
+    cause = serializers.ChoiceField(
+        choices=TrackerEvent.Cause.choices,
+        allow_null=True,
+        default=None,
+        help_text="For `tracker.*` entries: what triggered the batch.",
+    )
+    changes = TrackerChangeSerializer(
+        many=True,
+        default=list,
+        help_text="For `tracker.*` entries: the changes of the batch, in order.",
+    )
 
 
 class SuggestionSerializer(serializers.Serializer):
@@ -434,6 +513,8 @@ def folded_event_to_dict(event: FoldedEventType) -> dict:
         "package_names": [],
         "maintainers": [],
         "references": [],
+        "cause": None,
+        "changes": [],
     }
     if isinstance(event, FoldedCreationEvent):
         base["rejection_reason"] = event.rejection_reason
@@ -458,9 +539,36 @@ def build_activity_log_map(suggestion_ids: list[int]) -> dict[int, list[dict]]:
         return {}
 
     raw_events_by_id = fetch_suggestion_events(suggestion_ids)
+    tracker_entries = fetch_tracker_entries(suggestion_ids)
     result: dict[int, list[dict]] = {}
     for suggestion_id, raw_events in raw_events_by_id.items():
         deduplicated = remove_canceling_events(raw_events, sort=True)
         folded = batch_events(deduplicated)
-        result[suggestion_id] = [folded_event_to_dict(e) for e in folded]
+        entries = [folded_event_to_dict(e) for e in folded] + [
+            tracker_entry_to_dict(e) for e in tracker_entries.get(suggestion_id, [])
+        ]
+        result[suggestion_id] = sorted(entries, key=lambda e: e["timestamp"])
     return result
+
+
+def tracker_entry_to_dict(entry: TrackerEntry) -> dict:
+    """A batch of tracker events in the shape of the other activity log entries."""
+    return {
+        "action": entry["action"],
+        "timestamp": entry["timestamp"],
+        "username": entry["username"],
+        "status_value": None,
+        "rejection_reason": None,
+        "package_names": [],
+        "maintainers": [],
+        "references": [],
+        "cause": entry["cause"],
+        "changes": [
+            c
+            | {
+                "evidence": evidence_of(c["evidence"]) if c["evidence"] else None,
+                "vetoed_by": mapping_of(c["vetoed_by"]),
+            }
+            for c in entry["changes"]
+        ],
+    }
