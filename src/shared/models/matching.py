@@ -216,6 +216,9 @@ class Exposure(TimeStampMixin):
         NixEvaluation, null=True, on_delete=models.PROTECT, related_name="+"
     )
     fix_commit = models.CharField(max_length=40, null=True)
+    # Why the classifier decided `observed` (deciding range, affected product, whether
+    # "unaffected" was inferred), and bookkeeping such as the last affected version.
+    detail = models.JSONField(default=dict)
 
     class Meta:  # type: ignore[override]
         constraints = [
