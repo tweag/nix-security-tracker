@@ -7,11 +7,11 @@ notifications, GitHub issues, garbage collection, training data) keep working un
 What a suggestion shows (`shown_attributes`):
 - the best-scored matched attributes (`shared.matching.selection`); for a suggestion rejected
   because nixpkgs already lists the CVE, only the attributes `known-vuln` found;
-- every attribute with a `Verdict` or an ignore overlay, so that an ignore stays visible as
-  such and can be undone;
-- every attribute already linked, if a human acted on the suggestion (any status but pending,
-  an overlay, a comment, or a verdict by a user), or if the re-match found nothing at all:
-  a re-match never takes an attribute away from a human, and never empties a suggestion.
+- every attribute with a `Verdict`: an ignore stays visible as such and can be undone, and
+  what a human accepted or published (`affected` verdicts, `record_acceptance`) stays, so a
+  re-match never takes an attribute away from a human;
+- every attribute already linked if the re-match found nothing at all: a re-match never
+  empties a suggestion.
 Attributes kept without an active match carry `ProvenanceFlags.NO_LONGER_MATCHED`.
 
 Links point at the derivations of the attribute in the tracked branches' current evaluations.
@@ -71,18 +71,6 @@ def provenance_of(matcher: str, evidence: dict[str, Any]) -> int:
     return 0
 
 
-def human_touched(suggestion: CVEDerivationClusterProposal) -> bool:
-    """Whether a human acted on the suggestion beyond leaving it pending."""
-    return (
-        suggestion.status != Status.PENDING
-        or bool(suggestion.comment)
-        or suggestion.package_overlays.exists()
-        or suggestion.maintainer_overlays.exists()
-        or suggestion.reference_url_overlays.exists()
-        or Verdict.objects.filter(suggestion=suggestion, author__isnull=False).exists()
-    )
-
-
 @dataclass
 class Shown:
     # Shown attributes and the provenance flags their links should carry.
@@ -136,7 +124,7 @@ def shown_attributes(
         result.beyond_cap = selection.beyond_cap
 
     shown = result.matched | decided
-    if human_touched(suggestion) or not result.matched:
+    if not result.matched:
         shown |= set(linked_flags)
 
     matched_flags: dict[str, int] = defaultdict(int)

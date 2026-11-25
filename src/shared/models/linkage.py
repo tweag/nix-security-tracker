@@ -268,6 +268,7 @@ class CVEDerivationClusterProposalQuerySet(models.QuerySet):
         status: SuggestionStatus,
         rejection_reason: "CVEDerivationClusterProposal.RejectionReason | None" = None,
         comment: str | None = None,
+        author: "User | None" = None,
     ) -> int:
         """Move every selected suggestion to the given status."""
         return self._apply_to_each(
@@ -275,7 +276,7 @@ class CVEDerivationClusterProposalQuerySet(models.QuerySet):
                 status, rejection_reason, comment
             ),
             lambda suggestion: suggestion.change_status(
-                status, rejection_reason, comment
+                status, rejection_reason, comment, author
             ),
         )
 
@@ -977,9 +978,17 @@ class CVEDerivationClusterProposal(TimeStampMixin):
         status: SuggestionStatus,
         rejection_reason: RejectionReason | None = None,
         comment: str | None = None,
+        author: "User | None" = None,
     ) -> None:
+        """
+        A human moves the suggestion. Accepting records an `affected` verdict by `author` for
+        every shown, not ignored attribute; rejecting an accepted suggestion withdraws them.
+        """
+        from shared.derived_state import record_acceptance, withdraw_acceptance
+
         if status == self.status:
             raise ValidationError({"status": f"Already in status '{self.status}'"})
+        previous = self.status
 
         # Automatically remove from issue draft when changing status away from accepted
         if status != SuggestionStatus.ACCEPTED:
@@ -990,14 +999,20 @@ class CVEDerivationClusterProposal(TimeStampMixin):
         if comment:
             self.comment = comment
         self.full_clean()
-        try:
-            self.save()
-        except InternalError:
-            raise ValidationError(
-                {
-                    "status": f"Invalid status transition from '{self.status}' to '{status}'"
-                }
-            )
+        with transaction.atomic():
+            try:
+                with transaction.atomic():
+                    self.save()
+            except InternalError:
+                raise ValidationError(
+                    {
+                        "status": f"Invalid status transition from '{self.status}' to '{status}'"
+                    }
+                )
+            if status in (SuggestionStatus.ACCEPTED, SuggestionStatus.PUBLISHED):
+                record_acceptance(self, author)
+            elif previous == SuggestionStatus.ACCEPTED:
+                withdraw_acceptance(self, author)
 
     def clean(self) -> None:
         if self.status == SuggestionStatus.REJECTED:

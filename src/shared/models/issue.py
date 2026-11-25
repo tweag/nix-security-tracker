@@ -5,6 +5,7 @@ from enum import STRICT, IntFlag, auto
 from typing import Any
 from urllib.parse import urljoin
 
+from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 from django.db.models.functions import Coalesce
@@ -229,11 +230,19 @@ class NixpkgsIssue(TimeStampMixin):
 
     @classmethod
     def publish_suggestions(
-        cls, suggestions: list[CVEDerivationClusterProposal], title: str
+        cls,
+        suggestions: list[CVEDerivationClusterProposal],
+        title: str,
+        author: User | None = None,
     ) -> "NixpkgsIssue":
+        """Publish; the shown, not ignored attributes not decided yet become `affected` by `author`."""
+        from shared.derived_state import record_acceptance
+
         with transaction.atomic():
             issue = cls.create_nixpkgs_issue(suggestions, title)
             issue.publish()
+            for suggestion in suggestions:
+                record_acceptance(suggestion, author, via="publish")
             # QuerySet.update() bypasses Model.save(), so Django's auto_now on
             # updated_at is never triggered here; set it explicitly so published
             # suggestions sort correctly (the suggestion list orders by -updated_at).

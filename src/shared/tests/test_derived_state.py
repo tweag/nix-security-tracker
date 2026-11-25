@@ -192,14 +192,20 @@ STATES: list[tuple[str, SuggestionFacts, DerivedState]] = [
         DerivedState.RESOLVED,
     ),
     (
-        "published: remaining packages are implied affected",
-        facts(exposure(), status=Status.PUBLISHED),
+        "published: the publisher's affected verdict tracks",
+        facts(
+            exposure(),
+            status=Status.PUBLISHED,
+            verdicts=(VerdictFact("foo", None, V.AFFECTED),),
+        ),
         DerivedState.TRACKING,
     ),
     (
         "published and fixed everywhere stays tracking until confirmed",
         facts(
-            exposure(observed=Observed.UNAFFECTED, fixed=True), status=Status.PUBLISHED
+            exposure(observed=Observed.UNAFFECTED, fixed=True),
+            status=Status.PUBLISHED,
+            verdicts=(VerdictFact("foo", None, V.AFFECTED),),
         ),
         DerivedState.TRACKING,
     ),

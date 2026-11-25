@@ -20,7 +20,10 @@ from shared.exposure import (
     tracked_branches,
 )
 from shared.matching.selection import LEGACY_MATCHER, LEGACY_MATCHER_VERSION
-from shared.models import PackageOverlayEvent  # type: ignore[attr-defined]
+from shared.models import (  # type: ignore[attr-defined]
+    CVEDerivationClusterProposalStatusEvent,
+    PackageOverlayEvent,
+)
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
     DerivationClusterProposalLink,
@@ -32,6 +35,7 @@ from shared.models.nix_evaluation import NixEvaluation, parse_drv_name
 from shared.models.snapshot import BranchPackage
 
 Kind = TrackerEvent.Kind
+Status = CVEDerivationClusterProposal.Status
 
 
 def legacy_evidence(flags: int) -> dict[str, Any]:
@@ -58,7 +62,8 @@ class Command(BaseCommand):
         "primary key. Idempotent and restartable (--start-after): `legacy-v2` matches and "
         "as-matched exposures from derivation links of suggestions matched by the legacy "
         "algorithm, then exposures reconciled against the current snapshot; `irrelevant` "
-        "verdicts from ignore overlays of every suggestion. Run after `backfill_branch_packages`."
+        "verdicts from ignore overlays of every suggestion, `affected` verdicts for what "
+        "accepted and published suggestions show. Run after `backfill_branch_packages`."
     )
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
@@ -120,6 +125,13 @@ class Command(BaseCommand):
             if pk in set(legacy) and not is_dismissed(status, reason)
         ]
         counts["verdicts"] = self.verdicts(ids)
+        counts["acceptances"] = self.acceptances(
+            [
+                pk
+                for pk, status, _, _ in batch
+                if status in (Status.ACCEPTED, Status.PUBLISHED)
+            ]
+        )
         if not legacy:
             return counts
         run = _Run(cause=Cause.BACKFILL, batch=uuid.uuid4())
@@ -257,6 +269,72 @@ class Command(BaseCommand):
             )
             written += 1
         return written
+
+    def acceptances(self, ids: list[int]) -> int:
+        """
+        `affected` verdicts for what accepted and published suggestions show and do not ignore,
+        by the user who accepted (or published) if the status history records one.
+        """
+        if not ids:
+            return 0
+        linked: dict[int, set[str]] = defaultdict(set)
+        for sid, attr in (
+            DerivationClusterProposalLink.objects.filter(proposal_id__in=ids)
+            .values_list("proposal_id", "derivation__attribute")
+            .distinct()
+        ):
+            linked[sid].add(attr)
+        decided = set(
+            Verdict.objects.filter(
+                suggestion_id__in=ids, branch__isnull=True
+            ).values_list("suggestion_id", "attrpath")
+        )
+        authors: dict[int, int | None] = {}
+        for sid, metadata in (
+            CVEDerivationClusterProposalStatusEvent.objects.filter(
+                pgh_obj_id__in=ids,
+                status__in=[Status.ACCEPTED, Status.PUBLISHED],
+            )
+            .exclude(pgh_label="rematch")
+            .order_by("pgh_created_at")
+            .values_list("pgh_obj_id", "pgh_context__metadata")
+        ):
+            user = (metadata or {}).get("user")
+            if user is not None:
+                authors[sid] = int(user)
+        users = set(
+            User.objects.filter(
+                pk__in={u for u in authors.values() if u is not None}
+            ).values_list("pk", flat=True)
+        )
+        new = [
+            Verdict(
+                suggestion_id=sid,
+                attrpath=attr,
+                branch=None,
+                verdict=Verdict.Kind.AFFECTED,
+                author_id=a if (a := authors.get(sid)) in users else None,
+                comment="",
+            )
+            for sid in ids
+            for attr in sorted(linked[sid])
+            if (sid, attr) not in decided
+        ]
+        Verdict.objects.bulk_create(new, ignore_conflicts=True)
+        batch = uuid.uuid4()
+        TrackerEvent.objects.bulk_create(
+            TrackerEvent(
+                suggestion_id=v.suggestion_id,
+                kind=Kind.VERDICT_SET,
+                attrpath=v.attrpath,
+                cause=Cause.BACKFILL,
+                actor_id=v.author_id,
+                data={"new": {"verdict": v.verdict}, "via": "accept", "from": "status"},
+                batch=batch,
+            )
+            for v in new
+        )
+        return len(new)
 
     def verdicts(self, ids: list[int]) -> int:
         """`irrelevant` verdicts for ignore overlays, by the user who ignored if recorded."""

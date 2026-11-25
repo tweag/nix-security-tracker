@@ -6,11 +6,10 @@ Decisions and derived state over the unified model (section 3.2 of the matching 
 - `derive_state` / `derive_states`: the derived suggestion state of the report's table.
 - `possibly_fixed_queue`: exposures observed fixed that no verdict confirms yet.
 
-Ignoring a package writes a real `irrelevant` verdict, and `backfill_unified_model` converts
-the older ignore overlays, so overlays imply nothing here. One interim rule remains: for
-ACCEPTED and PUBLISHED suggestions, an attribute without a verdict counts as an implied
-`affected` verdict, since accepting a suggestion is a human saying its packages are affected
-and acceptance is not recorded per attribute. Implied verdicts are never written to `Verdict`.
+Every human decision is a real `Verdict`: ignoring a package writes `irrelevant`, accepting or
+publishing a suggestion writes `affected` for the attributes shown and not ignored
+(`record_acceptance`), rejecting an accepted one withdraws those (`withdraw_acceptance`);
+`backfill_unified_model` writes both for suggestions decided before. Nothing is implied.
 """
 
 import re
@@ -72,8 +71,11 @@ def set_verdict(
     comment: str = "",
     fix_commit: str | None = None,
     batch: uuid.UUID | None = None,
+    via: str | None = None,
 ) -> Verdict:
     """
+    `via` names the action the decision came with ("accept", "ignore"), for the event.
+
     Record a decision for an attribute on one branch (or all, `branch=None`), with a
     `verdict_set` or `verdict_changed` event. Setting the same decision again writes nothing.
     """
@@ -96,7 +98,7 @@ def set_verdict(
                 fix_commit=fix_commit,
                 author=author,
             )
-            _verdict_event(row, TrackerEvent.Kind.VERDICT_SET, author, batch, None)
+            _verdict_event(row, TrackerEvent.Kind.VERDICT_SET, author, batch, None, via)
             return row
         old = _verdict_data(existing)
         if old == {"verdict": verdict, "comment": comment, "fix_commit": fix_commit}:
@@ -106,7 +108,9 @@ def set_verdict(
         existing.fix_commit = fix_commit
         existing.author = author
         existing.save()
-        _verdict_event(existing, TrackerEvent.Kind.VERDICT_CHANGED, author, batch, old)
+        _verdict_event(
+            existing, TrackerEvent.Kind.VERDICT_CHANGED, author, batch, old, via
+        )
         return existing
 
 
@@ -116,6 +120,7 @@ def remove_verdict(
     author: User | None,
     branch: NixpkgsBranch | None = None,
     batch: uuid.UUID | None = None,
+    via: str | None = None,
 ) -> bool:
     """Remove a decision, with a `verdict_removed` event. False if there was none."""
     with transaction.atomic():
@@ -127,8 +132,61 @@ def remove_verdict(
             return False
         old = _verdict_data(existing)
         existing.delete()
-        _verdict_event(existing, TrackerEvent.Kind.VERDICT_REMOVED, author, batch, old)
+        _verdict_event(
+            existing, TrackerEvent.Kind.VERDICT_REMOVED, author, batch, old, via
+        )
         return True
+
+
+def shown_unignored_attributes(suggestion: CVEDerivationClusterProposal) -> set[str]:
+    """Attributes the suggestion shows (its links) that a human did not ignore."""
+    linked = set(suggestion.derivations.values_list("attribute", flat=True).distinct())
+    ignored = set(
+        Verdict.objects.filter(
+            suggestion=suggestion, branch=None, verdict=VerdictKind.IRRELEVANT
+        ).values_list("attrpath", flat=True)
+    )
+    return linked - ignored
+
+
+def record_acceptance(
+    suggestion: CVEDerivationClusterProposal, author: User | None, via: str = "accept"
+) -> int:
+    """
+    A human accepted (or published) the suggestion: an all-branches `affected` verdict by
+    them for every attribute shown and not ignored that has no all-branches verdict yet.
+    Returns how many were written.
+    """
+    decided = set(
+        Verdict.objects.filter(suggestion=suggestion, branch=None).values_list(
+            "attrpath", flat=True
+        )
+    )
+    batch = uuid.uuid4()
+    attrs = sorted(shown_unignored_attributes(suggestion) - decided)
+    for attr in attrs:
+        set_verdict(
+            suggestion, attr, VerdictKind.AFFECTED, author, batch=batch, via=via
+        )
+    return len(attrs)
+
+
+def withdraw_acceptance(
+    suggestion: CVEDerivationClusterProposal, author: User | None
+) -> int:
+    """
+    A human rejected a suggestion they had accepted: its all-branches `affected` verdicts
+    contradict that and go; ignores and branch-specific decisions stay.
+    """
+    batch = uuid.uuid4()
+    attrs = list(
+        Verdict.objects.filter(
+            suggestion=suggestion, branch=None, verdict=VerdictKind.AFFECTED
+        ).values_list("attrpath", flat=True)
+    )
+    for attr in attrs:
+        remove_verdict(suggestion, attr, author, batch=batch, via="reject")
+    return len(attrs)
 
 
 def _verdict_event(
@@ -137,8 +195,11 @@ def _verdict_event(
     author: User | None,
     batch: uuid.UUID | None,
     old: dict[str, str | None] | None,
+    via: str | None = None,
 ) -> None:
     data: dict[str, object] = {}
+    if via is not None:
+        data["via"] = via
     if kind != TrackerEvent.Kind.VERDICT_REMOVED:
         data["new"] = _verdict_data(v)
     if old is not None:
@@ -164,7 +225,6 @@ class VerdictFact:
     branch_id: str | None
     verdict: str
     updated_at: datetime | None = None
-    implied: bool = False
 
 
 @dataclass(frozen=True)
@@ -172,7 +232,7 @@ class Effective:
     """Effective status of one (attribute, branch)."""
 
     status: str
-    source: str  # "verdict", "implied", "observed", "none"
+    source: str  # "verdict", "observed", "none"
     verdict: VerdictFact | None = None
     exposure: Exposure | None = None
     regression: bool = False
@@ -212,7 +272,7 @@ def effective_status(
         )
         return Effective(
             status=verdict.verdict,
-            source="implied" if verdict.implied else "verdict",
+            source="verdict",
             verdict=verdict,
             exposure=exposure,
             regression=regression,
@@ -272,7 +332,7 @@ def derive_state(facts: SuggestionFacts) -> Derived:
     candidates = candidates_of(facts)
     if not candidates:
         return Derived(DerivedState.NO_CANDIDATES)
-    verdicts = with_implied_verdicts(facts)
+    verdicts = facts.verdicts
 
     by_attr: dict[str, list[Exposure]] = defaultdict(list)
     for e in facts.exposures:
@@ -323,16 +383,6 @@ def derive_state(facts: SuggestionFacts) -> Derived:
 def candidates_of(facts: SuggestionFacts) -> set[str]:
     """Attributes with an active match or an explicit verdict."""
     return set(facts.matched) | {v.attrpath for v in facts.verdicts}
-
-
-def with_implied_verdicts(facts: SuggestionFacts) -> list[VerdictFact]:
-    """Explicit verdicts plus the interim implied ones (see the module docstring)."""
-    verdicts = list(facts.verdicts)
-    explicit = {v.attrpath for v in verdicts}
-    for attr in sorted(candidates_of(facts) - explicit):
-        if facts.status in (Status.ACCEPTED, Status.PUBLISHED):
-            verdicts.append(VerdictFact(attr, None, VerdictKind.AFFECTED, implied=True))
-    return verdicts
 
 
 def _was_fixed_or_gone(e: Exposure) -> bool:
@@ -434,7 +484,7 @@ def possibly_fixed_queue(
         f = facts[e.suggestion_id]
         if e.attrpath not in candidates_of(f):
             continue
-        v = pick_verdict(with_implied_verdicts(f), e.attrpath, e.branch_id)
+        v = pick_verdict(f.verdicts, e.attrpath, e.branch_id)
         if v is not None and v.verdict in CONFIRMING_FIX:
             continue
         assert e.fixed_evaluation is not None

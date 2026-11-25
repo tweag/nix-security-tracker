@@ -429,7 +429,9 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             instance = self.get_object()
-            instance.change_status(**serializer.validated_data)
+            instance.change_status(
+                **serializer.validated_data, author=acting_user(request)
+            )
             return Response(self.get_serializer(instance).data)
         else:
             raise MethodNotAllowed(request.method)
@@ -494,7 +496,9 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
             or truncatewords(payload.get("description") or "", 10)
             or "Security issue"
         )
-        issue = NixpkgsIssue.publish_suggestions([instance], title)
+        issue = NixpkgsIssue.publish_suggestions(
+            [instance], title, acting_user(request)
+        )
         return Response(IssueSerializer(issue).data, status=201)
 
     @extend_schema(
@@ -526,7 +530,7 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
                 {"non_field_errors": ["Cannot publish an empty issue"]}
             )
         issue = NixpkgsIssue.publish_suggestions(
-            suggestions, serializer.validated_data["title"]
+            suggestions, serializer.validated_data["title"], acting_user(request)
         )
         return Response(IssueSerializer(issue).data, status=201)
 
@@ -890,7 +894,11 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         validated = serializer.validated_data
-        return self.bulk_response(lambda queryset: queryset.change_status(**validated))
+        return self.bulk_response(
+            lambda queryset: queryset.change_status(
+                **validated, author=acting_user(request)
+            )
+        )
 
     @extend_schema(
         operation_id="bulkBundleSuggestions",
