@@ -106,6 +106,22 @@ class Settings(BaseSettings):
             By default, in the root of this Git repository.
             """
         )
+        NIXPKGS_HISTORY_CHECKOUT: Path | None = Field(
+            description="""
+            Path of a bare, partial, history-only clone of `GIT_CLONE_URL` (created on first use)
+            that answers which channel heads contain a fix and which commits between two
+            evaluations mention a CVE. `null` disables fix landings and patch detection.
+            """,
+            default=None,
+        )
+        NIXPKGS_HISTORY_FILTER: str = Field(
+            description="""
+            Partial clone filter of the history clone: `tree:0` keeps only commits (smallest,
+            enough for ancestry), `blob:none` also keeps trees, so patch detection can restrict
+            commits to the package's file.
+            """,
+            default="blob:none",
+        )
         CVE_CACHE_DIR: str = Field(
             description="""
             Directory for caching CVE data fetched from upstream.

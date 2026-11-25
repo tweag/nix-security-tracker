@@ -19,6 +19,9 @@ class LocalRepo:
         self.path = path
         path.mkdir(parents=True, exist_ok=True)
         self.git("init", "-q", "--initial-branch=master")
+        # Serve partial clones like GitHub does.
+        self.git("config", "uploadpack.allowFilter", "true")
+        self.git("config", "uploadpack.allowAnySHA1InWant", "true")
         (path / "README").write_text("nixpkgs\n")
         self.git("add", "-A")
         self.git("commit", "-q", "-m", "init")
