@@ -20,12 +20,13 @@ from .matching import (
 )
 from .nix_evaluation import *
 from .package import *
-from .remediation import ChannelAdvance
+from .remediation import ChannelAdvance, FixLanding
 from .snapshot import BranchPackage, BranchPackageChange
 
 __all__ = [
     "BranchPackage",
     "ChannelAdvance",
+    "FixLanding",
     "BranchPackageChange",
     "SuggestionDerivedState",
     "Exposure",

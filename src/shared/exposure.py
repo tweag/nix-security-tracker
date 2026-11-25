@@ -31,12 +31,14 @@ from typing import Any
 
 from django.db import connection, transaction
 from django.db.models import F, Q
+from django.utils import timezone
 
 from shared.candidates import candidates
 from shared.models.cve import AffectedProduct
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.matching import Exposure, Match, TrackerEvent, Verdict
 from shared.models.nix_evaluation import NixChannel, NixEvaluation, NixpkgsBranch
+from shared.models.remediation import FixLanding
 from shared.models.snapshot import BranchPackage, BranchPackageChange
 from shared.versions import (
     Classification,
@@ -310,6 +312,7 @@ def _write(
             data_extra["regression"] = True
             data_extra["previous_fixed_evaluation"] = row.fixed_evaluation_id
             row.fixed_evaluation = None
+            data_extra |= _retract_fix(row)
         row.last_affected_evaluation = evaluation
         detail[LAST_AFFECTED_VERSION] = obs.version
     elif old.observed == Observed.AFFECTED and previous_evaluation is not None:
@@ -330,6 +333,23 @@ def _write(
     row.save()
     _event(run, row, kind, evaluation, old, obs, data_extra)
     return row
+
+
+def _retract_fix(row: Exposure) -> dict[str, Any]:
+    """
+    A regression voids the fix: its channel landings are retracted (kept, with a time) and the
+    fix commit is cleared, so the next fix is recorded and lands anew. Reported in the event.
+    """
+    data: dict[str, Any] = {}
+    landings = FixLanding.objects.live().filter(exposure=row)
+    channels = sorted(landings.values_list("channel_id", flat=True))
+    if channels:
+        landings.update(retracted_at=timezone.now())
+        data["retracted_landings"] = channels
+    if row.fix_commit is not None:
+        data["previous_fix_commit"] = row.fix_commit
+        row.fix_commit = None
+    return data
 
 
 def _event(
@@ -366,6 +386,46 @@ def _event(
             batch=run.batch,
         )
     )
+
+
+def fixed_by_reclassification(exposures: Iterable[Exposure]) -> set[int]:
+    """
+    Exposures whose current fix is a reclassification, not a package change: the
+    `exposure_became_unaffected` event that set `fixed_evaluation` came from a CVE update,
+    a matcher or a mapping (not an evaluation) and kept the version. Their fix point is not a
+    commit that fixed anything, so it has no channel landing. An exact `fix_commit` (from a
+    pull request or a patch) always counts as a change.
+    """
+    rows = [
+        e for e in exposures if e.fixed_evaluation_id is not None and not e.fix_commit
+    ]
+    if not rows:
+        return set()
+    wanted = {
+        (e.suggestion_id, e.attrpath, e.branch_id, e.fixed_evaluation_id): e.pk
+        for e in rows
+    }
+    latest: dict[tuple[int, str, str, int], tuple[str, Any]] = {}
+    for sid, attr, branch, evaluation, cause, data in (
+        TrackerEvent.objects.filter(
+            kind=EventKind.EXPOSURE_BECAME_UNAFFECTED,
+            suggestion_id__in={e.suggestion_id for e in rows},
+            evaluation_id__in={e.fixed_evaluation_id for e in rows},
+        )
+        .order_by("pk")
+        .values_list(
+            "suggestion_id", "attrpath", "branch_id", "evaluation_id", "cause", "data"
+        )
+    ):
+        latest[(sid, attr, branch, evaluation)] = (cause, data)
+    result = set()
+    for key, pk in wanted.items():
+        cause, data = latest.get(key, (Cause.EVALUATION, {}))
+        if cause != Cause.EVALUATION and data.get("old_version") == data.get(
+            "new_version"
+        ):
+            result.add(pk)
+    return result
 
 
 def lock_suggestions(suggestion_ids: Iterable[int]) -> None:

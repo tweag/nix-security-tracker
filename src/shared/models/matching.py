@@ -342,6 +342,7 @@ class TrackerEvent(models.Model):
         VERDICT_SET = "verdict_set", _("verdict set")
         VERDICT_CHANGED = "verdict_changed", _("verdict changed")
         VERDICT_REMOVED = "verdict_removed", _("verdict removed")
+        FIX_LANDED = "fix_landed", _("fix landed in a channel")
 
     class Cause(models.TextChoices):
         EVALUATION = "evaluation", _("evaluation")
@@ -350,6 +351,7 @@ class TrackerEvent(models.Model):
         MAPPING = "mapping", _("product mapping")
         USER = "user", _("user")
         BACKFILL = "backfill", _("backfill")
+        CHANNEL = "channel", _("channel advance")
 
     # Covered by the index on (suggestion, created_at).
     suggestion = models.ForeignKey(
