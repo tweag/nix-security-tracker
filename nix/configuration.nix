@@ -537,6 +537,8 @@ in
                   shared.channels.NixChannelInsertChannel \
                   shared.channels.NixChannelUpdateChannel \
                   shared.channels.ContainerChannel \
+                  shared.channels.CveUpdateChannel \
+                  shared.channels.CvePresentationChannel \
                   shared.channels.CVEDerivationClusterProposalChannel \
             '';
           };
@@ -561,7 +563,8 @@ in
             ];
 
             script = ''
-              ${manage.name} listen \
+              # --recover: snapshot steps are applied only through their notification (see garbage_collect).
+              ${manage.name} listen --recover \
                 --processes ${toString cfg.suggestionRefreshProcesses} \
                 --channels \
                   shared.channels.NixEvaluationUpdateChannel \

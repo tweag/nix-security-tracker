@@ -9,7 +9,10 @@ from django.utils import timezone
 from pgpubsub.models import Notification as PgpubsubNotification
 
 from shared.channels import (
+    BranchSnapshotChannel,
     ContainerChannel,
+    CvePresentationChannel,
+    CveUpdateChannel,
     NixEvaluationUpdateChannel,
     SuggestionRefreshChannel,
 )
@@ -554,6 +557,17 @@ def test_gc_deletes_stale_rematching_notifications(channel_name: str) -> None:
     call_command("garbage_collect", stdout=StringIO())
 
     assert not PgpubsubNotification.objects.filter(channel=channel_name).exists()
+
+
+@pytest.mark.parametrize(
+    "channel", [BranchSnapshotChannel, CveUpdateChannel, CvePresentationChannel]
+)
+@pytest.mark.django_db
+def test_gc_keeps_notifications_nothing_re_emits(channel: type) -> None:
+    """A snapshot step or a CVE update is applied only through its notification."""
+    make_trigger_notification(channel.name(), age=timedelta(days=3))
+    call_command("garbage_collect", stdout=StringIO())
+    assert PgpubsubNotification.objects.count() == 1
 
 
 @pytest.mark.django_db

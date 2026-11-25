@@ -4,3 +4,4 @@ import shared.listeners.snapshot  # noqa
 import shared.listeners.automatic_linkage  # noqa
 import shared.listeners.cache_and_notify  # noqa
 import shared.listeners.github_teams  # noqa
+import shared.listeners.cve_updates  # noqa

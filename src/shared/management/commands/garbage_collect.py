@@ -16,7 +16,6 @@ from pgpubsub.models import Notification
 from prometheus_client import CollectorRegistry, Gauge
 
 from shared.channels import (
-    BranchSnapshotChannel,
     NixEvaluationSnapshotChannel,
     NixEvaluationUpdateChannel,
     SuggestionRefreshChannel,
@@ -273,12 +272,14 @@ class Command(BaseCommand):
         """
         Reclaim rematching trigger notifications that the listener never drained.
         Anything older than a day cannot represent live work, since a healthy live listener drains within seconds and the next evaluation would re-emit fresh triggers for anything still relevant.
+
+        Only channels whose work the next evaluation redoes are listed: a refresh is dispatched again for every suggestion behind, and a skipped snapshot is subsumed by the next one.
+        `BranchSnapshotChannel` and `CveUpdateChannel` are never re-emitted: the snapshot step's changes and the CVE update are applied only through them, so they stay until a listener processes them, however late (a late snapshot step does not overwrite newer exposure state).
         """
         channels = [
             SuggestionRefreshChannel,
             NixEvaluationUpdateChannel,
             NixEvaluationSnapshotChannel,
-            BranchSnapshotChannel,
         ]
         # The producer-side of each channel type records the channel identifier under a different convention.
         # Both spellings need to be matched to reach all orphaned rows.

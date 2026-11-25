@@ -79,6 +79,17 @@ class SuggestionRefreshChannel(Channel):
 
 
 @dataclass
+class CvePresentationChannel(Channel):
+    """
+    An update of the CVE record `pk` changed only what suggestions display (title, descriptions,
+    references, metrics), not what matchers read: the cached payloads need rebuilding, nothing else.
+    """
+
+    pk: int
+    lock_notifications = True
+
+
+@dataclass
 class BranchSnapshotChannel(Channel):
     """A branch's package snapshot advanced to `evaluation_pk`; its `BranchPackageChange` rows are written."""
 

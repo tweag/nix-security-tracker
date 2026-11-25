@@ -18,7 +18,7 @@ from pgpubsub.triggers import Notify
 from requests import get
 
 from shared import models
-from shared.channels import CveUpdateChannel
+from shared.channels import CvePresentationChannel, CveUpdateChannel
 from shared.identity.keys import persist_product_keys
 
 logger = logging.getLogger(__name__)
@@ -735,7 +735,7 @@ def reconcile_cve(
     A record whose digest is unchanged is left alone without further queries. Otherwise every container
     whose digest changed is updated in place, new ones are added without creating a suggestion, and gone
     ones are removed. When something matchers read changed, `CveUpdateChannel` is notified with the
-    record's primary key, in the same transaction.
+    record's primary key, in the same transaction; otherwise `CvePresentationChannel`.
     """
     result = Reconciliation()
     digest = record_hash(data)
@@ -767,6 +767,8 @@ def reconcile_cve(
 
         if result.matching_changed:
             pgpubsub.notify(CveUpdateChannel, pk=cve.pk)
+        else:
+            pgpubsub.notify(CvePresentationChannel, pk=cve.pk)
 
     record.refresh_from_db()
     return result
