@@ -9,16 +9,16 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import QuerySet
+from django.utils import timezone
 
-from shared.derived_state import remove_verdict, set_verdict
-from shared.exposure import tracked_branches
+from shared.derived_state import flush_derived_states
+from shared.exposure import lock_suggestions, tracked_branches
 from shared.models.linkage import (
     BulkValidationError,
     CVEDerivationClusterProposal,
     PackageOverlay,
 )
-from shared.models.matching import Exposure, Match, Verdict
-from shared.models.nix_evaluation import NixpkgsBranch
+from shared.models.matching import Exposure, Match, TrackerEvent, Verdict
 from shared.models.package import PackageAttrpath
 
 
@@ -99,27 +99,101 @@ def apply_verdicts(
     with transaction.atomic():
         if check:
             check_verdicts(suggestion, change)
-        branch = (
-            NixpkgsBranch.objects.get(pk=change.branch)
-            if change.branch is not None
-            else None
-        )
-        for attrpath in change.attrpaths:
-            if change.verdict is None:
-                remove_verdict(suggestion, attrpath, author, branch=branch, batch=batch)
-            else:
-                set_verdict(
-                    suggestion,
-                    attrpath,
-                    change.verdict,
-                    author,
-                    branch=branch,
-                    comment=change.comment,
-                    fix_commit=change.fix_commit,
-                    batch=batch,
-                )
+        write_verdicts(suggestion, change, author, batch)
         if change.branch is None:
             sync_ignore_overlays(suggestion, change.attrpaths)
+
+
+def _data(v: Verdict) -> dict[str, str | None]:
+    """A verdict as `shared.derived_state` records it in event data."""
+    return {"verdict": v.verdict, "comment": v.comment, "fix_commit": v.fix_commit}
+
+
+def write_verdicts(
+    suggestion: CVEDerivationClusterProposal,
+    change: VerdictChange,
+    author: User | None,
+    batch: uuid.UUID,
+) -> None:
+    """
+    `set_verdict` / `remove_verdict` for many attributes at once, with the same rows and the
+    same `verdict_*` events, in a fixed number of queries: one lock, one read, one write per
+    kind of change, one event insert, one derived-state flush.
+    """
+    lock_suggestions([suggestion.pk])
+    existing = {
+        v.attrpath: v
+        for v in Verdict.objects.filter(
+            suggestion=suggestion,
+            attrpath__in=change.attrpaths,
+            branch_id=change.branch,
+        )
+    }
+    now = timezone.now()
+    creates: list[Verdict] = []
+    updates: list[Verdict] = []
+    deletes: list[int] = []
+    events: list[TrackerEvent] = []
+
+    def event(v: Verdict, kind: str, old: dict | None, new: dict | None) -> None:
+        data: dict[str, object] = {}
+        if new is not None:
+            data["new"] = new
+        if old is not None:
+            data["old"] = old
+        events.append(
+            TrackerEvent(
+                suggestion_id=suggestion.pk,
+                kind=kind,
+                attrpath=v.attrpath,
+                branch_id=change.branch,
+                cause=TrackerEvent.Cause.USER,
+                actor=author,
+                data=data,
+                batch=batch,
+            )
+        )
+
+    for attrpath in change.attrpaths:
+        current = existing.get(attrpath)
+        if change.verdict is None:
+            if current is not None:
+                deletes.append(current.pk)
+                event(current, TrackerEvent.Kind.VERDICT_REMOVED, _data(current), None)
+            continue
+        if current is None:
+            row = Verdict(
+                suggestion=suggestion,
+                attrpath=attrpath,
+                branch_id=change.branch,
+                verdict=change.verdict,
+                comment=change.comment,
+                fix_commit=change.fix_commit,
+                author=author,
+            )
+            creates.append(row)
+            event(row, TrackerEvent.Kind.VERDICT_SET, None, _data(row))
+            continue
+        old = _data(current)
+        current.verdict = change.verdict
+        current.comment = change.comment
+        current.fix_commit = change.fix_commit
+        if _data(current) == old:
+            continue
+        current.author = author
+        current.updated_at = now
+        updates.append(current)
+        event(current, TrackerEvent.Kind.VERDICT_CHANGED, old, _data(current))
+
+    Verdict.objects.bulk_create(creates)
+    Verdict.objects.bulk_update(
+        updates, ["verdict", "comment", "fix_commit", "author", "updated_at"]
+    )
+    if deletes:
+        Verdict.objects.filter(pk__in=deletes).delete()
+    if events:
+        TrackerEvent.objects.bulk_create(events)
+        flush_derived_states([suggestion.pk])
 
 
 def sync_ignore_overlays(

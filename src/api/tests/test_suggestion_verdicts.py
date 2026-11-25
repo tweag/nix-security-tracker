@@ -204,3 +204,57 @@ def test_bulk(
     assert set(Verdict.objects.values_list("suggestion", flat=True)) == {
         s.pk for s in suggestions[:2]
     }
+
+
+def test_query_count_does_not_grow_with_attributes(
+    committer_client: APIClient,
+    suggestion: CVEDerivationClusterProposal,
+    make_match: Callable[..., Match],
+    django_assert_num_queries: Callable[..., Any],
+) -> None:
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    def patch(attrs: list[str], verdict: str | None) -> int:
+        with CaptureQueriesContext(connection) as ctx:
+            response = committer_client.patch(
+                url(suggestion.pk),
+                {"package_attributes": attrs, "branch": None, "verdict": verdict},
+                format="json",
+            )
+        assert response.status_code == 204, response.data
+        return len(ctx.captured_queries)
+
+    one = [f"one{i}" for i in range(1)]
+    many = [f"many{i}" for i in range(20)]
+    for attr in one + many:
+        make_match(attr)
+    # The first request also builds the suggestion's cache.
+    make_match("warm")
+    patch(["warm"], "affected")
+    for verdict in ("affected", "fixed", None):
+        assert patch(one, verdict) == patch(many, verdict), verdict
+    events = TrackerEvent.objects.filter(attrpath__in=many)
+    assert events.count() == 60 and len({e.batch for e in events}) == 3
+    # The same event data as `set_verdict` / `remove_verdict` write.
+    changed = events.get(attrpath="many0", kind=TrackerEvent.Kind.VERDICT_CHANGED)
+    assert changed.data == {
+        "old": {"verdict": "affected", "comment": "", "fix_commit": None},
+        "new": {"verdict": "fixed", "comment": "", "fix_commit": None},
+    }
+    removed = events.get(attrpath="many0", kind=TrackerEvent.Kind.VERDICT_REMOVED)
+    assert removed.data == {
+        "old": {"verdict": "fixed", "comment": "", "fix_commit": None}
+    }
+
+
+def test_attribute_list_is_capped(
+    committer_client: APIClient, candidates: CVEDerivationClusterProposal
+) -> None:
+    response = committer_client.patch(
+        url(candidates.pk),
+        body(package_attributes=[f"a{i}" for i in range(201)]),
+        format="json",
+    )
+    assert response.status_code == 400
+    assert "no more than 200" in str(response.data["package_attributes"])

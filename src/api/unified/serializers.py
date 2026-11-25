@@ -295,13 +295,19 @@ class MatchingQuerySerializer(serializers.Serializer):
     )
 
 
+# Attributes one verdict request may name: a suggestion holds far fewer in practice, and a
+# bulk request multiplies this by the suggestions it selects.
+MAX_VERDICT_ATTRIBUTES = 200
+
+
 class VerdictUpdateSerializer(serializers.Serializer):
     """Set or remove a verdict on several attributes of a suggestion at once."""
 
     package_attributes = serializers.ListField(
         child=serializers.CharField(max_length=255),
         allow_empty=False,
-        help_text="Attribute names, each with a match or an exposure on this suggestion.",
+        max_length=MAX_VERDICT_ATTRIBUTES,
+        help_text=f"Attribute names, each with a match or an exposure on this suggestion; at most {MAX_VERDICT_ATTRIBUTES}.",
     )
     branch = serializers.CharField(
         allow_null=True,
