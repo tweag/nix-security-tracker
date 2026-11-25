@@ -4,11 +4,9 @@ import pytest
 from playwright.sync_api import Page, expect
 from pytest_django.live_server_helper import LiveServer
 
-from shared.legacy_matching import (
-    legacy_refresh_suggestion_derivation_links as refresh_suggestion_derivation_links,
-)
 from shared.models.issue import NixpkgsIssue
 from shared.models.linkage import CVEDerivationClusterProposal
+from shared.pipeline import refresh_suggestion
 
 from .routes import ISSUE_DETAIL, SUGGESTION_DETAIL, SUGGESTION_LIST
 
@@ -284,7 +282,7 @@ def test_rematch_appears_in_activity_log(
     so operators can audit algorithm runs without server access.
     """
     suggestion = make_cached_suggestion()
-    refresh_suggestion_derivation_links(suggestion)
+    refresh_suggestion(suggestion)
     page.goto(live_server.url + SUGGESTION_DETAIL + f"/{suggestion.pk}")
     page.get_by_test_id(f"suggestion-{suggestion.pk}-activity-log-toggle").click()
     activity_log = page.get_by_test_id(f"suggestion-{suggestion.pk}-activity-log")

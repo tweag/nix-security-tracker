@@ -7,14 +7,12 @@ from django.urls import reverse
 from django.utils import timezone
 from freezegun import freeze_time
 
-from shared.legacy_matching import (
-    legacy_refresh_suggestion_derivation_links as refresh_suggestion_derivation_links,
-)
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
     PackageOverlay,
 )
 from shared.models.nix_evaluation import NixDerivation
+from shared.pipeline import refresh_suggestion
 
 
 def test_feed_unknown_package_fails(client: Client, db: None) -> None:
@@ -82,7 +80,7 @@ def test_feed_excludes_rematch_event(
         ]
 
     before = entries()
-    refresh_suggestion_derivation_links(cached_suggestion)
+    refresh_suggestion(cached_suggestion)
     assert entries() == before
 
 

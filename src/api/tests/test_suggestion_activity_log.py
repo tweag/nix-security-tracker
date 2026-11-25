@@ -3,12 +3,11 @@ from collections.abc import Callable
 from rest_framework.reverse import reverse
 from rest_framework.test import APIClient
 
-from shared.legacy_matching import (
-    legacy_refresh_suggestion_derivation_links as refresh_suggestion_derivation_links,
-)
 from shared.models.issue import NixpkgsIssue
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.nix_evaluation import NixEvaluation
+from shared.pipeline import refresh_suggestion
+from shared.snapshot import update_branch_snapshot
 
 
 def test_detail_activity_log_null_by_default(
@@ -111,8 +110,9 @@ def test_rematch_appears_in_activity_log(
     """
     A rematch call must be visible in the activity log so API consumers
     can track algorithm reruns without reading server logs.
+    Here the re-match finds nothing, so the packages stay, flagged as no longer matched.
     """
-    refresh_suggestion_derivation_links(cached_suggestion)
+    refresh_suggestion(cached_suggestion)
     response = client.get(
         reverse(
             "cvederivationclusterproposal-detail",
@@ -125,13 +125,19 @@ def test_rematch_appears_in_activity_log(
     assert rematch["username"] is None
 
 
-def test_rematch_dismissal_is_not_attributed_to_anyone(
+def test_rematch_reopening_is_not_attributed_to_anyone(
     cached_suggestion: CVEDerivationClusterProposal,
-    make_evaluation: Callable[..., NixEvaluation],
+    evaluation: NixEvaluation,
     client: APIClient,
 ) -> None:
-    make_evaluation()
-    refresh_suggestion_derivation_links(cached_suggestion)
+    """Re-matching no longer rejects (F4); it reopens a `no_matches` rejection, as the tracker."""
+    update_branch_snapshot(evaluation)
+    CVEDerivationClusterProposal.objects.filter(pk=cached_suggestion.pk).update(
+        status=CVEDerivationClusterProposal.Status.REJECTED,
+        rejection_reason=CVEDerivationClusterProposal.RejectionReason.NO_MATCHES,
+    )
+    cached_suggestion.refresh_from_db()
+    refresh_suggestion(cached_suggestion)
     response = client.get(
         reverse(
             "cvederivationclusterproposal-detail",
@@ -140,10 +146,10 @@ def test_rematch_dismissal_is_not_attributed_to_anyone(
         {"activity_log": "true"},
     )
     assert response.status_code == 200
-    dismissal = next(
+    reopening = next(
         e
         for e in response.data["activity_log"]
         if e["action"] == "update"
-        and e["status_value"] == CVEDerivationClusterProposal.Status.REJECTED
+        and e["status_value"] == CVEDerivationClusterProposal.Status.PENDING
     )
-    assert dismissal["username"] is None
+    assert reopening["username"] is None

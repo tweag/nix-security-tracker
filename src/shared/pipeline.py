@@ -327,10 +327,14 @@ def rematch(
             result.exposures = reconcile_exposures(suggestion, cause, batch=batch)
         result.projection = project_links(suggestion)
         result.reopened = _reopen_if_matched(suggestion, result.projection)
+        # What a user could notice: matches, shown attributes, or their provenance changed.
+        # Moving links to a newer evaluation alone is not logged.
         if (
-            result.matches is not None
-            and (result.matches.events or result.legacy_retracted)
-        ) or result.projection.attributes_changed:
+            (result.matches is not None and result.matches.events)
+            or result.legacy_retracted
+            or result.projection.attributes_changed
+            or result.projection.updated
+        ):
             with pghistory.context(system=True):
                 pghistory.create_event(suggestion, label="rematch")
     return result
