@@ -1,6 +1,7 @@
 from collections.abc import Callable
 
 import pytest
+from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.test import override_settings
 from rest_framework.reverse import reverse
@@ -10,6 +11,7 @@ from api.suggestions.views import SuggestionViewSet
 from api.throttling import BulkRateThrottle
 from shared.models.cve import Container
 from shared.models.linkage import CVEDerivationClusterProposal, ProvenanceFlags
+from shared.models.matching import Verdict
 from shared.models.nix_evaluation import NixDerivation, NixMaintainer
 
 REFERENCE_URL = "https://example.com/advisory"
@@ -365,6 +367,7 @@ def test_bulk_packages_ignores_a_package_everywhere(
     pending_suggestions: list[CVEDerivationClusterProposal],
     drv: NixDerivation,
     staff_client: APIClient,
+    staff: User,
 ) -> None:
     response = staff_client.patch(
         f"{PACKAGES_URL}?package={drv.attribute}",
@@ -376,6 +379,11 @@ def test_bulk_packages_ignores_a_package_everywhere(
     for suggestion in pending_suggestions:
         suggestion.refresh_from_db()
         assert drv.attribute not in suggestion.cached.payload["packages"]
+    assert set(
+        Verdict.objects.filter(attrpath=drv.attribute).values_list(
+            "suggestion_id", "verdict", "author"
+        )
+    ) == {(s.pk, Verdict.Kind.IRRELEVANT, staff.pk) for s in pending_suggestions}
 
 
 def test_bulk_packages_restores_a_package_everywhere(
@@ -395,6 +403,7 @@ def test_bulk_packages_restores_a_package_everywhere(
     for suggestion in pending_suggestions:
         suggestion.refresh_from_db()
         assert drv.attribute in suggestion.cached.payload["packages"]
+    assert not Verdict.objects.exists()
 
 
 def test_bulk_packages_ignores_and_restores_several_packages_everywhere(

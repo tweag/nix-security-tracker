@@ -204,8 +204,8 @@ STATES: list[tuple[str, SuggestionFacts, DerivedState]] = [
         DerivedState.TRACKING,
     ),
     (
-        "ignored overlay is implied irrelevant",
-        facts(exposure(), ignored={"foo"}),
+        "ignored (irrelevant verdict) resolves",
+        facts(exposure(), verdicts=(VerdictFact("foo", None, V.IRRELEVANT),)),
         DerivedState.RESOLVED,
     ),
 ]
@@ -364,7 +364,14 @@ def test_queue_excludes_dismissed_and_retracted(world: World) -> None:  # noqa: 
     assert possibly_fixed_queue() == []
 
 
-def test_queue_excludes_ignored(world: World) -> None:  # noqa: F811
+def test_queue_excludes_ignored(world: World, author: User) -> None:  # noqa: F811
+    fixed_world(world)
+    set_verdict(world.suggestion, "foo", V.IRRELEVANT, author)
+    assert possibly_fixed_queue() == []
+
+
+def test_ignore_overlay_alone_is_no_verdict(world: World) -> None:  # noqa: F811
+    """Ignores write a verdict (and are backfilled), so an overlay alone implies nothing."""
     fixed_world(world)
     PackageOverlay.objects.create(
         suggestion=world.suggestion,
@@ -372,7 +379,7 @@ def test_queue_excludes_ignored(world: World) -> None:  # noqa: F811
         package=Package.objects.create(name="foo", homepage="https://foo"),
         type=Overlay.Type.IGNORED,
     )
-    assert possibly_fixed_queue() == []
+    assert [q.attrpath for q in possibly_fixed_queue()] == ["foo"]
 
 
 def test_regression_flag_end_to_end(world: World, author: User) -> None:  # noqa: F811

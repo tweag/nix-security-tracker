@@ -6,11 +6,11 @@ Decisions and derived state over the unified model (section 3.2 of the matching 
 - `derive_state` / `derive_states`: the derived suggestion state of the report's table.
 - `possibly_fixed_queue`: exposures observed fixed that no verdict confirms yet.
 
-Interim rules while verdicts are not yet backfilled from the existing data (a later stage):
-- An `ignored` package overlay counts as an implied `irrelevant` verdict.
-- For ACCEPTED and PUBLISHED suggestions, an attribute without a verdict counts as an implied
-  `affected` verdict: accepting a suggestion is a human saying its packages are affected.
-Implied verdicts are marked as such and never written to `Verdict`.
+Ignoring a package writes a real `irrelevant` verdict, and `backfill_unified_model` converts
+the older ignore overlays, so overlays imply nothing here. One interim rule remains: for
+ACCEPTED and PUBLISHED suggestions, an attribute without a verdict counts as an implied
+`affected` verdict, since accepting a suggestion is a human saying its packages are affected
+and acceptance is not recorded per attribute. Implied verdicts are never written to `Verdict`.
 """
 
 import re
@@ -26,7 +26,7 @@ from django.db import transaction
 from django.db.models import Max
 
 from shared.exposure import dismissed_q, is_dismissed, lock_suggestions
-from shared.models.linkage import CVEDerivationClusterProposal, Overlay, PackageOverlay
+from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.matching import Exposure, Match, TrackerEvent, Verdict
 from shared.models.nix_evaluation import NixEvaluation, NixpkgsBranch
 
@@ -235,7 +235,6 @@ class SuggestionFacts:
     matched: set[str] = field(default_factory=set)
     verdicts: list[VerdictFact] = field(default_factory=list)
     exposures: list[Exposure] = field(default_factory=list)
-    ignored: set[str] = field(default_factory=set)
     became_affected: dict[tuple[str, str], datetime] = field(default_factory=dict)
 
 
@@ -331,11 +330,7 @@ def with_implied_verdicts(facts: SuggestionFacts) -> list[VerdictFact]:
     verdicts = list(facts.verdicts)
     explicit = {v.attrpath for v in verdicts}
     for attr in sorted(candidates_of(facts) - explicit):
-        if attr in facts.ignored:
-            verdicts.append(
-                VerdictFact(attr, None, VerdictKind.IRRELEVANT, implied=True)
-            )
-        elif facts.status in (Status.ACCEPTED, Status.PUBLISHED):
+        if facts.status in (Status.ACCEPTED, Status.PUBLISHED):
             verdicts.append(VerdictFact(attr, None, VerdictKind.AFFECTED, implied=True))
     return verdicts
 
@@ -368,10 +363,6 @@ def load_facts(suggestion_ids: Collection[int]) -> dict[int, SuggestionFacts]:
         facts[sid].verdicts.append(VerdictFact(attr, branch_id, verdict, updated_at))
     for e in Exposure.objects.filter(suggestion_id__in=ids):
         facts[e.suggestion_id].exposures.append(e)
-    for sid, attr in PackageOverlay.objects.filter(
-        suggestion_id__in=ids, type=Overlay.Type.IGNORED
-    ).values_list("suggestion_id", "package_attribute"):
-        facts[sid].ignored.add(attr)
     for sid, attr, branch_id, at in (
         TrackerEvent.objects.filter(
             suggestion_id__in=ids,

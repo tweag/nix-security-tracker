@@ -1,10 +1,12 @@
 from collections.abc import Callable
 
 import pytest
+from django.contrib.auth.models import User
 from rest_framework.reverse import reverse
 from rest_framework.test import APIClient
 
 from shared.models.linkage import CVEDerivationClusterProposal, ProvenanceFlags
+from shared.models.matching import TrackerEvent, Verdict
 from shared.models.nix_evaluation import NixDerivation, NixMaintainer
 
 PACKAGE_ATTRIBUTE_1 = "package1"
@@ -422,3 +424,37 @@ def test_patch_packages_refuses_an_empty_list(
         format="json",
     )
     assert response.status_code == 400
+
+
+def test_ignore_and_restore_write_verdicts_by_the_user(
+    suggestion_with_packages: CVEDerivationClusterProposal,
+    committer_client: APIClient,
+    committer: User,
+) -> None:
+    response = committer_client.patch(
+        url(suggestion_with_packages.pk),
+        {"package_attributes": [PACKAGE_ATTRIBUTE_1], "ignored": True},
+        format="json",
+    )
+    assert response.status_code == 204
+    verdict = Verdict.objects.get(suggestion=suggestion_with_packages)
+    assert (verdict.attrpath, verdict.verdict, verdict.author, verdict.branch) == (
+        PACKAGE_ATTRIBUTE_1,
+        Verdict.Kind.IRRELEVANT,
+        committer,
+        None,
+    )
+    assert TrackerEvent.objects.get(kind=TrackerEvent.Kind.VERDICT_SET).actor == (
+        committer
+    )
+
+    response = committer_client.patch(
+        url(suggestion_with_packages.pk),
+        {"package_attributes": [PACKAGE_ATTRIBUTE_1], "ignored": False},
+        format="json",
+    )
+    assert response.status_code == 204
+    assert not Verdict.objects.exists()
+    assert TrackerEvent.objects.get(kind=TrackerEvent.Kind.VERDICT_REMOVED).actor == (
+        committer
+    )

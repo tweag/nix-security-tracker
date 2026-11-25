@@ -2,6 +2,7 @@ from collections.abc import Callable
 from typing import cast
 
 from django.conf import settings
+from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
@@ -57,6 +58,11 @@ from shared.models.linkage import (
     BulkValidationError,
     CVEDerivationClusterProposalQuerySet,
 )
+
+
+def acting_user(request: Request) -> User | None:
+    """The user a change is attributed to: the one pghistory records for this request too."""
+    return request.user if request.user.is_authenticated else None  # type: ignore[return-value]
 
 
 class CanEditSuggestion(BasePermission):
@@ -817,11 +823,13 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
             try:
                 if serializer.validated_data["ignored"]:
                     instance.ignore_packages(
-                        serializer.validated_data["package_attributes"]
+                        serializer.validated_data["package_attributes"],
+                        acting_user(request),
                     )
                 else:
                     instance.restore_packages(
-                        serializer.validated_data["package_attributes"]
+                        serializer.validated_data["package_attributes"],
+                        acting_user(request),
                     )
             except ValidationError as e:
                 raise DRFValidationError(e.message_dict)
@@ -970,12 +978,14 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
         if serializer.validated_data["ignored"]:
             return self.bulk_response(
                 lambda queryset: queryset.ignore_packages(
-                    serializer.validated_data["package_attributes"]
+                    serializer.validated_data["package_attributes"],
+                    acting_user(request),
                 )
             )
         return self.bulk_response(
             lambda queryset: queryset.restore_packages(
-                serializer.validated_data["package_attributes"]
+                serializer.validated_data["package_attributes"],
+                acting_user(request),
             )
         )
 

@@ -6,6 +6,7 @@ from typing import Any
 
 import pghistory
 import pgtrigger
+from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import Exists, OuterRef, Q
@@ -312,19 +313,23 @@ class CVEDerivationClusterProposalQuerySet(models.QuerySet):
             lambda suggestion: suggestion.set_in_issue_draft(in_issue_draft),
         )
 
-    def ignore_packages(self, package_attributes: list[str]) -> int:
+    def ignore_packages(
+        self, package_attributes: list[str], author: "User | None" = None
+    ) -> int:
         """Ignore packages on every selected suggestion."""
         return self._apply_to_each(
             lambda suggestion: suggestion.check_ignore_packages(package_attributes),
-            lambda suggestion: suggestion.ignore_packages(package_attributes),
+            lambda suggestion: suggestion.ignore_packages(package_attributes, author),
             fresh_cache=True,
         )
 
-    def restore_packages(self, package_attributes: list[str]) -> int:
+    def restore_packages(
+        self, package_attributes: list[str], author: "User | None" = None
+    ) -> int:
         """Restore packages on every selected suggestion."""
         return self._apply_to_each(
             lambda suggestion: suggestion.check_restore_packages(package_attributes),
-            lambda suggestion: suggestion.restore_packages(package_attributes),
+            lambda suggestion: suggestion.restore_packages(package_attributes, author),
             fresh_cache=True,
         )
 
@@ -610,10 +615,20 @@ class CVEDerivationClusterProposal(TimeStampMixin):
         if errors:
             raise ValidationError({"package_attributes": errors})
 
-    def ignore_packages(self, package_attributes: list[str]) -> None:
-        """Ignore packages, updating the overlays and the cache."""
+    def ignore_packages(
+        self, package_attributes: list[str], author: "User | None" = None
+    ) -> None:
+        """
+        Ignore packages: an `irrelevant` verdict by `author` (None: unknown or the tracker),
+        plus the overlay that the cache and the activity log still read.
+        """
+        from shared.derived_state import set_verdict
+        from shared.models.matching import Verdict
+
         with transaction.atomic():
             self.check_ignore_packages(package_attributes)
+            for package_attribute in package_attributes:
+                set_verdict(self, package_attribute, Verdict.Kind.IRRELEVANT, author)
             package_ids = dict(
                 PackageAttrpath.objects.filter(
                     attrpath__in=package_attributes
@@ -648,10 +663,23 @@ class CVEDerivationClusterProposal(TimeStampMixin):
                 }
             )
 
-    def restore_packages(self, package_attributes: list[str]) -> None:
-        """Restore previously ignored packages."""
+    def restore_packages(
+        self, package_attributes: list[str], author: "User | None" = None
+    ) -> None:
+        """Restore previously ignored packages, removing their `irrelevant` verdicts."""
+        from shared.derived_state import remove_verdict
+        from shared.models.matching import Verdict
+
         with transaction.atomic():
             self.check_restore_packages(package_attributes)
+            for package_attribute in package_attributes:
+                if Verdict.objects.filter(
+                    suggestion=self,
+                    attrpath=package_attribute,
+                    branch=None,
+                    verdict=Verdict.Kind.IRRELEVANT,
+                ).exists():
+                    remove_verdict(self, package_attribute, author)
             self.package_overlays.filter(
                 package_attribute__in=package_attributes,
                 type=PackageOverlay.Type.IGNORED,
