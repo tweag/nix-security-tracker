@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -187,3 +188,38 @@ def test_list_field_query_count(
     # The filter adds one query, for the stale rows of the selection.
     assert len(one_page) == len(before) + 1
 
+
+def test_order_by_relevance(
+    anonymous_client: APIClient,
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+    make_container: Callable[..., Any],
+    make_match: Callable[..., Match],
+) -> None:
+    def new(i: int) -> CVEDerivationClusterProposal:
+        s = make_suggestion(container=make_container(cve_id=f"CVE-2025-60{i:02}"))
+        cache_new_suggestions(s)
+        return s
+
+    none, weak, mid, certain = (new(i) for i in range(4))
+    make_match("a", "name-substring", 1.0, suggestion=weak)
+    make_match("a", "name-trigram", 0.9, suggestion=mid)
+    make_match("b", "name-substring", 0.5, suggestion=mid)
+    make_match("a", "name-exact", 1.0, suggestion=certain)
+    make_match("b", "nixpkgs-cpe", 1.0, suggestion=certain)
+    # Retracted matches do not count.
+    make_match(
+        "c",
+        "nixpkgs-cpe",
+        1.0,
+        suggestion=weak,
+        retracted_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    response = anonymous_client.get(url(), {"ordering": "relevance"})
+    assert response.status_code == 200
+    assert [r["id"] for r in response.data["results"]] == [
+        certain.pk,
+        mid.pk,
+        weak.pk,
+        none.pk,
+    ]
+    assert anonymous_client.get(url(), {"ordering": "nope"}).status_code == 400

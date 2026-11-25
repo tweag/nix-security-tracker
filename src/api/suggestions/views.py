@@ -52,6 +52,7 @@ from api.suggestions.serializers import (
 )
 from api.throttling import BulkRateThrottle
 from api.unified.matching import build_matching_view
+from api.unified.relevance import order_by_relevance
 from api.unified.serializers import (
     DERIVED_STATE_CHOICES,
     MatchingQuerySerializer,
@@ -375,8 +376,16 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
 
     @extend_schema(
         operation_id="listSuggestions",
-        description="List all suggestions (proposals linking CVEs to derivations), paginated and sorted by most recently modified or created first.",
-        parameters=[ACTIVITY_LOG_PARAMETER],
+        description="List all suggestions (proposals linking CVEs to derivations), paginated and sorted by most recently modified or created first, or by relevance.",
+        parameters=[
+            ACTIVITY_LOG_PARAMETER,
+            OpenApiParameter(
+                name="ordering",
+                type=str,
+                enum=["relevance"],
+                description="`relevance`: highest attribute score (noisy-OR over active matches) first, then most recent.",
+            ),
+        ],
         responses={
             200: SuggestionSerializer(many=True),
             400: ErrorDetailSerializer,
@@ -384,6 +393,11 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
     )
     def list(self, request: Request) -> Response:
         queryset = self.filter_queryset(self.get_queryset())
+        ordering = request.query_params.get("ordering")
+        if ordering == "relevance":
+            queryset = order_by_relevance(queryset)
+        elif ordering is not None:
+            raise DRFValidationError({"ordering": ["Unknown ordering, use relevance."]})
         page = self.paginate_queryset(queryset)
         objects = page if page is not None else list(queryset)
 
