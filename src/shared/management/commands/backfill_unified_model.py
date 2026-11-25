@@ -93,7 +93,9 @@ class Command(BaseCommand):
                 break
             with transaction.atomic():
                 counts = self.backfill(batch, branches, not options["no_reconcile"])
-                counts["derived_states"] = flush_derived_states()
+                counts["derived_states"] = flush_derived_states(
+                    [pk for pk, *_ in batch]
+                )
             for key, value in counts.items():
                 totals[key] += value
             cursor = batch[-1][0]

@@ -167,7 +167,6 @@ def ensure_suggestion(cve: CveRecord) -> bool:
         if view.hardware_only:
             logger.info("'%s' has only hardware CPEs, rejecting.", cve_id)
             _create(cve, Status.REJECTED, Rejection.HARDWARE_ONLY_CPE, {})
-            flush_derived_states()
             return True
 
         matchers = enabled_matchers()
@@ -191,7 +190,7 @@ def ensure_suggestion(cve: CveRecord) -> bool:
         batch = uuid.uuid4()
         reconcile_exposures(suggestion, Cause.CVE_UPDATE, batch=batch)
         projection = project_links(suggestion)
-        flush_derived_states()
+        flush_derived_states([suggestion.pk])
         logger.info(
             "Created suggestion %d for '%s' (%s %s): %d attributes shown, %d below threshold, %d beyond cap",
             suggestion.pk,
@@ -355,7 +354,7 @@ def rematch(
         ):
             with pghistory.context(system=True):
                 pghistory.create_event(suggestion, label="rematch")
-        flush_derived_states()
+        flush_derived_states([suggestion.pk])
         if result.needs_cache:
             cache_new_suggestions(suggestion)
     return result
@@ -539,7 +538,7 @@ def apply_evaluation(
             project_links(suggestion)
             outcome.projected.append(suggestion.pk)
         cache_new_suggestions(suggestion)
-    flush_derived_states()
+    flush_derived_states(touched)
 
     done = set(rematch_ids) | touched
     behind = (

@@ -223,7 +223,7 @@ def _verdict_event(
         data=data,
         batch=batch or uuid.uuid4(),
     )
-    flush_derived_states()
+    flush_derived_states([v.suggestion_id])
 
 
 # --- Effective status -----------------------------------------------------------------------
@@ -436,17 +436,22 @@ def load_facts(suggestion_ids: Collection[int]) -> dict[int, SuggestionFacts]:
     return facts
 
 
-def flush_derived_states(limit: int | None = None) -> int:
+def flush_derived_states(
+    suggestion_ids: Iterable[int] | None = None, limit: int | None = None
+) -> int:
     """
     Recompute the stored derived state of suggestions marked stale (by the triggers on tracker
     events and on status changes), within the caller's transaction, so a writer that calls
-    this before committing leaves its suggestions consistent. Rows another transaction holds
-    are skipped; that transaction flushes them itself. Returns how many were recomputed.
+    this with the suggestions it wrote, before committing, leaves them consistent. Without
+    ids, every stale row (`recompute_derived_state --stale-only`). Rows another transaction
+    holds are skipped; that transaction flushes them itself. Returns how many were recomputed.
     """
     with transaction.atomic():
+        rows = SuggestionDerivedState.objects.filter(stale=True)
+        if suggestion_ids is not None:
+            rows = rows.filter(suggestion_id__in=list(suggestion_ids))
         stale = (
-            SuggestionDerivedState.objects.filter(stale=True)
-            .select_for_update(skip_locked=True)
+            rows.select_for_update(skip_locked=True)
             .order_by("pk")
             .values_list("suggestion_id", flat=True)
         )

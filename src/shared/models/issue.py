@@ -253,7 +253,7 @@ class NixpkgsIssue(TimeStampMixin):
                 in_issue_draft=False,
                 updated_at=timezone.now(),
             )
-            flush_derived_states()
+            flush_derived_states([s.pk for s in suggestions])
         return issue
 
 

@@ -1077,7 +1077,7 @@ class CVEDerivationClusterProposal(TimeStampMixin):
             self.in_issue_draft = False
         super().save(*args, **kwargs)
         # A status change marked the stored derived state stale (database trigger).
-        flush_derived_states()
+        flush_derived_states([self.pk])
 
     class Meta:  # type: ignore[override]
         triggers = [
