@@ -591,6 +591,8 @@ SPECTACULAR_SETTINGS = {
         "SharedValueStateEnum": "shared.models.linkage.SharedValueState",
         "GithubIssueStateEnum": "api.issues.serializers.GITHUB_ISSUE_STATES",
         "GithubPullRequestStateEnum": "api.issues.serializers.GITHUB_PULL_REQUEST_STATES",
+        "DerivedStateEnum": "api.unified.serializers.DERIVED_STATE_CHOICES",
+        "VerdictKindEnum": "shared.models.matching.Verdict.Kind",
     },
 }
 

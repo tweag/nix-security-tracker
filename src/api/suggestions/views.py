@@ -51,6 +51,15 @@ from api.suggestions.serializers import (
     build_activity_log_map,
 )
 from api.throttling import BulkRateThrottle
+from api.unified.matching import build_matching_view
+from api.unified.serializers import (
+    DERIVED_STATE_CHOICES,
+    MatchingQuerySerializer,
+    SuggestionMatchingSerializer,
+    VerdictUpdateSerializer,
+)
+from api.unified.states import derived_state_map, filter_by_derived_state
+from api.unified.verdicts import VerdictChange, apply_verdicts, bulk_apply_verdicts
 from shared.auth import user_can_edit_suggestion
 from shared.models import CVEDerivationClusterProposal, NixpkgsIssue
 from shared.models.cached import CachedSuggestions
@@ -110,6 +119,8 @@ class SuggestionFilterSet(filters.FilterSet):
     Setting both bounds to the same day selects the suggestions created on that day.
 
     `affected_product_version` requires `affected_product`, and selects suggestions where that same affected product carries the version.
+
+    `derived_state` accepts repeated query params and is combined with OR. It reads the stored derived state.
     """
 
     status = filters.MultipleChoiceFilter(
@@ -141,6 +152,11 @@ class SuggestionFilterSet(filters.FilterSet):
         lookup_expr="date__lte",
         label="Filter by creation on or before a day (YYYY-MM-DD)",
     )
+    derived_state = filters.MultipleChoiceFilter(
+        choices=DERIVED_STATE_CHOICES,
+        method="filter_derived_state",
+        label="Filter by derived state (repeatable, combined with OR)",
+    )
 
     class Meta:
         model = CVEDerivationClusterProposal
@@ -152,6 +168,7 @@ class SuggestionFilterSet(filters.FilterSet):
             "affected_product_version",
             "created_at_after",
             "created_at_before",
+            "derived_state",
         ]
 
     def filter_package(self, queryset: QuerySet, name: str, value: str) -> QuerySet:
@@ -162,6 +179,13 @@ class SuggestionFilterSet(filters.FilterSet):
     ) -> QuerySet:
         version = self.form.cleaned_data.get("affected_product_version") or None
         return queryset.with_affected_product(value, version)
+
+    def filter_derived_state(
+        self, queryset: QuerySet, name: str, value: list[str]
+    ) -> QuerySet:
+        if not value:
+            return queryset
+        return filter_by_derived_state(queryset, value)
 
     def filter_affected_product_version(
         self, queryset: QuerySet, name: str, value: str
@@ -206,6 +230,13 @@ BULK_FILTER_PARAMETERS = [
         type=str,
         description="Select suggestions where the affected product carries this version or version bound (exact match, requires affected_product).",
     ),
+    OpenApiParameter(
+        name="derived_state",
+        type=str,
+        many=True,
+        enum=[value for value, _label in DERIVED_STATE_CHOICES],
+        description="Select suggestions by derived state (repeatable, combined with OR).",
+    ),
 ]
 
 
@@ -225,6 +256,7 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
             "bulk_packages",
             "bulk_maintainers",
             "bulk_references",
+            "bulk_verdicts",
         }
     )
 
@@ -263,7 +295,7 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
                 cached__isnull=False,
                 cached__schema_version=CachedSuggestions.CURRENT_SCHEMA_VERSION,
             )
-            .select_related("cached")
+            .select_related("cached", "derived")
             .prefetch_related("cve__container__references__tags")
             .order_by("-updated_at", "-created_at")
         )
@@ -361,6 +393,7 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
             context["activity_logs"] = build_activity_log_map(
                 [obj.pk for obj in objects]
             )
+        context["derived_states"] = derived_state_map(objects)
 
         serializer = self.get_serializer_class()(objects, many=True, context=context)
         if page is not None:
@@ -379,6 +412,7 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
         context = self.get_serializer_context()
         if context.get("include_activity_log"):
             context["activity_logs"] = build_activity_log_map([instance.pk])
+        context["derived_states"] = derived_state_map([instance])
         serializer = self.get_serializer_class()(instance, context=context)
         return Response(serializer.data)
 
@@ -395,6 +429,7 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
         context = self.get_serializer_context()
         if context.get("include_activity_log"):
             context["activity_logs"] = build_activity_log_map([instance.pk])
+        context["derived_states"] = derived_state_map([instance])
         serializer = self.get_serializer_class()(instance, context=context)
         return Response(serializer.data)
 
@@ -568,6 +603,72 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
         data = build_activity_log_map([instance.pk]).get(instance.pk, [])
         serializer = ActivityLogEntrySerializer(data, many=True)
         return Response(serializer.data)
+
+    @extend_schema(
+        operation_id="getSuggestionMatching",
+        description=(
+            "The matching model's view of a suggestion: every candidate attribute ranked by score, "
+            "with its matches and their evidence, and per branch its exposure, verdicts and effective status; "
+            "plus the derived state. Attributes whose matches are all retracted are listed while they carry a verdict. "
+            "Evaluations and affected products are referenced by id and listed once."
+        ),
+        parameters=[MatchingQuerySerializer],
+        responses={
+            200: SuggestionMatchingSerializer,
+            400: ErrorDetailSerializer,
+            404: ErrorDetailSerializer,
+        },
+    )
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="matching",
+        serializer_class=SuggestionMatchingSerializer,
+        pagination_class=None,
+    )
+    def matching(self, request: Request, pk: int) -> Response:
+        query = MatchingQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        instance = self.get_object()
+        data = build_matching_view(instance, **cast(dict, query.validated_data))
+        return Response(SuggestionMatchingSerializer(data).data)
+
+    @extend_schema(
+        operation_id="updateSuggestionVerdicts",
+        description=(
+            "Set a verdict on attributes of a suggestion for one tracked branch or all branches, "
+            "or remove it with `verdict: null`. "
+            "Fails without modifying anything if any attribute has neither a match nor an exposure on the suggestion, "
+            "if the branch is not tracked, or, on removal, if an attribute has no verdict there. "
+            "Setting a verdict an attribute already has is a no-op."
+        ),
+        request=VerdictUpdateSerializer,
+        responses={
+            204: None,
+            400: ErrorDetailSerializer,
+            403: ErrorDetailSerializer,
+            404: ErrorDetailSerializer,
+        },
+    )
+    @action(
+        detail=True,
+        methods=["patch"],
+        url_path="verdicts",
+        serializer_class=VerdictUpdateSerializer,
+    )
+    def verdicts(self, request: Request, pk: int) -> Response:
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        instance = self.get_object()
+        try:
+            apply_verdicts(
+                instance,
+                _verdict_change(serializer.validated_data),
+                cast(User, request.user),
+            )
+        except ValidationError as e:
+            raise DRFValidationError(e.message_dict)
+        return Response(status=204)
 
     @extend_schema(
         methods=["get"],
@@ -998,6 +1099,37 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
         )
 
     @extend_schema(
+        operation_id="bulkUpdateSuggestionVerdicts",
+        description=(
+            "Set or remove a verdict on attributes of every suggestion matching the filters. "
+            "Fails without modifying anything if any of them refuses it (see updateSuggestionVerdicts)."
+        ),
+        parameters=BULK_FILTER_PARAMETERS,
+        request=VerdictUpdateSerializer,
+        responses={
+            200: BulkResultSerializer,
+            400: BulkErrorSerializer,
+            403: ErrorDetailSerializer,
+        },
+    )
+    @action(
+        detail=False,
+        methods=["patch"],
+        url_path="verdicts",
+        url_name="bulk-verdicts",
+        serializer_class=VerdictUpdateSerializer,
+    )
+    def bulk_verdicts(self, request: Request) -> Response:
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        change = _verdict_change(serializer.validated_data)
+        return self.bulk_response(
+            lambda queryset: bulk_apply_verdicts(
+                queryset, change, cast(User, request.user)
+            )
+        )
+
+    @extend_schema(
         operation_id="bulkUpdateSuggestionMaintainer",
         description=(
             "Ignore or restore a maintainer on every suggestion matching the filters. "
@@ -1064,3 +1196,13 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
         return self.bulk_response(
             lambda queryset: queryset.restore_reference(reference_url)
         )
+
+
+def _verdict_change(data: dict) -> VerdictChange:
+    return VerdictChange(
+        attrpaths=data["package_attributes"],
+        branch=data["branch"],
+        verdict=data["verdict"],
+        fix_commit=data["fix_commit"],
+        comment=data["comment"],
+    )

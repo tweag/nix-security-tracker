@@ -19,6 +19,7 @@ from api.params import (
 )
 from api.serializers import ErrorDetailSerializer
 from api.suggestions.serializers import build_activity_log_map
+from api.unified.states import derived_state_map
 from shared.models import (
     NIXPKGS_ISSUE_CODE_REGEX,
     NixpkgsIssue,
@@ -60,6 +61,7 @@ class IssueViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericViewSet):
         return (
             NixpkgsIssue.objects.prefetch_related(
                 "suggestions__cached",
+                "suggestions__derived",
                 "suggestions__cve__container__references__tags",
                 "github_items__events",
                 "github_items__closed_by__pull_request__events",
@@ -83,7 +85,7 @@ class IssueViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericViewSet):
     def _add_activity_log_context(
         self, issues: list[NixpkgsIssue], context: dict
     ) -> dict:
-        """Batch the activity log for all suggestions embedded in the given issues."""
+        """Batch the activity log and derived state of the suggestions embedded in the given issues."""
         if context.get("include_activity_log"):
             suggestion_ids = [
                 suggestion.pk
@@ -91,6 +93,10 @@ class IssueViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericViewSet):
                 for suggestion in issue.suggestions.all()
             ]
             context["activity_logs"] = build_activity_log_map(suggestion_ids)
+        if context.get("expand_suggestions"):
+            context["derived_states"] = derived_state_map(
+                suggestion for issue in issues for suggestion in issue.suggestions.all()
+            )
         return context
 
     @extend_schema(

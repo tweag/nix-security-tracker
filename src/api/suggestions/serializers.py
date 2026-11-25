@@ -1,6 +1,8 @@
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
+from api.unified.serializers import DERIVED_STATE_CHOICES
+from api.unified.states import derived_state_map
 from shared.cvss import compute_cvss_fields
 from shared.logs.batches import (
     FoldedCreationEvent,
@@ -261,6 +263,9 @@ class SuggestionSerializer(serializers.Serializer):
     # Lets the frontend seed the activity-log query as initial data and avoid a separate request per suggestion.
     activity_log = serializers.SerializerMethodField(allow_null=True)
 
+    # Derived state of the matching model (stored, computed live while stale).
+    derived_state = serializers.SerializerMethodField()
+
     def _payload(self, obj: CVEDerivationClusterProposal) -> dict:
         return obj.cached.payload
 
@@ -349,6 +354,14 @@ class SuggestionSerializer(serializers.Serializer):
             # Single-object fallback (e.g. retrieve) when no batched map is provided.
             data = build_activity_log_map([obj.pk]).get(obj.pk, [])
         return list(ActivityLogEntrySerializer(data, many=True).data)
+
+    @extend_schema_field(serializers.ChoiceField(choices=DERIVED_STATE_CHOICES))
+    def get_derived_state(self, obj: CVEDerivationClusterProposal) -> str:
+        states = self.context.get("derived_states")
+        if states is None or obj.pk not in states:
+            # Single-object fallback: one query, plus a live computation if stale.
+            states = derived_state_map([obj])
+        return states[obj.pk]
 
     def to_representation(self, instance: CVEDerivationClusterProposal) -> dict:
         result = super().to_representation(instance)

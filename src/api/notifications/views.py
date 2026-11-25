@@ -197,6 +197,7 @@ class NotificationViewSet(
             .select_related(
                 "suggestionnotification__suggestion__cve",
                 "suggestionnotification__suggestion__cached",
+                "suggestionnotification__suggestion__derived",
             )
             .prefetch_related(
                 "suggestionnotification__suggestion__cve__container__references__tags",
