@@ -12,12 +12,14 @@ from api.server_info import ServerInfoView
 from api.subscriptions.views import SubscriptionsViewSet
 from api.suggestions.views import SuggestionViewSet
 from api.tokens.views import TokenManagementView
+from api.unified.views import PossiblyFixedViewSet
 
 v1_router = routers.DefaultRouter(trailing_slash=False)
 v1_router.register(r"issues", IssueViewSet)
 v1_router.register(r"notifications", NotificationViewSet, basename="notifications")
 v1_router.register("suggestions", SuggestionViewSet)
 v1_router.register("subscriptions", SubscriptionsViewSet)
+v1_router.register("possibly_fixed", PossiblyFixedViewSet, basename="possibly-fixed")
 
 urlpatterns = [
     path("v1/", include(v1_router.urls)),
