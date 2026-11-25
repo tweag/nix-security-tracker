@@ -187,7 +187,10 @@ def project_links(suggestion: CVEDerivationClusterProposal) -> ProjectionResult:
     Bring the suggestion's derivation links in line with what it shows, by diffing:
     create the missing links, delete the superfluous ones, fix flags. A no-op writes nothing.
     """
+    from shared.legacy_backfill import ensure_backfilled
+
     with transaction.atomic():
+        ensure_backfilled(suggestion)
         status, reason = (
             CVEDerivationClusterProposal.objects.select_for_update()
             .values_list("status", "rejection_reason")

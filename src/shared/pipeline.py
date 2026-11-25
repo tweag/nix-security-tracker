@@ -40,6 +40,7 @@ from shared.exposure import (
     reconcile_exposures,
     tracked_branches,
 )
+from shared.legacy_backfill import ensure_backfilled
 from shared.matching.base import MatcherResult, Universe
 from shared.matching.matchers import collect_candidates
 from shared.matching.reconcile import ReconcileResult, reconcile_matches
@@ -311,6 +312,10 @@ def rematch(
         suggestion.refresh_from_db(
             fields=["status", "rejection_reason", "comment", "algorithm_version"]
         )
+        # A suggestion of the legacy write path: record what it shows and what humans decided
+        # (acceptance, ignores) before anything re-matches it, whether or not
+        # `backfill_unified_model` has reached it yet.
+        ensure_backfilled(suggestion)
         result.frozen = is_frozen_for_projection(
             suggestion.status, suggestion.rejection_reason
         )

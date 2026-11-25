@@ -31,6 +31,7 @@ from shared.models.linkage import (
     CVEDerivationClusterProposal,
     DerivationClusterProposalLink,
     PackageClusterProposalLink,
+    PackageOverlay,
     ProvenanceFlags,
 )
 from shared.models.matching import Exposure, Match, ProductKey, Verdict
@@ -732,5 +733,77 @@ def make_verdict(
             author=author,
             **fields,
         )
+
+    return wrapped
+
+
+@pytest.fixture
+def make_legacy_suggestion(
+    make_container: Callable[..., Container],
+    make_drv: Callable[..., NixDerivation],
+    evaluation: NixEvaluation,
+    committer: User,
+) -> Callable[..., CVEDerivationClusterProposal]:
+    """
+    A suggestion as production has it before the unified model: linked by the legacy matcher
+    (algorithm version 2), with ignore overlays and a status set by a human through the API
+    (pghistory context), cached, and no `Match`, `Exposure` or `Verdict` rows. The branch
+    snapshot exists, as `nix-security-tracker-snapshot-backfill` creates it.
+
+    The default CVE (`package_name="foo"`) links `foo` (exact today) and `foobar` (substring
+    only, hidden by the new matchers).
+    """
+    import pghistory
+
+    from shared.legacy_matching import legacy_build_new_links
+    from shared.snapshot import update_branch_snapshot
+
+    def wrapped(
+        status: str = CVEDerivationClusterProposal.Status.PENDING,
+        rejection_reason: str | None = None,
+        ignored: tuple[str, ...] = (),
+        attributes: tuple[str, ...] = ("foo", "foobar"),
+        package_name: str = "foo",
+        cve_id: str = "CVE-2025-0001",
+        comment: str | None = None,
+    ) -> CVEDerivationClusterProposal:
+        for attr in attributes:
+            make_drv(attribute=attr, pname=attr, version="1.0", evaluation=evaluation)
+        container = make_container(
+            cve_id=cve_id, package_name=package_name, product=None
+        )
+        assert legacy_build_new_links(container)
+        suggestion = CVEDerivationClusterProposal.objects.get(cve=container.cve)
+        CVEDerivationClusterProposal.objects.filter(pk=suggestion.pk).update(
+            algorithm_version=2, comment=comment
+        )
+        with pghistory.context(user=committer.pk):
+            for attr in ignored:
+                PackageOverlay.objects.create(
+                    suggestion=suggestion,
+                    package_attribute=attr,
+                    package=Package.objects.get_or_create(
+                        name=attr, defaults={"homepage": f"https://example.com/{attr}"}
+                    )[0],
+                    type=PackageOverlay.Type.IGNORED,
+                )
+            paths: dict[str, list[str]] = {
+                "accepted": ["accepted"],
+                "published": ["accepted", "published"],
+                "rejected": ["rejected"],
+            }
+            path = paths.get(str(status), [])
+            for step in path:
+                CVEDerivationClusterProposal.objects.filter(pk=suggestion.pk).update(
+                    status=step,
+                    rejection_reason=rejection_reason if step == "rejected" else None,
+                )
+        update_branch_snapshot(evaluation)
+        suggestion.refresh_from_db()
+        cache_new_suggestions(suggestion)
+        assert not Match.objects.filter(suggestion=suggestion).exists()
+        assert not Exposure.objects.filter(suggestion=suggestion).exists()
+        assert not Verdict.objects.filter(suggestion=suggestion).exists()
+        return suggestion
 
     return wrapped

@@ -484,8 +484,14 @@ in
             '';
           };
 
-          nix-security-tracker-caching = {
-            description = "Web security tracker - cache regeneration";
+          # Records what legacy suggestions show and what humans decided on them (verdicts) before
+          # any worker re-matches them. Workers require it: if it fails halfway they do not start;
+          # restarting it resumes (idempotent). The write path also backfills a legacy suggestion
+          # it meets first (`shared.legacy_backfill.ensure_backfilled`), so this ordering is a
+          # second line of defence and keeps the work off the listeners.
+          # FIXME: Only needed once, for suggestions matched by the legacy matcher. Remove after the first deployment.
+          nix-security-tracker-unified-backfill = {
+            description = "Web security tracker - backfill the unified matching model";
             after = [
               "network.target"
               "postgresql.service"
@@ -496,6 +502,30 @@ in
               "postgresql.service"
               "nix-security-tracker-migrations.service"
               "nix-security-tracker-snapshot-backfill.service"
+            ];
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = true;
+            };
+            script = ''
+              ${manage.name} backfill_unified_model
+            '';
+          };
+
+          nix-security-tracker-caching = {
+            description = "Web security tracker - cache regeneration";
+            after = [
+              "network.target"
+              "postgresql.service"
+              "nix-security-tracker-migrations.service"
+              "nix-security-tracker-snapshot-backfill.service"
+              "nix-security-tracker-unified-backfill.service"
+            ];
+            requires = [
+              "postgresql.service"
+              "nix-security-tracker-migrations.service"
+              "nix-security-tracker-snapshot-backfill.service"
+              "nix-security-tracker-unified-backfill.service"
             ];
 
             serviceConfig = {
@@ -508,9 +538,6 @@ in
               # Product keys of affected products (and their cpeApplicability) feed the curated
               # and rules matchers and reverse matching. Only rows without keys.
               ${manage.name} backfill_product_keys
-              # FIXME: Only needed once, for suggestions matched by the legacy matcher. Remove after the first deployment.
-              # Before anything re-matches: it records what legacy suggestions show and humans decided.
-              ${manage.name} backfill_unified_model
               # Changed rules reconcile the suggestions they bear on, synchronously.
               ${manage.name} load_product_rules
               # Stale matchers, and machine rejections within MATCHING_REOPEN_WINDOW_DAYS (dispatched).
@@ -535,11 +562,13 @@ in
               "postgresql.service"
               "nix-security-tracker-migrations.service"
               "nix-security-tracker-snapshot-backfill.service"
+              "nix-security-tracker-unified-backfill.service"
             ];
             requires = [
               "postgresql.service"
               "nix-security-tracker-migrations.service"
               "nix-security-tracker-snapshot-backfill.service"
+              "nix-security-tracker-unified-backfill.service"
             ];
 
             script = ''
@@ -566,11 +595,13 @@ in
               "postgresql.service"
               "nix-security-tracker-migrations.service"
               "nix-security-tracker-snapshot-backfill.service"
+              "nix-security-tracker-unified-backfill.service"
             ];
             requires = [
               "postgresql.service"
               "nix-security-tracker-migrations.service"
               "nix-security-tracker-snapshot-backfill.service"
+              "nix-security-tracker-unified-backfill.service"
             ];
 
             script = ''
