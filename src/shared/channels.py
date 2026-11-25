@@ -85,3 +85,14 @@ class BranchSnapshotChannel(Channel):
     evaluation_pk: int
     branch: str
     lock_notifications = True
+
+
+@dataclass
+class CveUpdateChannel(Channel):
+    """
+    An update of the CVE record `pk` changed what matchers or the version classifier read.
+    Presentation-only changes (title, descriptions, references, metrics) are not announced.
+    """
+
+    pk: int
+    lock_notifications = True

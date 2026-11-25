@@ -56,6 +56,9 @@ class CveRecord(models.Model):
 
     triaged = models.BooleanField(default=False)
 
+    # Digest of the record as last ingested, without volatile fields; null for records ingested before it existed.
+    content_hash = models.CharField(max_length=64, null=True, default=None)
+
     def __str__(self) -> str:
         return self.cve_id
 
@@ -335,6 +338,8 @@ class AffectedProduct(models.Model):
     product_keys = models.ManyToManyField(
         "ProductKey", related_name="affected_products"
     )
+    # Digest of the `affected` entry this row was built from; null for rows ingested before it existed.
+    content_hash = models.CharField(max_length=64, null=True, default=None)
 
     search_vector = SearchVectorField(null=True)
 
@@ -398,6 +403,8 @@ class Container(models.Model):
     tags = models.ManyToManyField(Tag)
     credits = models.ManyToManyField(Credit)
     source = models.JSONField(default=dict)
+    # Digest of the container JSON without volatile fields; null for containers ingested before it existed.
+    content_hash = models.CharField(max_length=64, null=True, default=None)
 
     # Enable full-text search on CVE searches
     search_vector = SearchVectorField(null=True)

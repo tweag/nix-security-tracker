@@ -15,7 +15,6 @@ from github import UnknownObjectException
 from github.Repository import Repository
 from prometheus_client import CollectorRegistry, Gauge
 
-from shared import models
 from shared.fetchers import make_cve
 from shared.github import get_gh
 from shared.metrics import write_metrics_textfile
@@ -82,13 +81,9 @@ def ingest_day(repo: Repository, day: datetime.datetime) -> int:
         for j_cve in cve_list:
             with open(j_cve) as fc:
                 data = json.load(fc)
-                cve_id = data["cveMetadata"]["cveId"]
 
                 with transaction.atomic():
-                    make_cve(
-                        data,
-                        record=models.CveRecord.objects.filter(cve_id=cve_id).first(),
-                    )
+                    make_cve(data)
 
         # Record the ingestion
         logger.info(f"Saving the ingestion valid up to {day}")
