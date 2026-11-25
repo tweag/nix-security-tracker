@@ -1,0 +1,205 @@
+"""
+Matcher protocol, registry, the package universe matchers search, and the
+aggregation of per-branch hits into one candidate per attribute.
+"""
+
+from abc import ABC, abstractmethod
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+from typing import Any, ClassVar, NamedTuple
+
+from django.db.models import Lookup, QuerySet
+
+from shared.matching.scoring import weight_of
+from shared.matching.view import CveView, ViewProduct
+from shared.models.nix_evaluation import NixChannel, NixpkgsBranch
+from shared.models.snapshot import BranchPackage
+
+# Rows a single matcher query may return before the matcher reports truncation
+# without knowing the exact remainder. Rows are (attribute x branch).
+ROW_CEILING = 5000
+
+
+@dataclass(frozen=True)
+class Candidate:
+    """Matcher M proposes attribute `attrpath` with matcher-local confidence `score`."""
+
+    attrpath: str
+    score: float
+    # See `Match.evidence`.
+    evidence: dict[str, Any]
+
+
+@dataclass
+class MatcherResult:
+    candidates: list[Candidate] = field(default_factory=list)
+    # Attributes found beyond the matcher's limit, dropped from `candidates`.
+    truncated: int = 0
+    # Whether `truncated` is exact; False when a query hit `ROW_CEILING`.
+    truncated_exact: bool = True
+
+
+@dataclass(frozen=True)
+class Universe:
+    """What matchers search: present `BranchPackage` rows on tracked branches, without `tests.*`."""
+
+    branches: tuple[str, ...]
+
+    @classmethod
+    def tracked(cls) -> "Universe":
+        """Branches with a channel in a tracked state, as `latest_completed_per_branch` defines them."""
+        names = (
+            NixpkgsBranch.objects.filter(channels__state__in=NixChannel.TRACKED_STATES)
+            .values_list("name", flat=True)
+            .distinct()
+        )
+        return cls(tuple(sorted(names)))
+
+    def packages(self) -> QuerySet[BranchPackage]:
+        return (
+            BranchPackage.objects.present()
+            .filter(branch_id__in=self.branches)
+            .exclude(
+                # Test derivations are a Nixpkgs implementation detail and never represent software to be distributed.
+                attrpath__startswith="tests.",
+            )
+        )
+
+
+class Hit(NamedTuple):
+    """One reason why one attribute on one branch matched."""
+
+    attrpath: str
+    branch: str
+    score: float
+    product: ViewProduct | None
+    cve_field: str
+    cve_value: str
+    pkg_field: str
+    pkg_value: str
+    similarity: float | None = None
+
+    def evidence(self) -> dict[str, Any]:
+        evidence: dict[str, Any] = (
+            self.product.evidence()
+            if self.product is not None
+            else {"affected_product": None, "container": None}
+        )
+        evidence |= {
+            "cve_field": self.cve_field,
+            "cve_value": self.cve_value[:255],
+            "pkg_field": self.pkg_field,
+            "pkg_value": self.pkg_value[:255],
+        }
+        if self.similarity is not None:
+            evidence["similarity"] = round(self.similarity, 3)
+        return evidence
+
+    def reason(self) -> tuple[Any, ...]:
+        return (
+            self.product.affected_product if self.product else None,
+            self.cve_field,
+            self.cve_value,
+            self.pkg_field,
+        )
+
+
+def aggregate(
+    hits: Iterable[Hit], limit: int, ceiling_hit: bool = False
+) -> MatcherResult:
+    """
+    One candidate per attribute: the best hit's evidence, the branches it was found on,
+    and how many other reasons hit the same attribute. Keeps the `limit` best attributes.
+    """
+    by_attr: dict[str, list[Hit]] = {}
+    for hit in hits:
+        by_attr.setdefault(hit.attrpath, []).append(hit)
+
+    candidates = []
+    for attrpath, attr_hits in by_attr.items():
+        attr_hits.sort(
+            key=lambda h: (
+                -h.score,
+                h.product.affected_product if h.product else 0,
+                h.cve_field,
+                h.cve_value,
+                h.pkg_field,
+                h.pkg_value,
+                h.branch,
+            )
+        )
+        best = attr_hits[0]
+        evidence = best.evidence()
+        evidence["branches"] = sorted({h.branch for h in attr_hits})
+        others = {h.reason() for h in attr_hits} - {best.reason()}
+        if others:
+            evidence["other_hits"] = len(others)
+        candidates.append(Candidate(attrpath, best.score, evidence))
+
+    candidates.sort(key=lambda c: (-c.score, c.attrpath))
+    return MatcherResult(
+        candidates=candidates[:limit],
+        truncated=max(0, len(candidates) - limit),
+        truncated_exact=not ceiling_hit,
+    )
+
+
+class Matcher(ABC):
+    """
+    Proposes attributes for a CVE. Subclasses set `slug` and `version` (bump it when
+    behaviour changes) and implement `hits`; `register` adds them to `REGISTRY`.
+    Base weights live in `shared.matching.scoring.BASE_WEIGHTS`.
+    """
+
+    slug: ClassVar[str]
+    version: ClassVar[int]
+    # Maximum number of attributes kept per CVE; the rest is reported as truncated.
+    limit: ClassVar[int] = 200
+
+    @property
+    def weight(self) -> float:
+        return weight_of(self.slug)
+
+    @abstractmethod
+    def hits(self, view: CveView, universe: Universe) -> Iterable[Hit]:
+        """Every (attribute, branch, reason) this matcher finds, at most `ROW_CEILING` rows per query."""
+
+    def __init__(self) -> None:
+        self._ceiling_hit = False
+
+    def run(self, view: CveView, universe: Universe) -> MatcherResult:
+        self._ceiling_hit = False
+        hits = list(self.hits(view, universe))
+        return aggregate(hits, self.limit, ceiling_hit=self._ceiling_hit)
+
+    def candidates(self, view: CveView, universe: Universe) -> list[Candidate]:
+        return self.run(view, universe).candidates
+
+    def _fetch(self, queryset: QuerySet, *fields: str) -> list[tuple[Any, ...]]:
+        """Rows of `queryset`, at most `ROW_CEILING`; records whether the ceiling was hit."""
+        rows = list(queryset.values_list(*fields)[: ROW_CEILING + 1])
+        if len(rows) > ROW_CEILING:
+            self._ceiling_hit = True
+            rows = rows[:ROW_CEILING]
+        return rows
+
+
+REGISTRY: dict[str, type[Matcher]] = {}
+
+
+def register[M: type[Matcher]](matcher: M) -> M:
+    """Class decorator that makes a matcher part of every reconciliation."""
+    assert matcher.slug not in REGISTRY, f"duplicate matcher slug {matcher.slug}"
+    REGISTRY[matcher.slug] = matcher
+    return matcher
+
+
+class ILike(Lookup):
+    """`ILIKE`, which trigram GIN indexes serve, unlike Django's `UPPER(x) LIKE UPPER(y)`."""
+
+    lookup_name = "ilike"
+
+    def as_sql(self, compiler: Any, connection: Any) -> tuple[str, list[Any]]:
+        lhs, lhs_params = self.process_lhs(compiler, connection)
+        rhs, rhs_params = self.process_rhs(compiler, connection)
+        return f"{lhs} ILIKE {rhs}", [*lhs_params, *rhs_params]
