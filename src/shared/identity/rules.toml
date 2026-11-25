@@ -1,0 +1,63 @@
+# Product rules: reusable statements that an upstream product is (or is not) a set of nixpkgs
+# attributes. Reviewed like code; `manage.py load_product_rules` syncs this file into
+# `ProductMapping(source="rule_file")` rows, deleting rows for rules removed here.
+#
+# Each [[rule]] has:
+#   keys          product keys it applies to: {kind, vendor, product}, as `ProductKey` stores
+#                 them (lowercase; kind is cpe, cna, repo or purl; vendor "" when unknown)
+#   same          attribute paths the product is                   -> `curated` matcher
+#   same_glob     attribute globs (`*` matches anything, dots too)   -> `rules` matcher
+#   not_same      attribute paths the product is not              -> veto
+#   not_same_glob attribute globs the product is not              -> veto
+#   only          the product is nothing but `same`/`same_glob`: adds `not_same_glob = ["*"]`,
+#                 which the more specific `same` targets override
+#   irrelevant    the product is not in nixpkgs at all            -> vetoes every candidate
+#   comment       why; stored on the mappings
+#
+# A rule vetoes only candidates that come from the named product: a CVE that lists another
+# product as well keeps that product's candidates.
+
+[[rule]]
+comment = """Linux kernel CVEs (the kernel CNA): the kernel builds, not every package named \
+linux-* (linux-pam, linux-firmware, haskellPackages.linux-*). One attribute per kernel \
+variant; the linux_*, linuxPackages*.kernel aliases name the same derivations."""
+keys = [
+  { kind = "cna", vendor = "linux", product = "linux" },
+  { kind = "repo", vendor = "git.kernel.org/pub/scm/linux/kernel/git/stable", product = "linux" },
+  { kind = "cpe", vendor = "linux", product = "linux_kernel" },
+]
+same_glob = ["linuxKernel.kernels.*"]
+only = true
+
+[[rule]]
+comment = """NVIDIA GPU display driver bulletins (#1461): the driver is packaged per kernel as \
+linuxPackages*.nvidia_x11*. The NVIDIA CNA names it GeForce / RTX, Quadro, NVS / Tesla, which \
+otherwise matches the Tesla car packages (teslajsonpy, tesla-fleet-api)."""
+keys = [
+  { kind = "cna", vendor = "nvidia", product = "geforce" },
+  { kind = "cna", vendor = "nvidia", product = "rtx, quadro, nvs" },
+  { kind = "cna", vendor = "nvidia", product = "tesla" },
+  { kind = "cpe", vendor = "nvidia", product = "gpu_display_driver" },
+]
+same_glob = ["linuxPackages*.nvidia_x11*"]
+only = true
+
+[[rule]]
+comment = """Google Chrome CVEs: the Chromium builds in nixpkgs, not chrome-export, \
+chrome-token-signing or electron-chromedriver_*."""
+keys = [{ kind = "cna", vendor = "google", product = "chrome" }]
+same = ["chromium", "ungoogled-chromium", "google-chrome"]
+only = true
+
+[[rule]]
+comment = """Operating systems that are not in nixpkgs. Their CVEs otherwise match android-tools, \
+android-studio, macos-* helpers and similar by name; humans rejected them as not_in_nixpkgs."""
+keys = [
+  { kind = "cna", vendor = "google", product = "android" },
+  { kind = "cna", vendor = "apple", product = "macos" },
+  { kind = "cna", vendor = "apple", product = "ios and ipados" },
+  { kind = "cna", vendor = "apple", product = "visionos" },
+  { kind = "cna", vendor = "apple", product = "watchos" },
+  { kind = "cna", vendor = "apple", product = "tvos" },
+]
+irrelevant = true
