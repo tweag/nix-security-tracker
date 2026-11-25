@@ -72,10 +72,10 @@ class Command(BaseCommand):
                     if kind is None:
                         continue
                     drift[kind] += 1
-                    if kind == "wrong" and len(examples) < 10:
+                    if kind == "wrong" and row is not None and len(examples) < 10:
                         examples.append(
                             f"{pk}: stored {row.state}, computed {derived.state}"
-                        )  # type: ignore[union-attr]
+                        )
                     fix.append(
                         SuggestionDerivedState(
                             suggestion_id=pk,
