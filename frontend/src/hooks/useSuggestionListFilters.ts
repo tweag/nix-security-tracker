@@ -1,6 +1,12 @@
 import { useLocation, useSearchParams } from "wouter-preact";
-import type { ListSuggestionsStatusItem } from "@/api/generated/models";
-import { ListSuggestionsStatusItem as Status } from "@/api/generated/models";
+import type {
+  ListSuggestionsDerivedStateItem,
+  ListSuggestionsStatusItem,
+} from "@/api/generated/models";
+import {
+  ListSuggestionsDerivedStateItem as DerivedState,
+  ListSuggestionsStatusItem as Status,
+} from "@/api/generated/models";
 import { useFilterParams } from "@/hooks/useFilterParams";
 import { paths } from "@/routes/paths";
 import { DAY_PATTERN } from "@/utils/date";
@@ -15,12 +21,19 @@ export type SuggestionListFilters = {
   affectedProductVersion: string;
   createdAtAfter: string;
   createdAtBefore: string;
+  derivedStates: ListSuggestionsDerivedStateItem[];
 };
 
 const VALID_STATUSES = new Set<string>(Object.values(Status));
 
 function isValidStatus(value: string): value is ListSuggestionsStatusItem {
   return VALID_STATUSES.has(value);
+}
+
+const VALID_DERIVED_STATES = new Set<string>(Object.values(DerivedState));
+
+function isValidDerivedState(value: string): value is ListSuggestionsDerivedStateItem {
+  return VALID_DERIVED_STATES.has(value);
 }
 
 // The API rejects malformed dates with a 400, so a hand-edited URL is dropped rather than forwarded.
@@ -41,6 +54,7 @@ function parseFilters(searchParams: URLSearchParams): SuggestionListFilters {
       : "",
     createdAtAfter: parseDay(searchParams.get("created_at_after")),
     createdAtBefore: parseDay(searchParams.get("created_at_before")),
+    derivedStates: searchParams.getAll("derived_state").filter(isValidDerivedState),
   };
 }
 
@@ -63,6 +77,15 @@ const withStatuses =
     const next = new URLSearchParams(params);
     next.delete("status");
     for (const status of statuses) next.append("status", status);
+    return next;
+  };
+
+const withDerivedStates =
+  (states: ListSuggestionsDerivedStateItem[]): ParamsUpdate =>
+  (params) => {
+    const next = new URLSearchParams(params);
+    next.delete("derived_state");
+    for (const state of states) next.append("derived_state", state);
     return next;
   };
 
@@ -92,6 +115,7 @@ export function useSuggestionListFilters(): {
   setPackageFilter: (packageFilter: string) => void;
   setAffectedProductFilter: (product: string, version: string) => void;
   setCreatedAtRange: (after: string, before: string) => void;
+  setDerivedStates: (states: ListSuggestionsDerivedStateItem[]) => void;
 } {
   const [searchParams, updateParams] = useFilterParams();
   const filters = parseFilters(searchParams);
@@ -105,5 +129,6 @@ export function useSuggestionListFilters(): {
     setAffectedProductFilter: (product, version) =>
       updateParams(withAffectedProductFilter(product, version)),
     setCreatedAtRange: (after, before) => updateParams(withCreatedAtRange(after, before)),
+    setDerivedStates: (states) => updateParams(withDerivedStates(states)),
   };
 }

@@ -40,6 +40,14 @@ function suggestionMatchesFilters(
     return false;
   }
 
+  if (
+    filters.derivedStates.length > 0 &&
+    suggestion.derived_state &&
+    !filters.derivedStates.includes(suggestion.derived_state)
+  ) {
+    return false;
+  }
+
   return true;
 }
 
@@ -52,6 +60,7 @@ export function SuggestionList() {
     setPackageFilter,
     setAffectedProductFilter,
     setCreatedAtRange,
+    setDerivedStates,
   } = useSuggestionListFilters();
   const { viewMode, setViewMode } = useViewModeParam(
     SUGGESTION_VIEW_PARAM,
@@ -68,6 +77,7 @@ export function SuggestionList() {
     affected_product_version: filters.affectedProductVersion || undefined,
     created_at_after: filters.createdAtAfter || undefined,
     created_at_before: filters.createdAtBefore || undefined,
+    derived_state: filters.derivedStates.length > 0 ? filters.derivedStates : undefined,
     activity_log: true,
   });
 
@@ -78,6 +88,7 @@ export function SuggestionList() {
     !filters.affectedProduct &&
     !filters.createdAtAfter &&
     !filters.createdAtBefore &&
+    filters.derivedStates.length === 0 &&
     (data?.count ?? 0) > 0;
 
   return (
@@ -90,6 +101,7 @@ export function SuggestionList() {
           setPackageFilter={setPackageFilter}
           setAffectedProductFilter={setAffectedProductFilter}
           setCreatedAtRange={setCreatedAtRange}
+          setDerivedStates={setDerivedStates}
         />
         <IssueDraftPanel open={showIssueDraftPanel} />
         <div className="row gap centered grow justify-right">
