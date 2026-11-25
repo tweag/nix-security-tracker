@@ -50,10 +50,10 @@ same = ["chromium", "ungoogled-chromium", "google-chrome"]
 only = true
 
 [[rule]]
-comment = """Operating systems that are not in nixpkgs. Their CVEs otherwise match android-tools, \
-android-studio, macos-* helpers and similar by name; humans rejected them as not_in_nixpkgs."""
+comment = """Apple operating systems are not in nixpkgs. Their CVEs otherwise match macos-* \
+helpers and similar by name; humans and graders rejected them as not_in_nixpkgs. A CVE that \
+also lists Safari or Xcode keeps those products' candidates."""
 keys = [
-  { kind = "cna", vendor = "google", product = "android" },
   { kind = "cna", vendor = "apple", product = "macos" },
   { kind = "cna", vendor = "apple", product = "ios and ipados" },
   { kind = "cna", vendor = "apple", product = "visionos" },
@@ -61,3 +61,17 @@ keys = [
   { kind = "cna", vendor = "apple", product = "tvos" },
 ]
 irrelevant = true
+
+[[rule]]
+comment = """Android bulletins name the product "Android"; by name that matches only android-* \
+tools, which are never the affected component. Not `irrelevant`: some Android components are \
+packaged (libnfc-nci, aapt, exfatprogs), but the bulletin names them only in the description."""
+keys = [{ kind = "cna", vendor = "google", product = "android" }]
+not_same_glob = ["*"]
+
+[[rule]]
+comment = """Safari CVEs are almost always WebKit bugs; nixpkgs ships WebKit as webkitgtk_*. \
+By name they otherwise match rPackages.SAFARI and helm-safari."""
+keys = [{ kind = "cna", vendor = "apple", product = "safari" }]
+same_glob = ["webkitgtk*"]
+only = true
