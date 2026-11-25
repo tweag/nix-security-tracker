@@ -819,16 +819,24 @@ def run_snapshot_step(evaluation: NixEvaluation, branch: str = "master") -> list
 
     from django.db import transaction
 
-    from shared.channels import SuggestionRefreshChannel, SuggestionRematchChannel
+    from shared.channels import (
+        PatchDetectionChannel,
+        SuggestionRefreshChannel,
+        SuggestionRematchChannel,
+    )
     from shared.listeners.package_clustering import (
         refresh_and_cache_suggestion,
         rematch_after_evaluation,
     )
-    from shared.listeners.snapshot import apply_snapshot_changes
+    from shared.listeners.snapshot import (
+        apply_snapshot_changes,
+        detect_patches_after_snapshot,
+    )
 
     handlers = {
         SuggestionRefreshChannel: refresh_and_cache_suggestion,
         SuggestionRematchChannel: rematch_after_evaluation,
+        PatchDetectionChannel: detect_patches_after_snapshot,
     }
     with mock.patch("pgpubsub.notify") as notify, transaction.atomic():
         apply_snapshot_changes(evaluation_pk=evaluation.pk, branch=branch)

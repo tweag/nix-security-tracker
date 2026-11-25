@@ -102,6 +102,18 @@ class SuggestionRematchChannel(Channel):
 
 
 @dataclass
+class PatchDetectionChannel(Channel):
+    """
+    Look for commits naming the CVE of exposures that evaluation `evaluation_pk` rebuilt on
+    `branch` while affected (`exposure.detect_patches`): local git, so not in the step itself.
+    """
+
+    evaluation_pk: int
+    branch: str
+    lock_notifications = True
+
+
+@dataclass
 class BranchSnapshotChannel(Channel):
     """A branch's package snapshot advanced to `evaluation_pk`; its `BranchPackageChange` rows are written."""
 

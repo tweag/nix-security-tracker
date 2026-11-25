@@ -31,7 +31,11 @@ from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
 from shared.cache_suggestions import cache_new_suggestions
-from shared.channels import SuggestionRefreshChannel, SuggestionRematchChannel
+from shared.channels import (
+    PatchDetectionChannel,
+    SuggestionRefreshChannel,
+    SuggestionRematchChannel,
+)
 from shared.derived_state import flush_derived_states
 from shared.exposure import (
     ExposureResult,
@@ -601,8 +605,9 @@ def apply_evaluation(
        suggestions whose exposures changed;
     3. dispatch, in the same transaction: `SuggestionRematchChannel` for every suggestion to
        re-match (matches, exposures, links, cache), `SuggestionRefreshChannel` for the others
-       whose exposures changed or whose links are behind (links, cache). Each is idempotent and
-       runs in its own transaction with its own locks.
+       whose exposures changed or whose links are behind (links, cache), `PatchDetectionChannel`
+       if affected exposures were rebuilt (git, so outside this transaction). Each is
+       idempotent and runs in its own transaction with its own locks.
     """
     selection = rematch_selection(evaluation, branch)
     reverse_candidates = selection.changed
@@ -660,6 +665,10 @@ def apply_evaluation(
     outcome.dispatched = sorted((behind | touched) - set(rematch_ids))
     for pk in outcome.dispatched:
         pgpubsub.notify(SuggestionRefreshChannel, pk=pk)
+    if exposure_result.rebuilt_affected:
+        pgpubsub.notify(
+            PatchDetectionChannel, evaluation_pk=evaluation.pk, branch=branch.name
+        )
     logger.info(
         "Applied evaluation %s to %s: %d rematched, %d projected, %d dispatched, %d reverse candidates",
         evaluation.pk,

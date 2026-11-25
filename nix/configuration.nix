@@ -615,6 +615,7 @@ in
                   shared.channels.BranchSnapshotChannel \
                   shared.channels.SuggestionRematchChannel \
                   shared.channels.SuggestionRefreshChannel \
+                  shared.channels.PatchDetectionChannel \
             '';
           };
 

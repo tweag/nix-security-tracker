@@ -34,6 +34,7 @@ from django.db.models import F, Q
 from django.utils import timezone
 
 from shared.candidates import candidates
+from shared.history import HistoryClone
 from shared.models.cve import AffectedProduct
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.matching import Exposure, Match, TrackerEvent, Verdict
@@ -70,6 +71,8 @@ DISMISSING_REJECTIONS = (
 
 # Keys of `Exposure.detail` that are bookkeeping, not part of the observation.
 LAST_AFFECTED_VERSION = "last_affected_version"
+# Key of `Exposure.detail` naming the commit a `patch` observation rests on.
+PATCH_COMMIT = "patch_commit"
 BOOKKEEPING_KEYS = (LAST_AFFECTED_VERSION,)
 
 _ADVISORY_NAMESPACE = 0x45585030  # "EXP0"
@@ -154,6 +157,21 @@ def observe(
             observed=Observed.ABSENT,
             reason=reason,
             detail={"last_seen_evaluation": package.evaluation_id},
+        )
+    if (
+        previous is not None
+        and previous.reason == Reason.PATCH
+        and previous.observed == Observed.UNAFFECTED
+        and previous.version == package.version
+        and cve_id not in package.known_vulnerabilities
+    ):
+        # A detected patch holds while the version stays; a version change re-classifies.
+        return Observation(
+            present=True,
+            version=package.version,
+            observed=Observed.UNAFFECTED,
+            reason=Reason.PATCH,
+            detail=_observation_detail(previous.detail),
         )
     if cve_id in package.known_vulnerabilities:
         return Observation(
@@ -320,6 +338,9 @@ def _write(
     if fix_candidate:
         row.fixed_evaluation = evaluation
         data_extra["fix_candidate"] = True
+        if obs.reason == Reason.PATCH and PATCH_COMMIT in obs.detail:
+            row.fix_commit = obs.detail[PATCH_COMMIT]
+            data_extra["fix_commit"] = row.fix_commit
         if old.observed != Observed.AFFECTED:
             data_extra["via"] = old.observed
 
@@ -565,8 +586,11 @@ class ExposureResult:
     events: Counter[str] = field(default_factory=Counter)
     # `added` attributes no suggestion references: input for reverse matching.
     unreferenced_added: list[str] = field(default_factory=list)
-    # Affected exposures whose derivation was rebuilt with the same version (#1434 seam).
+    # Affected exposures whose derivation was rebuilt with the same version (#1434).
     rebuilt_affected: list[int] = field(default_factory=list)
+    # (and those whose version changed but stayed in range, a patch-level bump).
+    # Of those, the ones a commit naming the CVE made unaffected with reason `patch`.
+    patched: list[int] = field(default_factory=list)
     skipped_dismissed: list[int] = field(default_factory=list)
     # Suggestions with at least one exposure event in this run.
     touched: set[int] = field(default_factory=set)
@@ -641,13 +665,173 @@ def reconcile_exposures(
     return result
 
 
-def detect_patch_fix(exposure: Exposure, change: BranchPackageChange) -> None:
+def package_paths(position: str | None) -> list[str]:
     """
-    Seam for patch detection (#1434): called for an affected exposure whose derivation was
-    rebuilt with an unchanged version. Intentionally does nothing yet; the design is to look
-    for commits touching the package file between the two evaluations that mention the CVE,
-    and record a fix candidate with reason `patch`.
+    Where a package's fixes go: the directory of its file for a file of its own
+    (`pkgs/by-name/fo/foo/package.nix`, `.../foo/default.nix`, next to its patches), else the
+    file itself. Nothing for a missing or absolute (store) position.
     """
+    if not position:
+        return []
+    path = position.rsplit(":", 1)[0] if position[-1:].isdigit() else position
+    if path.startswith("/"):
+        return []
+    directory, _, name = path.rpartition("/")
+    if directory and name in ("package.nix", "default.nix"):
+        return [directory]
+    return [path]
+
+
+def detect_patch_fix(
+    exposure: Exposure,
+    change: BranchPackageChange,
+    package: BranchPackage,
+    cve_id: str,
+    clone: HistoryClone,
+) -> str | None:
+    """
+    Patch detection (#1434) for an affected exposure whose derivation was rebuilt with an
+    unchanged version, or whose version changed and stayed in range: the last commit between the step's two evaluations whose message names
+    the CVE and, when the history clone has trees, that touches the package's directory or
+    file. Local git only; `None` without both commits in the clone or without such a commit.
+    Runs git: call it with no lock held (`detect_patches`).
+    """
+    if change.old_evaluation is None:
+        return None
+    found = clone.commits_mentioning(
+        change.old_evaluation.commit_sha1,
+        change.new_evaluation.commit_sha1,
+        cve_id,
+        package_paths(package.position),
+    )
+    if not found or not found[0]:
+        return None
+    commits, by_path = found
+    logger.info(
+        "%s on %s: %s names %s%s",
+        exposure.attrpath,
+        exposure.branch_id,
+        commits[-1][:12],
+        cve_id,
+        "" if by_path else " (not restricted to the package's files)",
+    )
+    return commits[-1]
+
+
+def detect_patches(
+    evaluation: NixEvaluation,
+    branch: NixpkgsBranch,
+    batch: uuid.UUID | None = None,
+) -> ExposureResult:
+    """
+    Patch detection for one evaluation step of one branch, out of the evaluation listener's
+    transaction (`PatchDetectionChannel`): git runs first, with no lock held; a found commit
+    is then written under the suggestion's advisory lock, as a `patch` fix candidate
+    (`patched`), only if the row is still affected at the same version and no newer
+    evaluation established its state. Touches candidates of suggestions not dismissed only.
+    """
+    from shared.derived_state import flush_derived_states
+
+    result = ExposureResult(batch=batch or uuid.uuid4())
+    clone = HistoryClone.from_settings()
+    if clone is None:
+        return result
+    changes = {
+        c.attrpath: c
+        for c in BranchPackageChange.objects.filter(
+            new_evaluation=evaluation,
+            branch=branch,
+            kind__in=[
+                BranchPackageChange.Kind.REBUILT,
+                BranchPackageChange.Kind.VERSION_CHANGED,
+            ],
+        ).select_related("old_evaluation", "new_evaluation")
+    }
+    rows = list(
+        Exposure.objects.filter(
+            branch=branch, attrpath__in=list(changes), observed=Observed.AFFECTED
+        )
+        .exclude(dismissed_q("suggestion__"))
+        .select_related("suggestion__cve")
+    )
+    shown = candidates({r.suggestion_id for r in rows})
+    rows = [
+        r
+        for r in rows
+        if r.suggestion_id in shown and r.attrpath in shown[r.suggestion_id].attributes
+    ]
+    result.rebuilt_affected = [r.pk for r in rows]
+    packages = {
+        p.attrpath: p
+        for p in BranchPackage.objects.filter(
+            branch=branch, attrpath__in={r.attrpath for r in rows}
+        )
+    }
+    found: dict[int, str] = {}
+    for r in rows:
+        package = packages.get(r.attrpath)
+        if package is None:
+            continue
+        commit = detect_patch_fix(
+            r, changes[r.attrpath], package, r.suggestion.cve.cve_id, clone
+        )
+        if commit is not None:
+            found[r.pk] = commit
+    if not found:
+        return result
+
+    run = _Run(cause=Cause.EVALUATION, batch=result.batch)
+    by_pk = {r.pk: r for r in rows}
+    with transaction.atomic():
+        lock_suggestions(by_pk[pk].suggestion_id for pk in found)
+        current = {
+            p.attrpath: p
+            for p in BranchPackage.objects.filter(
+                branch=branch, attrpath__in={by_pk[pk].attrpath for pk in found}
+            )
+        }
+        for row in Exposure.objects.filter(pk__in=list(found)).select_related(
+            "evaluation", "suggestion__cve"
+        ):
+            package = current.get(row.attrpath)
+            if (
+                row.observed != Observed.AFFECTED
+                or package is None
+                or package.version != row.version
+            ):
+                continue
+            change = changes[row.attrpath]
+            written = _write(
+                run,
+                row,
+                patched(package, row.suggestion.cve.cve_id, found[row.pk]),
+                suggestion_id=row.suggestion_id,
+                attrpath=row.attrpath,
+                branch=branch,
+                evaluation=evaluation,
+                previous_evaluation=change.old_evaluation,
+            )
+            if written.reason == Reason.PATCH:
+                result.patched.append(row.pk)
+        TrackerEvent.objects.bulk_create(run.events)
+        result.events = run.counts()
+        result.touched = {e.suggestion_id for e in run.events}
+        flush_derived_states(result.touched)
+    return result
+
+
+def patched(package: BranchPackage, cve_id: str, commit: str) -> Observation:
+    """The observation for a version still in range whose fix was applied as a patch."""
+    return Observation(
+        present=True,
+        version=package.version,
+        observed=Observed.UNAFFECTED,
+        reason=Reason.PATCH,
+        detail={
+            "detail": f"{commit[:12]} mentions {cve_id}",
+            PATCH_COMMIT: commit,
+        },
+    )
 
 
 def apply_branch_changes(
@@ -664,8 +848,9 @@ def apply_branch_changes(
     Per change kind: `version_changed` and `meta_changed` re-run the classifier (and the
     knownVulnerabilities check); `removed` marks the row absent, and `removed` as reason only
     after `REMOVAL_AFTER_EVALUATIONS`; `added` creates or revives rows for referenced
-    attributes and reports unreferenced ones; `rebuilt` calls `detect_patch_fix` for affected
-    rows and changes nothing.
+    attributes and reports unreferenced ones; `rebuilt` changes nothing and reports the affected
+    rows in `rebuilt_affected`, as do version changes that stay affected, for `detect_patches`
+    (dispatched by the evaluation step).
     """
     result = ExposureResult(batch=batch or uuid.uuid4())
     run = _Run(cause=Cause.EVALUATION, batch=result.batch)
@@ -745,7 +930,8 @@ def apply_branch_changes(
                         BranchPackageChange.Kind.REBUILT
                     ):
                         if row is not None and row.observed == Observed.AFFECTED:
-                            detect_patch_fix(row, change)
+                            # Patch detection runs git: not here, under the locks of the
+                            # evaluation step, but in `detect_patches`, dispatched.
                             result.rebuilt_affected.append(row.pk)
                         if row is not None:
                             continue
@@ -757,7 +943,7 @@ def apply_branch_changes(
                         previous=row,
                         strict=strict,
                     )
-                    _write(
+                    written = _write(
                         run,
                         row,
                         obs,
@@ -773,6 +959,14 @@ def apply_branch_changes(
                             else None
                         ),
                     )
+                    if (
+                        change is not None
+                        and change.kind == BranchPackageChange.Kind.VERSION_CHANGED
+                        and written.observed == Observed.AFFECTED
+                    ):
+                        # A patch-level bump (`glibc 2.42-100 -> 2.42-103`) stays in range
+                        # by the upstream version but may carry the fix.
+                        result.rebuilt_affected.append(written.pk)
             TrackerEvent.objects.bulk_create(run.events)
             result.events += run.counts()
             result.touched |= {e.suggestion_id for e in run.events}

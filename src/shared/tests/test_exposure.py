@@ -428,12 +428,13 @@ def test_idempotence(world: World) -> None:
     assert list(Exposure.objects.order_by("pk").values()) == before
 
 
-def test_rebuilt_calls_patch_seam(
+def test_rebuilt_is_reported_for_patch_detection(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    calls: list[tuple[Exposure, BranchPackageChange]] = []
+    """The step itself runs no git: affected rebuilt rows are reported for `detect_patches`."""
+    calls: list[Exposure] = []
     monkeypatch.setattr(
-        exposure_module, "detect_patch_fix", lambda e, c: calls.append((e, c))
+        exposure_module, "detect_patch_fix", lambda e, *_: calls.append(e)
     )
     world.match()
     world.package("1.5")
@@ -442,7 +443,7 @@ def test_rebuilt_calls_patch_seam(
     result = world.apply(rebuilt)
     assert kinds(result) == {}
     assert result.rebuilt_affected == [world.row().pk]
-    assert len(calls) == 1
+    assert calls == []
 
 
 def test_added_attributes(world: World) -> None:
