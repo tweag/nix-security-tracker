@@ -4,7 +4,7 @@ from io import StringIO
 
 from django.core.management import call_command
 
-from shared.listeners.automatic_linkage import build_new_links
+from shared.pipeline import build_new_links
 from shared.models.cve import Container
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.nix_evaluation import (

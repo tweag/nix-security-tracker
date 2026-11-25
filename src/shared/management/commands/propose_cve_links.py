@@ -7,7 +7,7 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError
 
 from shared import models
-from shared.listeners.automatic_linkage import build_new_links
+from shared.pipeline import build_new_links
 
 logger = logging.getLogger(__name__)
 

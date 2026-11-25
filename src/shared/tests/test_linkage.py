@@ -1,3 +1,9 @@
+"""
+The legacy matcher (`shared.legacy_matching`), which is no longer the live write path but stays
+the baseline of the offline benchmark and the evaluation harness. These tests protect that
+baseline. The live path is covered by `test_pipeline.py`.
+"""
+
 from collections.abc import Callable
 from datetime import timedelta
 from unittest import mock
