@@ -244,7 +244,6 @@ in
     services = {
       # Don't start expensive services on boot; trigger them manually when needed.
       nix-security-tracker-caching.wantedBy = lib.mkForce [ ];
-      nix-security-tracker-backfill-package-links.wantedBy = lib.mkForce [ ];
       nix-security-tracker-fetch-all-channels.startAt = lib.mkForce [ ];
       nix-security-tracker-delta.startAt = lib.mkForce [ ];
       nix-security-tracker-github-events.startAt = lib.mkForce [ ];

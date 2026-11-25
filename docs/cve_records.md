@@ -8,4 +8,4 @@ Implementation of the data model: [`src/shared/models/cve.py`](../src/shared/mod
 A `CveRecord` has one or more `Container`s (CNA or ADP).
 Matching mainly uses each container's `AffectedProduct` entries: vendor/product names, package names, CPE strings, and version constraints.
 
-Implementation of automatic matching: [`src/shared/listeners/automatic_linkage.py`](../src/shared/listeners/automatic_linkage.py)
+Implementation of automatic matching: [`src/shared/pipeline.py`](../src/shared/pipeline.py) (matchers in [`src/shared/matching/`](../src/shared/matching/))

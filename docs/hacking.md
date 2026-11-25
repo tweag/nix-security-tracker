@@ -196,7 +196,7 @@ This is the default Django workflow.
 For performance reasons, we [cache suggestions](../src/shared/cache_suggestions.py) instead of re-querying all linked items every time.
 The schema for that cache is versioned, and the cache needs to be recreated when the schema changes.
 
-We also allow [rematch untriaged suggestions](../src/shared/listeners/automatic_linkage.py) when there's a new version of the matching algorithm.
+We also [re-match open suggestions](../src/shared/pipeline.py) whose matchers are stale (a matcher's version was bumped, or the suggestion was matched by the legacy algorithm).
 
 Both steps are done automatically in production on deployment, but in the local environment, you have to trigger it yourself in order to avoid unexpectedly long delays when starting up the VM:
 

@@ -207,8 +207,9 @@ in
     suggestionRefreshProcesses = mkOption {
       description = ''
         How many parallel pgpubsub listener processes to run for
-        SuggestionRefreshChannel, i.e. how many suggestion derivation-link
-        refreshes can run concurrently after an evaluation completes.
+        SuggestionRefreshChannel (and the snapshot channels), i.e. how many
+        suggestion refreshes (stale matchers, links, cache) can run concurrently
+        after an evaluation completes or a deployment changed matchers.
       '';
       type = types.int;
       default = 2;
@@ -461,8 +462,10 @@ in
             '';
           };
 
-          nix-security-tracker-caching = {
-            description = "Web security tracker - cache regeneration";
+          # Matching searches the branch snapshots: they must exist before anything matches.
+          # A no-op for branches whose snapshot is current.
+          nix-security-tracker-snapshot-backfill = {
+            description = "Web security tracker - initialise branch package snapshots";
             after = [
               "network.target"
               "postgresql.service"
@@ -471,6 +474,28 @@ in
             requires = [
               "postgresql.service"
               "nix-security-tracker-migrations.service"
+            ];
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = true;
+            };
+            script = ''
+              ${manage.name} backfill_branch_packages
+            '';
+          };
+
+          nix-security-tracker-caching = {
+            description = "Web security tracker - cache regeneration";
+            after = [
+              "network.target"
+              "postgresql.service"
+              "nix-security-tracker-migrations.service"
+              "nix-security-tracker-snapshot-backfill.service"
+            ];
+            requires = [
+              "postgresql.service"
+              "nix-security-tracker-migrations.service"
+              "nix-security-tracker-snapshot-backfill.service"
             ];
 
             serviceConfig = {
@@ -480,29 +505,10 @@ in
             };
             script = ''
               ${manage.name} backfill_package_clustering
+              # FIXME: Only needed once, for suggestions matched by the legacy matcher. Remove after the first deployment.
+              ${manage.name} backfill_unified_model
               ${manage.name} rematch_stale_suggestions
               ${manage.name} regenerate_cached_suggestions
-            '';
-          };
-
-          # FIXME(@fricklerhandwerk): This only needs to run once, since new suggestions get the data automatically.
-          # Remove before the next deployment to production.
-          nix-security-tracker-backfill-package-links = {
-            description = "Web security tracker - backfill package links for existing proposals";
-            after = [
-              "network.target"
-              "postgresql.service"
-              "nix-security-tracker-migrations.service"
-              "nix-security-tracker-caching.service"
-            ];
-            requires = [
-              "postgresql.service"
-              "nix-security-tracker-migrations.service"
-            ];
-
-            serviceConfig.Type = "oneshot";
-            script = ''
-              ${manage.name} backfill_proposal_package_links
             '';
           };
 
@@ -517,10 +523,12 @@ in
               "network.target"
               "postgresql.service"
               "nix-security-tracker-migrations.service"
+              "nix-security-tracker-snapshot-backfill.service"
             ];
             requires = [
               "postgresql.service"
               "nix-security-tracker-migrations.service"
+              "nix-security-tracker-snapshot-backfill.service"
             ];
 
             script = ''
@@ -544,10 +552,12 @@ in
               "network.target"
               "postgresql.service"
               "nix-security-tracker-migrations.service"
+              "nix-security-tracker-snapshot-backfill.service"
             ];
             requires = [
               "postgresql.service"
               "nix-security-tracker-migrations.service"
+              "nix-security-tracker-snapshot-backfill.service"
             ];
 
             script = ''
@@ -556,6 +566,7 @@ in
                 --channels \
                   shared.channels.NixEvaluationUpdateChannel \
                   shared.channels.NixEvaluationSnapshotChannel \
+                  shared.channels.BranchSnapshotChannel \
                   shared.channels.SuggestionRefreshChannel \
             '';
           };
