@@ -23,6 +23,7 @@ from shared.matching.base import (
     register,
 )
 from shared.matching.names import (
+    NON_NAMES,
     ecosystem_for,
     ecosystem_package_name,
     normalise_name,
@@ -315,11 +316,14 @@ class NameSubstring(Matcher):
     """
 
     slug = "name-substring"
-    version = 1
+    # 2: terms shorter than `MIN_TERM_LENGTH` or meaningless ("n/a", "all") are skipped.
+    version = 2
     # Today's `MAX_MATCHES` of 1000 derivations is about 125 to 250 attributes.
     limit = 200
-    # Shorter terms have no trigram; they need a sequential scan, run as a separate query.
-    MIN_INDEXED_LENGTH = 3
+    # One- and two-letter products ("i", "MQ", "v6") are inside thousands of names; the real
+    # packages among them ("uv", "qt", "h3") are found by `name-exact`. Also the shortest
+    # term the trigram index on `pname` serves.
+    MIN_TERM_LENGTH = 3
 
     def hits(self, view: CveView, universe: Universe) -> Iterable[Hit]:
         terms: dict[str, list[tuple[ViewProduct, str, str]]] = {}
@@ -328,38 +332,36 @@ class NameSubstring(Matcher):
                 ("package_name", product.fields.package_name),
                 ("product", product.fields.product),
             ):
-                if value:
-                    terms.setdefault(value.lower(), []).append(
-                        (product, cve_field, value)
+                term = (value or "").strip().lower()
+                if len(term) >= self.MIN_TERM_LENGTH and (
+                    normalise_name(term) not in NON_NAMES
+                ):
+                    terms.setdefault(term, []).append((product, cve_field, value or ""))
+        condition = _any(
+            Q(ILike(_column("pname"), Value(f"%{_escape_like(term)}%")))
+            for term in terms
+        )
+        if condition is None:
+            return
+        rows = self._fetch(
+            universe.packages().filter(condition), "attrpath", "branch_id", "pname"
+        )
+        for attrpath, branch, pname in rows:
+            lowered = pname.lower()
+            for term, named in terms.items():
+                if term not in lowered:
+                    continue
+                for product, cve_field, value in named:
+                    yield Hit(
+                        attrpath,
+                        branch,
+                        min(1.0, len(term) / max(1, len(pname))),
+                        product,
+                        cve_field,
+                        value,
+                        "pname",
+                        pname,
                     )
-        indexed = [t for t in terms if len(t) >= self.MIN_INDEXED_LENGTH]
-        short = [t for t in terms if len(t) < self.MIN_INDEXED_LENGTH]
-        for group in (indexed, short):
-            condition = _any(
-                Q(ILike(_column("pname"), Value(f"%{_escape_like(term)}%")))
-                for term in group
-            )
-            if condition is None:
-                continue
-            rows = self._fetch(
-                universe.packages().filter(condition), "attrpath", "branch_id", "pname"
-            )
-            for attrpath, branch, pname in rows:
-                lowered = pname.lower()
-                for term in group:
-                    if term not in lowered:
-                        continue
-                    for product, cve_field, value in terms[term]:
-                        yield Hit(
-                            attrpath,
-                            branch,
-                            min(1.0, len(term) / max(1, len(pname))),
-                            product,
-                            cve_field,
-                            value,
-                            "pname",
-                            pname,
-                        )
 
 
 def _escape_like(value: str) -> str:

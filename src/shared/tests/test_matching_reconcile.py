@@ -57,7 +57,7 @@ def test_add(
     matches = Match.objects.filter(suggestion=suggestion)
     assert {(m.matcher, m.matcher_version, m.score) for m in matches} == {
         ("name-exact", 1, 1.0),
-        ("name-substring", 1, 1.0),
+        ("name-substring", 2, 1.0),
     }
     exact = matches.get(matcher="name-exact")
     assert exact.evidence["cve_field"] == "package_name"

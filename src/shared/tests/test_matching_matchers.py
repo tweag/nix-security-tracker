@@ -1,6 +1,8 @@
 from collections.abc import Callable
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
 from shared.matching.base import REGISTRY, Universe
 from shared.matching.matchers import NameExact, NameTrigram, collect_candidates
@@ -327,3 +329,37 @@ def test_limit_reports_truncation(
 def test_collect_rejects_unknown_matchers(make_container: MakeContainer) -> None:
     with pytest.raises(ValueError, match="nope"):
         collect_candidates(build_cve_view(make_container().cve), ["nope"])
+
+
+def test_row_ceiling_keeps_the_same_rows_whatever_the_physical_order(
+    make_container: MakeContainer,
+    make_branch_package: MakePackage,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from shared.matching import base
+
+    monkeypatch.setattr(base, "ROW_CEILING", 3)
+    # Inserted in reverse order, so heap order differs from attribute order.
+    for attrpath in ("libfoo-e", "libfoo-d", "libfoo-c", "libfoo-b", "libfoo-a"):
+        make_branch_package(attrpath=attrpath, pname=attrpath)
+    container = make_container(package_name="foo", product=None)
+    view = build_cve_view(container.cve)
+    with CaptureQueriesContext(connection) as queries:
+        result = collect_candidates(view, ["name-substring"])
+    [fetch] = [q["sql"] for q in queries if "ILIKE" in q["sql"]]
+    # Which rows survive the ceiling must not depend on heap order.
+    assert " ORDER BY " in fetch
+    kept = result["name-substring"]
+    assert [c.attrpath for c in kept.candidates] == ["libfoo-a", "libfoo-b", "libfoo-c"]
+    assert not kept.truncated_exact
+
+
+@pytest.mark.parametrize("term", ["i", "uv", " qt ", "n/a", "all"])
+def test_name_substring_skips_short_and_meaningless_terms(
+    make_container: MakeContainer, make_branch_package: MakePackage, term: str
+) -> None:
+    make_branch_package(attrpath="uv", pname="uv")
+    make_branch_package(attrpath="qt6", pname="qt-all-in-one")
+    make_branch_package(attrpath="pinentry", pname="pinentry")
+    container = make_container(package_name=None, product=term)
+    assert found(container, "name-substring") == {}

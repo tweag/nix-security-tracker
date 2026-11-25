@@ -236,7 +236,13 @@ class Matcher(ABC):
         return self.run(view, universe).candidates
 
     def _fetch(self, queryset: QuerySet, *fields: str) -> list[tuple[Any, ...]]:
-        """Rows of `queryset`, at most `ROW_CEILING`; records whether the ceiling was hit."""
+        """
+        Rows of `queryset`, at most `ROW_CEILING`; records whether the ceiling was hit. Without
+        an ordering of its own the query is ordered by attribute and branch, so that the rows
+        kept at the ceiling are the same on every run.
+        """
+        if not queryset.query.order_by:
+            queryset = queryset.order_by("attrpath", "branch_id")
         rows = list(queryset.values_list(*fields)[: ROW_CEILING + 1])
         if len(rows) > ROW_CEILING:
             self._ceiling_hit = True
