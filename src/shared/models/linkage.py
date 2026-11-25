@@ -498,7 +498,12 @@ class CVEDerivationClusterProposal(TimeStampMixin):
 
     @classproperty
     def CURRENT_ALGORITHM_VERSION(cls) -> int:  # noqa: N802
-        return 2
+        """
+        Which write path produced the suggestion's matches and links: 2 is the legacy matcher
+        (`shared.legacy_matching`), 3 the unified model (`shared.pipeline`). Matcher changes
+        bump the matcher's own version (`Matcher.version`, recorded in `matcher_versions`).
+        """
+        return 3
 
     cached: "shared.models.cached.CachedSuggestions"
 

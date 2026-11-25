@@ -14,7 +14,7 @@ from django.contrib.auth.models import User
 from django.db import transaction
 from django.utils import timezone
 
-from shared.matching.base import Candidate, Universe
+from shared.matching.base import Candidate, MatcherResult, Universe
 from shared.matching.matchers import collect_candidates, matchers_for
 from shared.matching.view import CveView, build_cve_view
 from shared.models.linkage import CVEDerivationClusterProposal
@@ -87,6 +87,7 @@ def reconcile_matches(
     evaluation: NixEvaluation | None = None,
     actor: User | None = None,
     now: datetime | None = None,
+    results: dict[str, MatcherResult] | None = None,
 ) -> ReconcileResult:
     """
     Run the given matchers (all registered ones by default) on the suggestion's CVE and
@@ -96,11 +97,17 @@ def reconcile_matches(
     Matching runs before the transaction; the diff runs under a row lock on the
     suggestion, so concurrent runs for one suggestion serialise and the later one
     sees the earlier one's rows.
+
+    `results`: output of `collect_candidates` for exactly these matchers, if the caller already
+    ran them (to decide on the suggestion before creating it); then nothing is run again.
     """
     selected = matchers_for(matchers)
     view = view or build_cve_view(suggestion.cve)
-    universe = universe or Universe.tracked()
-    results = {matcher.slug: matcher.run(view, universe) for matcher in selected}
+    if results is None:
+        universe = universe or Universe.tracked()
+        results = {matcher.slug: matcher.run(view, universe) for matcher in selected}
+    elif set(results) != {matcher.slug for matcher in selected}:
+        raise ValueError("results must cover exactly the selected matchers")
     versions = {matcher.slug: matcher.version for matcher in selected}
     now = now or timezone.now()
     outcome = ReconcileResult(

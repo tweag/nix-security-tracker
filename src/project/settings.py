@@ -199,9 +199,32 @@ class Settings(BaseSettings):
         )
         MAX_MATCHES: int = Field(
             description="""
+            Legacy matcher only (`shared.legacy_matching`, the benchmark baseline):
             CVEs matching more than this number of derivations are auto-rejected without derivations.
             """,
             default=1_000,
+        )
+        MATCHING_MATCHERS: list[str] | None = Field(
+            description="""
+            Slugs of the matchers that run on suggestions and whose matches count towards what a
+            suggestion shows (`shared.matching.matchers`). `null` means every registered matcher.
+            """,
+            default=None,
+        )
+        MATCHING_SCORE_THRESHOLD: float = Field(
+            description="""
+            A suggestion shows an attribute only if its noisy-OR score over the active matches of
+            the enabled matchers is strictly above this. The default is the weight of
+            `name-substring`, so attributes found only by substring matching are not shown.
+            """,
+            default=0.2,
+        )
+        MATCHING_MAX_ATTRIBUTES: int = Field(
+            description="""
+            A suggestion shows at most this many matched attributes, best scored first.
+            Attributes a human decided on are shown in addition.
+            """,
+            default=50,
         )
         SHOW_DEMO_DISCLAIMER: bool = Field(
             description="""

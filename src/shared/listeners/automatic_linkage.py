@@ -1,12 +1,8 @@
 import pgpubsub
 
 from shared.channels import ContainerChannel
-from shared.legacy_matching import legacy_build_new_links
 from shared.models.cve import Container
-
-
-def build_new_links(container: Container) -> bool:
-    return legacy_build_new_links(container)
+from shared.pipeline import build_new_links
 
 
 @pgpubsub.post_insert_listener(ContainerChannel)

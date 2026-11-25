@@ -80,7 +80,7 @@ def test_matcher_uses_current_evaluation(
     update_branch_snapshot(newer)
     finish_late(older)
 
-    assert build_new_links(make_container(package_name="foo"))
+    assert build_new_links(make_container(package_name="foobar"))
 
     suggestion = CVEDerivationClusterProposal.objects.get()
     assert list(suggestion.derivations.values_list("name", flat=True)) == ["foobar-2.0"]

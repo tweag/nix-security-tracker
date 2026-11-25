@@ -1,16 +1,12 @@
 import logging
 
 import pgpubsub
-from django.db import transaction
 
-from shared.cache_suggestions import cache_new_suggestions
 from shared.channels import NixEvaluationUpdateChannel, SuggestionRefreshChannel
-from shared.legacy_matching import (
-    legacy_refresh_suggestion_derivation_links as refresh_suggestion_derivation_links,
-)
 from shared.models import NixDerivation, NixEvaluation
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.package_clustering import cluster_packages
+from shared.pipeline import open_for_projection_q, refresh_suggestion
 from shared.snapshot import fill_package_groups
 
 logger = logging.getLogger(__name__)
@@ -18,6 +14,10 @@ logger = logging.getLogger(__name__)
 
 @pgpubsub.post_update_listener(NixEvaluationUpdateChannel)
 def cluster_after_evaluation(old: NixEvaluation, new: NixEvaluation) -> None:
+    """
+    Group the evaluation's attributes into packages, for display only. Re-matching after an
+    evaluation is driven by the branch snapshot (`shared.listeners.snapshot`), not by this.
+    """
     if old.state == new.state:
         return
     if new.state != NixEvaluation.EvaluationState.COMPLETED:
@@ -35,42 +35,22 @@ def cluster_after_evaluation(old: NixEvaluation, new: NixEvaluation) -> None:
     # The snapshot may have run first, before the new attributes had a package.
     fill_package_groups(list(new.on_branches.all()))
 
-    # Schedule a refresh of derivation links and suggestion caches for every suggestion affected by this evaluation's clustering.
-    def _run_after_commit() -> None:
-        suggestion_pks = (
-            CVEDerivationClusterProposal.objects.filter(
-                derivations__parent_evaluation__on_branches__in=new.on_branches.all(),
-                status__in=[
-                    CVEDerivationClusterProposal.Status.PENDING,
-                    CVEDerivationClusterProposal.Status.ACCEPTED,
-                ],
-            )
-            .distinct()
-            .values_list("pk", flat=True)
-        )
-
-        for pk in suggestion_pks:
-            pgpubsub.notify(SuggestionRefreshChannel, pk=pk)
-
-    transaction.on_commit(_run_after_commit)
-
 
 @pgpubsub.listener(SuggestionRefreshChannel)
 def refresh_and_cache_suggestion(pk: int) -> None:
     """
-    Refresh derivation links, then rebuild the cache, in that order, since
-    caching depends on the refreshed links.
+    Re-run the suggestion's stale matchers (if any), bring its links to the current
+    evaluations, and rebuild its cache. Dispatched at deploy for stale matchers and after
+    each evaluation for suggestions whose links point at an older one.
     """
     try:
-        suggestion = CVEDerivationClusterProposal.objects.select_for_update().get(
-            pk=pk,
-            status__in=[
-                CVEDerivationClusterProposal.Status.PENDING,
-                CVEDerivationClusterProposal.Status.ACCEPTED,
-            ],
+        suggestion = (
+            CVEDerivationClusterProposal.objects.select_for_update()
+            .filter(open_for_projection_q())
+            .get(pk=pk)
         )
-        refresh_suggestion_derivation_links(suggestion)
-        cache_new_suggestions(suggestion)
     except CVEDerivationClusterProposal.DoesNotExist:
         # We don't want to try again! If we crash here, the work is put back on the queue.
-        logger.info("Suggestion %d no longer pending/accepted, skipping refresh", pk)
+        logger.info("Suggestion %d is frozen or gone, skipping refresh", pk)
+        return
+    refresh_suggestion(suggestion)

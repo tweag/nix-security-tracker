@@ -487,6 +487,8 @@ class ExposureResult:
     # Affected exposures whose derivation was rebuilt with the same version (#1434 seam).
     rebuilt_affected: list[int] = field(default_factory=list)
     skipped_dismissed: list[int] = field(default_factory=list)
+    # Suggestions with at least one exposure event in this run.
+    touched: set[int] = field(default_factory=set)
 
 
 def reconcile_exposures(
@@ -552,6 +554,7 @@ def reconcile_exposures(
                 )
         TrackerEvent.objects.bulk_create(run.events)
     result.events = run.counts()
+    result.touched = {e.suggestion_id for e in run.events}
     return result
 
 
@@ -685,6 +688,7 @@ def apply_branch_changes(
                     )
             TrackerEvent.objects.bulk_create(run.events)
             result.events += run.counts()
+            result.touched |= {e.suggestion_id for e in run.events}
             run.events = []
     return result
 
