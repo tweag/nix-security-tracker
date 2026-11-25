@@ -265,3 +265,25 @@ def registry_pages(ecosystem: Ecosystem, package_name: str) -> tuple[str, ...]:
         for page in _REGISTRY_PAGES.get(ecosystem.slug, ())
         for variant in variants
     )
+
+
+_REGISTRY_PAGE_RES = tuple(
+    re.compile("^" + re.escape(page).replace(re.escape("{}"), "(.+)") + "$")
+    for pages in _REGISTRY_PAGES.values()
+    for page in pages
+)
+
+
+def registry_package_names(homepage: str | None) -> set[str]:
+    """
+    Normalised package names a homepage that is a registry page (`pypi.org/project/foo`)
+    names: the reverse of `registry_pages`, for reverse matching.
+    """
+    url = normalise_homepage(homepage)
+    if not url:
+        return set()
+    return {
+        normalise_name(match.group(1))
+        for regex in _REGISTRY_PAGE_RES
+        if (match := regex.match(url))
+    }

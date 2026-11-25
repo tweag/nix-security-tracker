@@ -1,6 +1,7 @@
 """
 Persist the `ProductKey` rows `product_keys()` derives from affected products, so that
-mappings, reverse matching and curation can find CVEs by product identity in SQL.
+mappings, reverse matching and curation can find CVEs by product identity in SQL; and the
+`ProductName` terms `name_terms()` derives, so that reverse matching finds them by name.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
@@ -13,12 +14,15 @@ from shared.matching.view import (
     applicability_pairs,
     attribute_applicability,
     cpe_pair_keys,
+    name_terms,
     product_keys,
 )
 from shared.models.cve import AffectedProduct, Container
-from shared.models.matching import ProductKey
+from shared.models.matching import ProductKey, ProductName
 
 Through = AffectedProduct.product_keys.through
+NameThrough = AffectedProduct.product_names.through
+NAME_LENGTH = ProductName._meta.get_field("term").max_length or 255
 
 
 def get_or_create_keys(specs: Iterable[KeySpec]) -> dict[KeySpec, int]:
@@ -68,6 +72,16 @@ def persist_product_keys(
     """
     derived = keys_of(affected)
     offered = attach_product_keys(derived)
+    names = names_of(affected)
+    name_ids = _get_or_create_names(t for terms in names.values() for t in terms)
+    NameThrough.objects.bulk_create(
+        [
+            NameThrough(affectedproduct_id=row, productname_id=name_ids[term])
+            for row, terms in names.items()
+            for term in terms
+        ],
+        ignore_conflicts=True,
+    )
     if replace:
         ids = get_or_create_keys(spec for specs in derived.values() for spec in specs)
         stale = Q()
@@ -76,7 +90,33 @@ def persist_product_keys(
                 productkey_id__in=[ids[spec.capped()] for spec in specs]
             )
         Through.objects.filter(stale).delete()
+        stale = Q()
+        for row, terms in names.items():
+            stale |= Q(affectedproduct_id=row) & ~Q(
+                productname_id__in=[name_ids[term] for term in terms]
+            )
+        NameThrough.objects.filter(stale).delete()
     return offered
+
+
+def names_of(affected: Sequence[AffectedProduct]) -> dict[int, frozenset[str]]:
+    """The name terms the name matchers derive from each affected product."""
+    return {
+        row.pk: frozenset(
+            name.term[:NAME_LENGTH] for name in name_terms(ProductFields.of(row))
+        )
+        for row in affected
+    }
+
+
+def _get_or_create_names(terms: Iterable[str]) -> dict[str, int]:
+    wanted = set(terms)
+    if not wanted:
+        return {}
+    ProductName.objects.bulk_create(
+        [ProductName(term=term) for term in wanted], ignore_conflicts=True
+    )
+    return dict(ProductName.objects.filter(term__in=wanted).values_list("term", "pk"))
 
 
 def attach_product_keys(links: Mapping[int, Iterable[KeySpec]]) -> int:

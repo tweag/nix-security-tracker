@@ -338,6 +338,9 @@ class AffectedProduct(models.Model):
     product_keys = models.ManyToManyField(
         "ProductKey", related_name="affected_products"
     )
+    product_names = models.ManyToManyField(
+        "ProductName", related_name="affected_products"
+    )
     # Digest of the `affected` entry this row was built from; null for rows ingested before it existed.
     content_hash = models.CharField(max_length=64, null=True, default=None)
 

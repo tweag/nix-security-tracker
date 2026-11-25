@@ -3,9 +3,10 @@ Reverse matching: given attributes that are new on a branch or changed their nam
 metadata, find the open suggestions they might belong to through the CVE-side product key
 index, and reconcile just those (step 3 of the differential re-matching in the design report).
 
-Selection is a superset of what the forward matchers can find for these attributes, except
-`name-substring` (product named somewhere inside the `pname`), which has no index-served
-reverse and is kept only for comparison; and registry homepages of `repo-url`.
+Selection is a superset of what the forward matchers can find for these attributes
+(`test_identity_reverse_coverage`), except the matchers in `NOT_COVERED`: `name-substring`
+(the product named anywhere inside the `pname`) has no index-served reverse, and at weight 0.2
+it never reaches the display threshold on its own.
 """
 
 import re
@@ -20,16 +21,20 @@ from django.db.models import Q
 from shared.identity.mappings import glob_regex
 from shared.identity.reconcile import OPEN_STATUSES, reconcile_suggestions
 from shared.matching.matchers import NameTrigram
-from shared.matching.names import normalise_repo
+from shared.matching.names import normalise_repo, registry_package_names
 from shared.matching.reconcile import ReconcileResult
 from shared.matching.selection import reopen_cutoff, reopenable_q
+from shared.models.cve import CpeApplicability
 from shared.models.linkage import (
     MACHINE_REOPENABLE_REJECTIONS,
     CVEDerivationClusterProposal,
 )
-from shared.models.matching import ProductKey, ProductMapping, TrackerEvent
+from shared.models.matching import ProductKey, ProductMapping, ProductName, TrackerEvent
 from shared.models.nix_evaluation import NixpkgsBranch
 from shared.models.snapshot import BranchPackage
+
+# Matchers whose forward hits reverse selection does not promise to find.
+NOT_COVERED = ("name-substring",)
 
 CVE_ID = re.compile(r"\bCVE-\d{4}-\d{4,}\b", re.IGNORECASE)
 
@@ -48,11 +53,16 @@ class ReverseResult:
 
 
 def name_terms(row: BranchPackage) -> set[str]:
-    """What a CVE product key could be called for this attribute to match by name."""
+    """
+    Terms a CVE product's `ProductName` must equal for the name matchers to find this attribute:
+    `name-exact` compares against `match_pname` and `match_attr`, `name-prefix` matches when the
+    term is the leading words of `match_pname` ("zabbix" for zabbix-server), and `repo-url`
+    finds registry packages by name (the ecosystem attribute sets and registry homepages).
+    """
     terms = {row.match_pname, row.match_attr}
-    # `name-prefix`: the product is the leading words of the pname ("zabbix" for zabbix-server).
     parts = row.match_pname.split("-")
     terms |= {"-".join(parts[:i]) for i in range(1, len(parts))}
+    terms |= registry_package_names(row.homepage)
     return {t for t in terms if t}
 
 
@@ -69,10 +79,19 @@ def _exact_keys(rows: list[BranchPackage]) -> dict[tuple[str, str, str], set[str
     return exact
 
 
-def _keys_by_name(terms: dict[str, set[str]]) -> dict[int, set[str]]:
-    """Product keys whose product is trigram-similar to a term, served by `productkey_product_trgm`."""
+def _names(
+    exact: dict[str, set[str]], similar: dict[str, set[str]]
+) -> dict[int, set[str]]:
+    """
+    `ProductName`s equal to an exact term, or trigram-similar to a `match_pname` as
+    `name-trigram` requires, served by the unique index and `productname_term_trgm`.
+    """
     found: dict[int, set[str]] = defaultdict(set)
-    if not terms:
+    for pk, term in ProductName.objects.filter(term__in=list(exact)).values_list(
+        "pk", "term"
+    ):
+        found[pk] |= exact[term]
+    if not similar:
         return found
     with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute(
@@ -81,14 +100,53 @@ def _keys_by_name(terms: dict[str, set[str]]) -> dict[int, set[str]]:
         )
         cursor.execute(
             f"""
-            SELECT k.id, t.term
+            SELECT n.id, t.term
             FROM unnest(%s::text[]) AS t(term)
-            JOIN {ProductKey._meta.db_table} k ON k.product %% t.term
+            JOIN {ProductName._meta.db_table} n ON n.term %% t.term
             """,
-            [sorted(terms)],
+            [sorted(similar)],
         )
-        for key_id, term in cursor.fetchall():
-            found[key_id] |= terms[term]
+        for pk, term in cursor.fetchall():
+            found[pk] |= similar[term]
+    return found
+
+
+def _keys(rows: list[BranchPackage]) -> dict[int, set[str]]:
+    """Product keys of the CPE and repository an attribute declares, and of `same` mappings to it."""
+    found: dict[int, set[str]] = defaultdict(set)
+    exact = _exact_keys(rows)
+    if exact:
+        condition = Q()
+        for kind, vendor, product in exact:
+            condition |= Q(kind=kind, vendor=vendor, product=product)
+        for key_id, kind, vendor, product in ProductKey.objects.filter(
+            condition
+        ).values_list("id", "kind", "vendor", "product"):
+            found[key_id] |= exact[(kind, vendor, product)]
+    for key_id, attrs in _keys_by_mapping({r.attrpath for r in rows}).items():
+        found[key_id] |= attrs
+    return found
+
+
+def _applicability(rows: list[BranchPackage]) -> dict[int, set[str]]:
+    """
+    Containers whose `cpeApplicability` names the CPE an attribute declares. Read directly:
+    pairs no affected product claims have no product key, yet `nixpkgs-cpe` matches them.
+    """
+    pairs: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for row in rows:
+        if row.cpe_vendor and row.cpe_product:
+            pairs[(row.cpe_vendor.lower(), row.cpe_product.lower())].add(row.attrpath)
+    found: dict[int, set[str]] = defaultdict(set)
+    if not pairs:
+        return found
+    condition = Q()
+    for vendor, product in pairs:
+        condition |= Q(vendor=vendor, product=product)
+    for container, vendor, product in CpeApplicability.objects.filter(
+        condition
+    ).values_list("container_id", "vendor", "product"):
+        found[container] |= pairs.get((vendor.lower(), product.lower()), set())
     return found
 
 
@@ -105,38 +163,54 @@ def _keys_by_mapping(attrpaths: set[str]) -> dict[int, set[str]]:
     return found
 
 
-def _open_suggestions_by_key(key_ids: Iterable[int]) -> dict[int, set[int]]:
-    """Open suggestion pk -> key ids, in one query over the key index."""
-    ids = sorted(set(key_ids))
-    if not ids:
+def _open_suggestions(
+    names: dict[int, set[str]],
+    keys: dict[int, set[str]],
+    containers: dict[int, set[str]],
+) -> dict[int, set[str]]:
+    """Open suggestion pk -> attributes, from names, keys and containers, in one query."""
+    if not (names or keys or containers):
         return {}
     cutoff = reopen_cutoff()
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT DISTINCT s.id, apk.productkey_id
-            FROM shared_affectedproduct_product_keys apk
-            JOIN shared_container_affected ca ON ca.affectedproduct_id = apk.affectedproduct_id
-            JOIN shared_container c ON c.id = ca.container_id
+            WITH hits(affected, via, id) AS (
+                SELECT affectedproduct_id, 'n', productname_id
+                FROM shared_affectedproduct_product_names WHERE productname_id = ANY(%s)
+                UNION ALL
+                SELECT affectedproduct_id, 'k', productkey_id
+                FROM shared_affectedproduct_product_keys WHERE productkey_id = ANY(%s)
+            ), found(container, via, id) AS (
+                SELECT ca.container_id, h.via, h.id
+                FROM hits h JOIN shared_container_affected ca ON ca.affectedproduct_id = h.affected
+                UNION ALL
+                SELECT c, 'c', c FROM unnest(%s::int[]) AS c
+            )
+            SELECT DISTINCT s.id, f.via, f.id
+            FROM found f
+            JOIN shared_container c ON c.id = f.container
             JOIN shared_cvederivationclusterproposal s ON s.cve_id = c.cve_id
             JOIN shared_cverecord r ON r.id = s.cve_id
-            WHERE apk.productkey_id = ANY(%s) AND (
-                s.status = ANY(%s)
-                OR (%s::timestamptz IS NOT NULL AND s.status = 'rejected'
-                    AND s.rejection_reason = ANY(%s) AND r.date_published >= %s::timestamptz)
+            WHERE s.status = ANY(%s) OR (
+                %s::timestamptz IS NOT NULL AND s.status = 'rejected'
+                AND s.rejection_reason = ANY(%s) AND r.date_published >= %s::timestamptz
             )
             """,
             [
-                ids,
+                sorted(names),
+                sorted(keys),
+                sorted(containers),
                 list(OPEN_STATUSES),
                 cutoff,
                 MACHINE_REOPENABLE_REJECTIONS,
                 cutoff,
             ],
         )
-        found: dict[int, set[int]] = defaultdict(set)
-        for suggestion, key_id in cursor.fetchall():
-            found[suggestion].add(key_id)
+        sources = {"n": names, "k": keys, "c": containers}
+        found: dict[int, set[str]] = defaultdict(set)
+        for suggestion, via, pk in cursor.fetchall():
+            found[suggestion] |= sources[via][pk]
         return found
 
 
@@ -149,29 +223,16 @@ def select_suggestions(
             branch=branch, attrpath__in=set(attrpaths)
         )
     )
-    attrs_of_key: dict[int, set[str]] = defaultdict(set)
-    terms: dict[str, set[str]] = defaultdict(set)
+    exact: dict[str, set[str]] = defaultdict(set)
+    similar: dict[str, set[str]] = defaultdict(set)
     for row in rows:
         for term in name_terms(row):
-            terms[term].add(row.attrpath)
-    for key_id, attrs in _keys_by_name(terms).items():
-        attrs_of_key[key_id] |= attrs
-    exact = _exact_keys(rows)
-    if exact:
-        condition = Q()
-        for kind, vendor, product in exact:
-            condition |= Q(kind=kind, vendor=vendor, product=product)
-        for key_id, kind, vendor, product in ProductKey.objects.filter(
-            condition
-        ).values_list("id", "kind", "vendor", "product"):
-            attrs_of_key[key_id] |= exact[(kind, vendor, product)]
-    for key_id, attrs in _keys_by_mapping({r.attrpath for r in rows}).items():
-        attrs_of_key[key_id] |= attrs
-
-    selected: dict[int, set[str]] = defaultdict(set)
-    for suggestion, key_ids in _open_suggestions_by_key(attrs_of_key).items():
-        for key_id in key_ids:
-            selected[suggestion] |= attrs_of_key[key_id]
+            exact[term].add(row.attrpath)
+        similar[row.match_pname].add(row.attrpath)
+    selected: dict[int, set[str]] = defaultdict(
+        set,
+        _open_suggestions(_names(exact, similar), _keys(rows), _applicability(rows)),
+    )
 
     # `known-vuln`: the attribute names the CVE itself.
     named: dict[str, set[str]] = defaultdict(set)

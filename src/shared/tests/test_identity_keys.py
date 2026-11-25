@@ -152,3 +152,29 @@ def test_qualified_package_name_in_a_registry_is_not_a_repository() -> None:
             package_name="github.com/foo/bar", collection_url="https://pkg.go.dev"
         )
     ) == ("github.com/foo/bar",)
+
+
+def names(product: AffectedProduct) -> set[str]:
+    return set(product.product_names.values_list("term", flat=True))
+
+
+def test_ingestion_attaches_name_terms(db: None) -> None:
+    product = make_affected_product(
+        {"vendor": "Apache Software Foundation", "product": "Apache Tomcat"}
+    )
+    assert names(product) == {"apache-tomcat", "tomcat"}
+
+
+def test_name_terms_survive_an_in_place_update(db: None) -> None:
+    from shared.fetchers import _overwrite_product
+
+    product = make_affected_product({"vendor": "acme", "product": "widget"})
+    _overwrite_product(product, {"vendor": "acme", "product": "acme gadget"}, "x")
+    assert names(product) == {"acme-gadget", "gadget"}
+
+
+def test_backfill_adds_names_to_rows_that_have_keys(db: None) -> None:
+    product = make_affected_product({"vendor": "acme", "product": "widget"})
+    product.product_names.clear()
+    call_command("backfill_product_keys", stdout=StringIO())
+    assert names(product) == {"widget"}

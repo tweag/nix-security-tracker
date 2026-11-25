@@ -60,6 +60,29 @@ class ProductKey(models.Model):
         return f"{self.kind}:{self.vendor}/{self.product}"
 
 
+class ProductName(models.Model):
+    """
+    A name term the name matchers derive from an affected product (`matching.view.name_terms`:
+    product, packageName, product without its vendor word, tail of a qualified packageName),
+    deduplicated. The CVE side of reverse name matching; derived data, not an upstream identity
+    (mappings hang off `ProductKey`, never off this).
+    """
+
+    term = models.CharField(max_length=255, unique=True)
+
+    class Meta:  # type: ignore[override]
+        indexes = [
+            GinIndex(
+                fields=["term"],
+                opclasses=["gin_trgm_ops"],
+                name="productname_term_trgm",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.term
+
+
 class ProductMapping(models.Model):
     """A reusable statement that an upstream product is (or is not) a nixpkgs attribute."""
 

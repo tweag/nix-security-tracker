@@ -3,8 +3,14 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandParser
 from django.db import transaction
+from django.db.models import Exists, OuterRef
 
-from shared.identity.keys import attach_applicability_keys, persist_product_keys
+from shared.identity.keys import (
+    NameThrough,
+    Through,
+    attach_applicability_keys,
+    persist_product_keys,
+)
 from shared.models.cve import AffectedProduct, Container
 
 
@@ -28,7 +34,11 @@ class Command(BaseCommand):
             "pk", "vendor", "product", "package_name", "collection_url", "repo"
         )
         if not options["all"]:
-            rows = rows.filter(product_keys__isnull=True)
+            # Rows without keys, and rows ingested before name terms were persisted.
+            rows = rows.filter(
+                ~Exists(Through.objects.filter(affectedproduct_id=OuterRef("pk")))
+                | ~Exists(NameThrough.objects.filter(affectedproduct_id=OuterRef("pk")))
+            )
         total = links = 0
         last = 0
         start = time.monotonic()
