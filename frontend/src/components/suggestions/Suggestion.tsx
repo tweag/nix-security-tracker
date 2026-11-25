@@ -2,6 +2,7 @@ import { ShieldIcon } from "lucide-preact";
 import { useState } from "preact/hooks";
 import { Link } from "wouter-preact";
 import type { Suggestion as SuggestionType } from "@/api/generated/models";
+import { DerivedStateBadge } from "@/components/matching/DerivedStateBadge";
 import { MatchingSection } from "@/components/matching/MatchingSection";
 import { ExternalLink } from "@/components/ui/ExternalLink";
 import { InlineIcon } from "@/components/ui/InlineIcon";
@@ -88,6 +89,11 @@ export function Suggestion({
         <div className="row">
           <InlineIcon icon={suggestionStatusIcon(status)} data-testid={`suggestion-${id}-status`} />
           {displayedTitle && <>{displayedTitle}</>}
+          {suggestion.derived_state && (
+            <span className="grow row justify-right">
+              <DerivedStateBadge state={suggestion.derived_state} />
+            </span>
+          )}
         </div>
       </LegendCard>
     );

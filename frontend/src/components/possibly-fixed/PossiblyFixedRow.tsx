@@ -34,7 +34,7 @@ export function PossiblyFixedRow({ row, userCanEdit }: Props) {
   return (
     <>
       <tr data-testid={`possibly-fixed-${row.id}`}>
-        <td>
+        <td className="no-line-breaks">
           <Link href={suggestionPath(row.suggestion_id)}>{row.cve_id}</Link>
         </td>
         <td className={styles.attrpath}>
