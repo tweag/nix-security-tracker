@@ -505,10 +505,21 @@ in
             };
             script = ''
               ${manage.name} backfill_package_clustering
+              # Product keys of affected products (and their cpeApplicability) feed the curated
+              # and rules matchers and reverse matching. Only rows without keys.
+              ${manage.name} backfill_product_keys
               # FIXME: Only needed once, for suggestions matched by the legacy matcher. Remove after the first deployment.
+              # Before anything re-matches: it records what legacy suggestions show and humans decided.
               ${manage.name} backfill_unified_model
+              # Changed rules reconcile the suggestions they bear on, synchronously.
+              ${manage.name} load_product_rules
+              # Stale matchers, and machine rejections within MATCHING_REOPEN_WINDOW_DAYS (dispatched).
               ${manage.name} rematch_stale_suggestions
+              # Rows the migration and backfill left stale; dispatched refreshes keep theirs current.
+              ${manage.name} recompute_derived_state --stale-only
               ${manage.name} regenerate_cached_suggestions
+              # Not at deploy: learn_triage_mappings writes reusable decisions from triage history
+              # and should be reviewed with --dry-run first; run it by hand.
             '';
           };
 
@@ -690,6 +701,8 @@ in
 
             script = ''
               ${manage.name} garbage_collect
+              # Catch up derived states a crashed writer left stale.
+              ${manage.name} recompute_derived_state --stale-only
             '';
 
             # Weekly cleanup.
