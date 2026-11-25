@@ -1,6 +1,7 @@
 import { EyeIcon } from "lucide-preact";
 import { useListSuggestions } from "@/api/generated/endpoints";
 import type { Suggestion as SuggestionType } from "@/api/generated/models";
+import { DerivedStateFilter } from "@/components/matching/DerivedStateFilter";
 import { IssueDraftPanel } from "@/components/suggestions/IssueDraftPanel";
 import { Suggestion } from "@/components/suggestions/Suggestion";
 import { SuggestionFilters } from "@/components/suggestions/SuggestionFilters";
@@ -101,8 +102,8 @@ export function SuggestionList() {
           setPackageFilter={setPackageFilter}
           setAffectedProductFilter={setAffectedProductFilter}
           setCreatedAtRange={setCreatedAtRange}
-          setDerivedStates={setDerivedStates}
         />
+        <DerivedStateFilter value={filters.derivedStates} onChange={setDerivedStates} />
         <IssueDraftPanel open={showIssueDraftPanel} />
         <div className="row gap centered grow justify-right">
           <div>

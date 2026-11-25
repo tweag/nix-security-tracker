@@ -1,10 +1,6 @@
 import { LayersIcon } from "lucide-preact";
-import type {
-  ListSuggestionsDerivedStateItem,
-  ListSuggestionsStatusItem,
-} from "@/api/generated/models";
+import type { ListSuggestionsStatusItem } from "@/api/generated/models";
 import { ListSuggestionsStatusItem as Status } from "@/api/generated/models";
-import { DerivedStateFilter } from "@/components/matching/DerivedStateFilter";
 import { InlineIcon } from "@/components/ui/InlineIcon";
 import { PillToggleGroup, type ToggleGroupOption } from "@/components/ui/PillToggleGroup";
 import type { SuggestionListFilters } from "@/hooks/useSuggestionListFilters";
@@ -54,7 +50,6 @@ type Props = {
   setPackageFilter: (packageFilter: string) => void;
   setAffectedProductFilter: (product: string, version: string) => void;
   setCreatedAtRange: (after: string, before: string) => void;
-  setDerivedStates: (states: ListSuggestionsDerivedStateItem[]) => void;
 };
 
 /**
@@ -84,7 +79,6 @@ export function SuggestionFilters({
   setPackageFilter,
   setAffectedProductFilter,
   setCreatedAtRange,
-  setDerivedStates,
 }: Props) {
   const toggleValue = filters.inIssueDraft
     ? [...filters.statuses, ISSUE_DRAFT_VALUE]
@@ -112,7 +106,6 @@ export function SuggestionFilters({
           setPackageFilter={setPackageFilter}
         />
       </div>
-      <DerivedStateFilter value={filters.derivedStates} onChange={setDerivedStates} />
       <DateRangeFilterInput
         createdAtAfter={filters.createdAtAfter}
         createdAtBefore={filters.createdAtBefore}
