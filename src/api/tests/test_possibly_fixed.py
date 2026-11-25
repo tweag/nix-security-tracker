@@ -160,3 +160,52 @@ def test_branches(
     response = anonymous_client.get(reverse("possibly-fixed-branches"))
     assert response.status_code == 200
     assert response.json() == [{"name": "master", "count": 1}]
+
+
+@pytest.mark.parametrize("action", ["confirm_fixed", "still_affected"])
+def test_action_refuses_a_row_not_in_the_queue(
+    action: str,
+    committer_client: APIClient,
+    world: World,  # noqa: F811
+) -> None:
+    """An exposure that is affected now is no queue row: the answer is a conflict."""
+    world.match()
+    world.package("1.5")
+    world.reconcile()
+    response = committer_client.post(
+        action_url(row_id(world), action), {}, format="json"
+    )
+    assert response.status_code == 409
+    assert not Verdict.objects.exists()
+
+
+def test_action_refuses_an_untracked_branch(
+    committer_client: APIClient,
+    fixed: World,
+    make_branch: Callable[..., NixpkgsBranch],
+) -> None:
+    staging = make_branch("staging")
+    Exposure.objects.filter(pk=row_id(fixed)).update(branch=staging)
+    response = committer_client.post(
+        action_url(row_id(fixed), "still_affected"), {}, format="json"
+    )
+    assert response.status_code == 400
+    assert "branch" in response.data
+    assert not Verdict.objects.exists()
+    # Nor is it listed.
+    assert committer_client.get(list_url()).data["count"] == 0
+
+
+def test_second_answer_to_a_row_is_a_conflict(
+    committer_client: APIClient, staff_client: APIClient, fixed: World
+) -> None:
+    first = staff_client.post(
+        action_url(row_id(fixed), "still_affected"), {}, format="json"
+    )
+    assert first.status_code == 204
+    second = committer_client.post(
+        action_url(row_id(fixed), "confirm_fixed"), {}, format="json"
+    )
+    assert second.status_code == 409
+    assert "detail" in second.data
+    assert Verdict.objects.get().verdict == V.AFFECTED

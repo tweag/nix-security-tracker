@@ -1,4 +1,5 @@
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "@/api/client";
 import {
   getListPossiblyFixedQueryKey,
   useConfirmPossiblyFixed,
@@ -31,6 +32,12 @@ function rowRemovalHandlers(queryClient: QueryClient, row: PossiblyFixed, errorT
       return { previous };
     },
     onError: (err: unknown, _vars: unknown, context?: MutationContext) => {
+      if (err instanceof ApiError && err.status === 409) {
+        // Someone answered the row, or the package moved on: the refetch in `onSettled`
+        // shows the queue as it is now, so the row stays removed.
+        toaster.warning({ title: "Already answered", description: getApiErrorMessage(err) });
+        return;
+      }
       for (const [key, data] of context?.previous ?? []) {
         queryClient.setQueryData(key, data);
       }

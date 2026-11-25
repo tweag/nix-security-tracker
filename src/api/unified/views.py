@@ -2,10 +2,13 @@ from collections import Counter
 from typing import Any, cast
 
 from django.contrib.auth.models import User
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import APIException
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -25,6 +28,7 @@ from shared.derived_state import (
     set_verdict,
 )
 from shared.exposure import tracked_branches
+from shared.locking import lock_for_write
 from shared.models.matching import Exposure, Verdict
 
 
@@ -44,6 +48,15 @@ def _row(p: PossiblyFixed) -> dict[str, Any]:
         "fixed_at": p.fixed_evaluation.created_at,
         "compare_url": p.compare_url,
     }
+
+
+class RowNotInQueue(APIException):
+    status_code = 409
+    default_detail = (
+        "This row is no longer in the possibly-fixed queue: someone answered it, "
+        "or the package changed since. Refresh the queue."
+    )
+    default_code = "conflict"
 
 
 class PossiblyFixedViewSet(viewsets.GenericViewSet):
@@ -102,18 +115,33 @@ class PossiblyFixedViewSet(viewsets.GenericViewSet):
         return Response(PossiblyFixedBranchSerializer(data, many=True).data)
 
     def _answer(self, pk: int, verdict: str, data: dict, user: User) -> Response:
+        """
+        Answer a row that is in the queue now, under the suggestion's lock, so that of two
+        users answering the same row the second gets a conflict rather than overwriting.
+        """
         exposure = get_object_or_404(
             Exposure.objects.select_related("suggestion", "branch"), pk=pk
         )
-        set_verdict(
-            exposure.suggestion,
-            exposure.attrpath,
-            verdict,
-            user,
-            branch=exposure.branch,
-            comment=data.get("comment", ""),
-            fix_commit=data.get("fix_commit"),
-        )
+        with transaction.atomic():
+            lock_for_write([exposure.suggestion_id])
+            if exposure.branch_id not in {b.name for b in tracked_branches()}:
+                raise DRFValidationError(
+                    {"branch": [f"Not a tracked branch: {exposure.branch_id}"]}
+                )
+            in_queue = possibly_fixed_keys(
+                suggestion_ids=[exposure.suggestion_id], branch_ids=[exposure.branch_id]
+            )
+            if (exposure.pk, exposure.branch_id) not in in_queue:
+                raise RowNotInQueue()
+            set_verdict(
+                exposure.suggestion,
+                exposure.attrpath,
+                verdict,
+                user,
+                branch=exposure.branch,
+                comment=data.get("comment", ""),
+                fix_commit=data.get("fix_commit"),
+            )
         return Response(status=204)
 
     @extend_schema(
@@ -125,6 +153,7 @@ class PossiblyFixedViewSet(viewsets.GenericViewSet):
             400: ErrorDetailSerializer,
             403: ErrorDetailSerializer,
             404: ErrorDetailSerializer,
+            409: ErrorDetailSerializer,
         },
     )
     @action(detail=True, methods=["post"], url_path="confirm_fixed")
@@ -147,6 +176,7 @@ class PossiblyFixedViewSet(viewsets.GenericViewSet):
             400: ErrorDetailSerializer,
             403: ErrorDetailSerializer,
             404: ErrorDetailSerializer,
+            409: ErrorDetailSerializer,
         },
     )
     @action(detail=True, methods=["post"], url_path="still_affected")

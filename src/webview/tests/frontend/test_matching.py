@@ -3,10 +3,11 @@ import uuid
 from collections.abc import Callable
 
 import pytest
+from django.contrib.auth.models import User
 from playwright.sync_api import Page, expect
 from pytest_django.live_server_helper import LiveServer
 
-from shared.derived_state import flush_derived_states
+from shared.derived_state import flush_derived_states, set_verdict
 from shared.models.cve import AffectedProduct
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.matching import (
@@ -254,3 +255,27 @@ def test_tracker_entry_in_activity_log(
     )
     log.get_by_role("button", name=re.compile(r"\+2 packages")).click()
     expect(log).to_contain_text("+ baz via name ≈ 0.80")
+
+
+@pytest.mark.django_db
+def test_possibly_fixed_answer_to_a_stale_row(
+    live_server: LiveServer,
+    as_committer: Page,
+    possibly_fixed: Exposure,
+    staff: User,
+) -> None:
+    """Someone else answered the row meanwhile: a warning, and the row stays gone."""
+    as_committer.goto(live_server.url + POSSIBLY_FIXED)
+    row = as_committer.get_by_test_id(f"possibly-fixed-{possibly_fixed.pk}")
+    expect(row).to_be_visible()
+    set_verdict(
+        possibly_fixed.suggestion,
+        "foo",
+        Verdict.Kind.FIXED,
+        staff,
+        branch=possibly_fixed.branch,
+    )
+    row.get_by_role("button", name="Still affected").click()
+    expect(as_committer.get_by_text("Already answered")).to_be_visible()
+    expect(row).to_be_hidden()
+    assert Verdict.objects.get().author == staff
