@@ -85,11 +85,15 @@ class VersionRange:
     """
     An interval of versions; a missing bound is unbounded.
     `source` is `parsed` when the range was read from a textual expression such as `< 1.2.3`.
+    `opaque` marks an entry the classifier does not understand (a product name, a version
+    with qualifiers, an ambiguous dash form): whether it contains a version is never known,
+    so it can block an answer but never give one.
     """
 
     lower: Bound | None
     upper: Bound | None
     source: Literal["structured", "parsed"] = "structured"
+    opaque: bool = False
 
     @property
     def is_exact(self) -> bool:
@@ -101,6 +105,8 @@ class VersionRange:
         )
 
     def __str__(self) -> str:
+        if self.opaque:
+            return f"?{self.lower.text if self.lower else ''}"
         if self.lower is not None and self.is_exact:
             return f"={self.lower.text}"
         lower = (
@@ -155,11 +161,111 @@ _PLACEHOLDERS = {
     "all",
     "all versions",
 }
-_PRE_RELEASE = re.compile(r"[-._]?(pre|rc|alpha|beta|dev|canary)(?=[0-9.]|$)")
+# Pre-release markers, written any way upstreams write them: 1.0.0-beta-2, -rc-1, -RC1, -Beta1,
+# 7.5.0-preview.2, 1.0.0b1, 1.0.0a3, 2.0.0-M1 (Maven milestone), 1.50.0-next.0, 1.0-SNAPSHOT.
+# They are rewritten to `~marker.N`, which Debian ordering sorts before the release.
+_PRE_RELEASE = re.compile(
+    r"(?<=[\d.])[-._~]?"
+    r"(alpha|beta|preview|pre|rc|dev|canary|nightly|next|snapshot|milestone|m(?=\d)|a(?=\d)|b(?=\d))"
+    r"[-._]?(\d*)(?=$|[-._+~]|[a-z])",
+    re.IGNORECASE,
+)
+# Maven release qualifiers, equal to the release.
+_RELEASE_QUALIFIER = re.compile(r"[.-](final|release|ga)$", re.IGNORECASE)
 # nixpkgs snapshot versions: `1.2-unstable-2026-01-02`, `0+unstable20260101`, `0.0.0+rev=abc`, `20260101-git`.
 _SNAPSHOT = re.compile(r"^(?P<base>.*?)[-+.]?(?:unstable|git|rev)(?:[-+=._].*|\d.*)?$")
-# Trailing nixpkgs decorations of a package version: `1.2.3-envoy`, `140.1.0esr`, `1.2.3+matrix.1`.
-_PACKAGE_SUFFIX = re.compile(r"(?:-[A-Za-z][A-Za-z0-9._-]*|(?<=\d)esr|\+.*)$")
+# Decorations of a package version that do not change which release it is.
+_PACKAGE_NEUTRAL = re.compile(r"(?:(?<=\d)esr|\+.*)$")
+# The grammar of a version bound: a digit, then version characters, no spaces.
+_BOUND = re.compile(r"^\d[0-9A-Za-z.+~:_-]*$")
+# Words that may follow a version without changing its meaning (`9.1.0.37 LTS`, `9.3.5.1 CD`).
+_BENIGN_WORDS = frozenset({"lts", "cd", "fips", "ga", "stable", "release", "final"})
+# Words that turn a version into a range, or a list; such a string is not a bound.
+_RANGE_WORDS = re.compile(
+    r"\b(?:earlier|prior|before|older|below|lower|later|after|newer|above|higher|through|thru"
+    r"|until|including|inclusive|since|onwards?|up|less|greater|all|and|or|to)\b|[<>=,]",
+    re.IGNORECASE,
+)
+# `6.0.0-6.1.3`, `1.0-1.4`: two dotted versions joined by a dash, a range or a Debian revision.
+_DASH_RANGE = re.compile(r"^(?P<lo>\d+(?:\.\d+)+)-(?P<up>\d+(?:\.\d+)+)$")
+_CORE = re.compile(r"^\d+(?:\.\d+)*")
+
+
+@dataclass(frozen=True)
+class Ver:
+    """
+    A version reduced to what comparisons need: the Debian ordering of its canonical text
+    (trailing `.0` components dropped, pre-release markers as `~`), its numeric core, and the
+    kind of what follows the core: "" (nothing), "pre" (pre-release), "letter" (letters only,
+    OpenSSL style `1.1.1w`, `1.1.1zj`), "rev" (`-N` revision), "post" (`p1`, `.post2`) or
+    "other".
+    """
+
+    text: str
+    debian: DebianVersion
+    core: str
+    kind: str
+
+
+def _canonical_core(core: str) -> str:
+    parts = core.split(".")
+    while len(parts) > 1 and int(parts[-1]) == 0:
+        parts.pop()
+    return ".".join(parts)
+
+
+def _suffix_kind(rest: str) -> str:
+    if not rest:
+        return ""
+    if rest.startswith("~"):
+        return "pre"
+    if re.fullmatch(r"[a-z]+", rest, re.IGNORECASE):
+        return "letter"
+    if re.match(r"-\d", rest):
+        return "rev"
+    if re.fullmatch(r"(?:\.?post|p|pl)\d+", rest, re.IGNORECASE):
+        return "post"
+    return "other"
+
+
+def _ver(text: str) -> Ver | None:
+    """A `Ver` from text that already passed the bound grammar."""
+    if not text or not text[0].isdigit() or _HASH.match(text):
+        return None
+    cleaned = _RELEASE_QUALIFIER.sub("", text.replace("_", "."))
+    cleaned = _PRE_RELEASE.sub(
+        lambda m: f"~{m.group(1).lower()}" + (f".{m.group(2)}" if m.group(2) else ""),
+        cleaned,
+    )
+    m = _CORE.match(cleaned)
+    if m is None:
+        return None
+    core = _canonical_core(m.group())
+    rest = cleaned[m.end() :]
+    # Drop trailing zeros only where the ordering cannot change: `1.0.0.post0` must stay
+    # below 1.4, which `1.post0` would not be.
+    canonical = (core if rest[:1] in ("", "~", "-") else m.group()) + rest
+    try:
+        # The attrs-generated constructor is invisible to pyright.
+        debian = DebianVersion(canonical)  # pyright: ignore [reportCallIssue]
+    except InvalidVersion:
+        return None
+    return Ver(text=canonical, debian=debian, core=core, kind=_suffix_kind(rest))
+
+
+def compare_versions(a: Ver, b: Ver) -> int | None:
+    """
+    -1, 0 or 1, or None when the order cannot be told: equal numeric cores with differently
+    decorated suffixes (`2.1.5-1` against `2.1.5`, `9.8p1` against `9.8`, `1.2.3-envoy`
+    against `1.2.3`), where it depends on what the decoration means to that upstream.
+    """
+    if (
+        a.core == b.core
+        and a.kind != b.kind
+        and not {a.kind, b.kind} <= {"", "pre", "letter"}
+    ):
+        return None
+    return (a.debian > b.debian) - (a.debian < b.debian)
 
 
 @dataclass(frozen=True)
@@ -170,61 +276,65 @@ class PackageVersion:
     """
 
     text: str
-    base: DebianVersion
+    base: Ver
     snapshot: bool = False
 
 
-def _normalise(version: str) -> str:
-    cleaned = re.sub(r"^[vV](?=\d)", "", version.strip())
-    cleaned = cleaned.replace("_", ".")
-    return _PRE_RELEASE.sub(r"~\1", cleaned)
-
-
-def _debian(version: str) -> DebianVersion | None:
-    if not version or not version[0].isdigit() or _HASH.match(version):
-        return None
-    try:
-        # The attrs-generated constructor is invisible to pyright.
-        return DebianVersion(version)  # pyright: ignore [reportCallIssue]
-    except InvalidVersion:
-        return None
+def _strip_prefix(text: str) -> str:
+    return re.sub(r"^(?:v|ver\.?\s*)(?=\d)", "", text.strip(), flags=re.IGNORECASE)
 
 
 def parse_package_version(version: str | None) -> PackageVersion | None:
     """Parse a nixpkgs version (from a derivation name). None if it cannot be compared."""
     if not version or not version.strip() or _HASH.match(version.strip()):
         return None
-    text = version.strip()
+    text = _strip_prefix(version)
     snapshot = False
     if m := _SNAPSHOT.match(text):
         text, snapshot = m.group("base").rstrip("-+._") or "0", True
-    cleaned = _normalise(text)
-    cleaned = _PACKAGE_SUFFIX.sub("", cleaned)
-    base = _debian(cleaned)
+    text = _PACKAGE_NEUTRAL.sub("", text)
+    if not _BOUND.match(text):
+        return None
+    base = _ver(text)
     if base is None:
         return None
     return PackageVersion(text=version, base=base, snapshot=snapshot)
 
 
-def parse_bound(text: str) -> DebianVersion | None:
-    """Parse a version from a CVE record. Wildcards are handled by `_compare`."""
-    cleaned = re.sub(r"\s*\([^()]*\)$", "", _normalise(text))
-    # `4.35.5.1 LTS`: a version followed by words without digits.
-    if " " in cleaned:
-        head, _, tail = cleaned.partition(" ")
-        if re.search(r"\d", tail):
+def bound_text(text: str) -> str | None:
+    """
+    The version in a bound string, or None if the string is not a plain version: anything
+    with range or list words (`1.50.5 or earlier`, `5.36.00.00 or later`, `1.46.1, 1.45.5`),
+    attached parentheses (Cisco's `11.5(1)`), or other words after the version. A version
+    followed by a benign word (`9.1.0.37 LTS`) or a separate parenthetical note without range
+    words (`14.7.48855 (Windows)`) is accepted.
+    """
+    t = _strip_prefix(text)
+    if m := re.match(r"^(.*?)\s+\(([^()]*)\)$", t):
+        if _RANGE_WORDS.search(m.group(2)):
             return None
-        cleaned = head
-    return _debian(cleaned)
-
-
-def _wildcard_ceiling(text: str) -> DebianVersion | None:
-    """`6.1.*` -> the least version above the whole 6.1 series (`6.2~`)."""
-    prefix = _WILDCARD.sub("", text.strip())
-    m = re.match(r"^(.*?)(\d+)$", _normalise(prefix))
-    if not m:
+        t = m.group(1)
+    head, *tail = t.split() or [""]
+    if any(w.lower() not in _BENIGN_WORDS for w in tail):
         return None
-    return _debian(f"{m.group(1)}{int(m.group(2)) + 1}~")
+    if not _BOUND.match(head):
+        return None
+    return head
+
+
+def parse_bound(text: str) -> Ver | None:
+    """Parse a plain version from a CVE record; None for anything else. Wildcards: `_compare`."""
+    head = bound_text(text)
+    return _ver(head) if head is not None else None
+
+
+def _wildcard_ceiling(text: str) -> Ver | None:
+    """`6.1.*` -> the least version above the whole 6.1 series (`6.2~`)."""
+    prefix = _strip_prefix(_WILDCARD.sub("", text.strip()))
+    m = re.match(r"^(.*?)(\d+)$", prefix)
+    if not m or not _BOUND.match(prefix):
+        return None
+    return _ver(f"{m.group(1)}{int(m.group(2)) + 1}~")
 
 
 type Tri = bool | None
@@ -251,9 +361,12 @@ def _compare(
     if target is None:
         return None
     if side == "lower":
-        if version.base > target or (version.base == target and version.snapshot):
+        c = compare_versions(version.base, target)
+        if c is None:
+            return None
+        if c > 0 or (c == 0 and version.snapshot):
             return True
-        if version.base == target:
+        if c == 0:
             return inclusive
         return None if version.snapshot else False
     if inclusive:
@@ -261,14 +374,20 @@ def _compare(
     return _lt(version, target)
 
 
-def _lt(version: PackageVersion, target: DebianVersion) -> Tri:
-    if version.base >= target:
+def _lt(version: PackageVersion, target: Ver) -> Tri:
+    c = compare_versions(version.base, target)
+    if c is None:
+        return None
+    if c >= 0:
         return False
     return None if version.snapshot else True
 
 
-def _le(version: PackageVersion, target: DebianVersion) -> Tri:
-    if version.base > target or (version.base == target and version.snapshot):
+def _le(version: PackageVersion, target: Ver) -> Tri:
+    c = compare_versions(version.base, target)
+    if c is None:
+        return None
+    if c > 0 or (c == 0 and version.snapshot):
         return False
     return None if version.snapshot else True
 
@@ -397,15 +516,27 @@ def is_git_entry(entry: VersionEntry) -> bool:
     return False
 
 
+def _opaque(text: str) -> VersionRange:
+    return VersionRange(Bound(text, True), Bound(text, True), opaque=True)
+
+
 def interpret(entry: VersionEntry) -> VersionRange | None:
     """
     The range an entry denotes, or None for a placeholder that carries no version information
-    (`version: "n/a"` without an upper bound).
+    (`version: "n/a"` without an upper bound). A `version` alone is an exact version only if it
+    is a plain version; otherwise it is read as a textual range (#1449) if it has one of the
+    known shapes, and is opaque if not. A dash between two dotted versions (`6.0.0-6.1.3`) is
+    read as a range for an affected entry (the wider reading) and is opaque otherwise.
     """
     upper_text = entry.less_equal or entry.less_than
     if upper_text is not None and upper_text.strip():
-        # Chromium records write `{version: X, lessThan: X}` for "< X", an empty range.
-        empty = entry.less_equal is None and entry.version == upper_text
+        # Chromium records write `{version: X, lessThan: X, status: affected}` for "< X", an
+        # empty range. Only read that way for affected entries, where it widens the range.
+        empty = (
+            entry.less_equal is None
+            and entry.version == upper_text
+            and entry.status == Status.AFFECTED
+        )
         lower = (
             None
             if _is_placeholder(entry.version) or empty
@@ -423,25 +554,37 @@ def interpret(entry: VersionEntry) -> VersionRange | None:
     if _is_placeholder(version):
         return None
     if _WILDCARD.search(version):
+        if parse_bound(_WILDCARD.sub("", version)) is None:
+            return _opaque(version)
         return VersionRange(
             Bound(_WILDCARD.sub("", version), True), Bound(version, True)
         )
-    if parse_bound(version) is None or re.match(r"^[<>=]", version):
-        if parsed := parse_textual_range(version):
-            return parsed
-    return VersionRange(Bound(version, True), Bound(version, True))
+    if m := _DASH_RANGE.match(version):
+        if entry.status != Status.AFFECTED:
+            return _opaque(version)
+        return VersionRange(
+            Bound(m.group("lo"), True), Bound(m.group("up"), True), "parsed"
+        )
+    if parse_bound(version) is not None and not re.match(r"^[<>=]", version):
+        return VersionRange(Bound(version, True), Bound(version, True))
+    if parsed := parse_textual_range(version):
+        return parsed
+    return _opaque(version)
 
 
 def _contains(version: PackageVersion, range_: VersionRange) -> Tri:
+    if range_.opaque:
+        return None
     if range_.is_exact and range_.lower is not None:
         target = parse_bound(range_.lower.text)
         if target is None:
             return None
-        if version.base == target and not version.snapshot:
-            return True
-        if version.snapshot and version.base < target:
+        c = compare_versions(version.base, target)
+        if c is None:
             return None
-        return False
+        if version.snapshot:
+            return None if c < 0 else False
+        return c == 0
     lower: Tri = (
         True if range_.lower is None else _compare(version, range_.lower, "lower")
     )
@@ -467,7 +610,7 @@ def _sorted_changes(changes: Iterable[Change]) -> list[Change]:
     keyed = [(parse_bound(c.at), c) for c in changes]
     if any(k is None for k, _ in keyed):
         return list(changes)
-    return [c for _, c in sorted(keyed, key=lambda kc: kc[0])]  # pyright: ignore [reportArgumentType, reportCallIssue]
+    return [c for k, c in sorted(keyed, key=lambda kc: kc[0].debian)]  # pyright: ignore [reportOptionalMemberAccess]
 
 
 # --- Classification --------------------------------------------------------------------------
@@ -510,16 +653,24 @@ def classify_product(
             silent=True,
         )
     git = [e for e in product.entries if is_git_entry(e)]
-    ranged = [
-        (e, r)
-        for e in product.entries
-        if not is_git_entry(e) and (r := interpret(e)) is not None
-    ]
+    ranged: list[tuple[VersionEntry, VersionRange]] = []
+    real = False
+    for e in product.entries:
+        if is_git_entry(e):
+            continue
+        r = interpret(e)
+        if r is not None:
+            ranged.append((e, r))
+            real = True
+        elif e.status != Status.UNAFFECTED:
+            # "affected at unspecified versions" next to real ranges: it may cover any
+            # version, so it must not let the default or a later entry say unaffected.
+            ranged.append((e, _opaque(e.version or "")))
     default = product.default_status
     placeholders = [
         e for e in product.entries if not is_git_entry(e) and interpret(e) is None
     ]
-    if not ranged:
+    if not real:
         if git:
             return Classification(
                 Status.UNKNOWN,

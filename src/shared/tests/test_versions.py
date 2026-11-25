@@ -344,11 +344,60 @@ CASES: list[tuple[str, ProductVersions, str | None, Status, Reason]] = [
         Reason.DEFAULT_STATUS,
     ),
     (
-        "nixpkgs suffix",
+        "nixpkgs suffix at the bound is undecidable",
         product(entry(A, "1.0", le="1.16.2"), default=U),
+        "1.16.2-envoy",
+        K,
+        Reason.UNPARSEABLE,
+    ),
+    (
+        "nixpkgs suffix away from the bound",
+        product(entry(A, "1.0", le="1.16.3"), default=U),
         "1.16.2-envoy",
         A,
         Reason.VERSION_RANGE,
+    ),
+    (
+        "numeric revision at the bound is undecidable",
+        product(entry(A, "0", le="2.1.5"), default=U),
+        "2.1.5-1",
+        K,
+        Reason.UNPARSEABLE,
+    ),
+    (
+        "revisions on both sides compare",
+        product(entry(A, "7.0.0-0", lt="7.1.2-32"), default=U),
+        "7.1.2-34",
+        U,
+        Reason.DEFAULT_STATUS,
+    ),
+    (
+        "portable release at the bound is undecidable",
+        product(entry(A, "0", le="9.8"), default=U),
+        "9.8p1",
+        K,
+        Reason.UNPARSEABLE,
+    ),
+    (
+        "post release far below the bound",
+        product(entry(A, "0", lt="1.4.0"), default=U),
+        "1.0.0.post0",
+        A,
+        Reason.VERSION_RANGE,
+    ),
+    (
+        "OpenSSL double-letter bound",
+        product(entry(A, "1.1.1", lt="1.1.1zj"), default=U),
+        "1.1.1w",
+        A,
+        Reason.VERSION_RANGE,
+    ),
+    (
+        "OpenSSL letter release",
+        product(entry(A, "1.1.1", lt="1.1.1w"), default=U),
+        "1.1.1w",
+        U,
+        Reason.DEFAULT_STATUS,
     ),
     (
         "esr suffix",
@@ -446,24 +495,35 @@ def test_parse_textual_range(text: str, expected: str | None) -> None:
 
 
 @pytest.mark.parametrize(
-    "version, base, snapshot",
+    "version, base, kind, snapshot",
     [
-        ("1.2.3", "1.2.3", False),
-        ("0-unstable-2026-01-02", "0", True),
-        ("1.2.3-unstable-2026-01-02", "1.2.3", True),
-        ("0+unstable20250423", "0", True),
-        ("0.0.0+rev=68fd0d8", "0.0.0", True),
-        ("1.16.2-envoy", "1.16.2", False),
-        ("1.2.3+matrix.1", "1.2.3", False),
-        ("v2.0", "2.0", False),
-        ("2.3rc1", "2.3~rc1", False),
-        ("6.30.223.271-59-5.10.270", "6.30.223.271-59-5.10.270", False),
+        ("1.2.3", "1.2.3", "", False),
+        ("0-unstable-2026-01-02", "0", "", True),
+        ("1.2.3-unstable-2026-01-02", "1.2.3", "", True),
+        ("0+unstable20250423", "0", "", True),
+        ("0.0.0+rev=68fd0d8", "0", "", True),
+        ("1.16.2-envoy", "1.16.2-envoy", "other", False),
+        ("1.2.3+matrix.1", "1.2.3", "", False),
+        ("140.17.0esr", "140.17", "", False),
+        ("v2.0", "2", "", False),
+        ("2.3rc1", "2.3~rc.1", "pre", False),
+        ("1.0.0-beta-2", "1~beta.2", "pre", False),
+        ("1.0.0-RC1", "1~rc.1", "pre", False),
+        ("1.0.0b1", "1~b.1", "pre", False),
+        ("2.1.5-1", "2.1.5-1", "rev", False),
+        ("6.30.223.271-59-5.10.270", "6.30.223.271-59-5.10.270", "rev", False),
     ],
 )
-def test_parse_package_version(version: str, base: str, snapshot: bool) -> None:
+def test_parse_package_version(
+    version: str, base: str, kind: str, snapshot: bool
+) -> None:
     parsed = parse_package_version(version)
     assert parsed is not None
-    assert (str(parsed.base), parsed.snapshot) == (base, snapshot)
+    assert (parsed.base.text, parsed.base.kind, parsed.snapshot) == (
+        base,
+        kind,
+        snapshot,
+    )
 
 
 @pytest.mark.parametrize(
@@ -595,3 +655,197 @@ def test_rows_absent_default_and_changes() -> None:
     )
     assert classify_affected_products("1.6", [with_changes]).status == U
     assert classify_affected_products("1.4", [with_changes]).status == A
+
+
+# --- Regression tests from the 2026-11-26 review: answers that must never be "unaffected" ---
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("1.50.5 or earlier", "(*, 1.50.5]"),
+        ("1.2.3 and earlier", "(*, 1.2.3]"),
+        ("12.0.33 and older", "(*, 12.0.33]"),
+        ("1.2.4 and below", "(*, 1.2.4]"),
+        ("1.2 or later", "[1.2, *)"),
+        ("595.71.05(All versions prior to and including vGPU 20.1)", "(*, 595.71.05]"),
+        ("6.0.0-6.1.3", "[6.0.0, 6.1.3]"),
+        ("1.0-1.4", "[1.0, 1.4]"),
+    ],
+)
+def test_interpret_textual_version(text: str, expected: str) -> None:
+    """Through `interpret`, which is what the classifier uses, not the parser alone."""
+    assert str(interpret(entry(A, text))) == expected
+
+
+@pytest.mark.parametrize(
+    "text, version",
+    [
+        ("1.50.5 or earlier", "1.50.4"),
+        ("595.71.05(All versions prior to and including vGPU 20.1)", "595.58.03"),
+        ("1.2 or later", "1.3"),
+        ("1.2.4 and below", "1.2.3"),
+        ("6.0.0-6.1.3", "6.1.0"),
+        ("1.0-1.4", "1.2"),
+    ],
+)
+def test_textual_affected_with_default_unaffected(text: str, version: str) -> None:
+    c = classify_product(version, product(entry(A, text), default=U))
+    assert c.status == A, c
+
+
+@pytest.mark.parametrize(
+    "version, fix",
+    [
+        ("1.0.0-beta-2", "1.0.0"),
+        ("1.0.0-rc-1", "1.0.0"),
+        ("1.0.0-RC1", "1.0.0"),
+        ("1.0.0-Beta1", "1.0.0"),
+        # The review tested this against 1.0.0, where unaffected is right (7.5 > 1.0).
+        ("7.5.0-preview.2", "7.5.0"),
+        ("1.0.0b1", "1.0.0"),
+        ("1.0.0a3", "1.0.0"),
+        ("1.0.0.beta.2", "1.0.0"),
+        ("1.0.0-alpha", "1.0.0"),
+        ("2.0.0-M3", "2.0.0"),
+        ("1.50.0-next.2", "1.50.0"),
+        ("1.0-SNAPSHOT", "1.0"),
+    ],
+)
+def test_prerelease_package_before_fix(version: str, fix: str) -> None:
+    c = classify_product(version, product(entry(A, "0", lt=fix), default=U))
+    assert c.status == A, c
+
+
+@pytest.mark.parametrize(
+    "lower, version",
+    [
+        # A pre-release lower bound must not exclude the release it precedes.
+        ("5.0.0-RC1", "5.0.0"),
+        ("1.50.0-next.0", "1.50.0"),
+        ("2026.7.0-latest", "2026.7.0"),
+    ],
+)
+def test_decorated_lower_bound_not_excluding(lower: str, version: str) -> None:
+    c = classify_product(version, product(entry(A, lower, lt="9999"), default=U))
+    assert c.status != U, c
+
+
+@pytest.mark.parametrize(
+    "prod, version, status",
+    [
+        (product(entry(A, "0", le="5.4"), default=U), "5.4.0", A),
+        (product(entry(A, "2.0"), default=U), "2.0.0", A),
+        (product(entry(A, "3.1.0"), default=U), "3.1", A),
+        # The safe direction: 1.2 is the fix.
+        (product(entry(A, "0", lt="1.2.0"), default=U), "1.2", U),
+        (product(entry(A, "0", lt="1.2"), default=U), "1.2.0", U),
+    ],
+)
+def test_trailing_zero(prod: ProductVersions, version: str, status: Status) -> None:
+    assert classify_product(version, prod).status == status
+
+
+# Real strings from the corpus records that are not plain versions and have no known range shape.
+OPAQUE_STRINGS = [
+    "1.18 RTM2",
+    "3.3 Patch 2",
+    "3.1.0 p1",
+    "11.5(1)",
+    "12.1(1)SR1",
+    "10.3(4a)",
+    "1.46.1, 1.45.5, 1.43.10",
+    "11.1 build 1012",
+    "26.0.0 Interim Fix 001",
+    "13.1.37.279 FIPS and NDcPP",
+    "Patch version 10.2.4 and later",
+    "SMR Sep-2026 Release in Android 14, 15, 16, 17",
+    "Snapdragon 8 Elite Gen 5",
+    "WSA8845H",
+    "SAPSCORE 136",
+    'Abril patch "20260402"',
+    "Zurich Patch 10 Hot Fix 3b",
+    "12.1.3 FP1",
+    "2026/9/20",
+    "< 26.2.5 (Windows)",
+]
+# Range words inside a bound field have no defined meaning there.
+OPAQUE_BOUNDS = [
+    "5.36.00.00 or later",
+    "26.07.03 or later",
+    "1.50.5 or earlier",
+    "< 1.2",
+]
+VERSIONS = [
+    "0.1",
+    "1.0",
+    "1.18",
+    "3.3",
+    "5.36",
+    "10.2.4",
+    "11.5",
+    "12.1.3",
+    "26.07.03",
+    "99",
+]
+
+
+def _opaque_entry(status: Status, text: str, field: str) -> VersionEntry:
+    if field == "version":
+        return entry(status, text)
+    if field == "lt":
+        return entry(status, "0", lt=text)
+    return entry(status, "0", le=text)
+
+
+@pytest.mark.parametrize(
+    "text, field",
+    [(t, f) for t in OPAQUE_STRINGS for f in ("version", "lt", "le")]
+    + [(t, f) for t in OPAQUE_BOUNDS for f in ("lt", "le")],
+)
+def test_opaque_entries_never_give_unaffected(text: str, field: str) -> None:
+    """An entry the classifier does not understand can never contribute to `unaffected`."""
+    affected = _opaque_entry(A, text, field)
+    products = [
+        # Not covered by the default.
+        product(affected, default=U),
+        # Not covered by the inference from affected ranges.
+        product(affected, entry(A, "0", lt="0.5")),
+        # Not covered by a later unaffected entry.
+        product(affected, entry(U, "0", lt="*"), default=A),
+    ]
+    for prod in products:
+        for version in VERSIONS:
+            assert classify_product(version, prod).status != U, (prod, version)
+    # An opaque unaffected entry gives nothing either.
+    unaffected = product(_opaque_entry(U, text, field), default=A)
+    for version in VERSIONS:
+        assert classify_product(version, unaffected).status != U, version
+
+
+@pytest.mark.parametrize("placeholder", ["n/a", "unspecified", "0", "-"])
+def test_affected_placeholder_blocks_unaffected(placeholder: str) -> None:
+    prod = product(entry(A, placeholder), entry(A, "1.0", lt="2.0"), default=U)
+    assert classify_product("3.0", prod).status == K
+    assert classify_product("1.5", prod).status == A
+
+
+def test_chromium_empty_range_only_for_affected() -> None:
+    prod = product(entry(U, "155.0.8059.39", lt="155.0.8059.39"), default=A)
+    assert classify_product("150.0", prod).status == A
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "9.1.0.37 LTS",
+        "9.3.5.1 CD",
+        "14.7.48855 (Windows)",
+        "15.64.0 (Legacy Windows 7 & 8)",
+        "v1.36.0",
+        "4.1.133.Final",
+    ],
+)
+def test_plain_versions_with_benign_decoration(text: str) -> None:
+    r = interpret(entry(A, text))
+    assert r is not None and r.is_exact and not r.opaque, r
