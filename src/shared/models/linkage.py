@@ -624,9 +624,11 @@ class CVEDerivationClusterProposal(TimeStampMixin):
         plus the overlay that the cache and the activity log still read.
         """
         from shared.derived_state import set_verdict
+        from shared.locking import lock_for_write
         from shared.models.matching import Verdict
 
         with transaction.atomic():
+            lock_for_write([self.pk])
             self.check_ignore_packages(package_attributes)
             for package_attribute in package_attributes:
                 set_verdict(self, package_attribute, Verdict.Kind.IRRELEVANT, author)
@@ -669,9 +671,11 @@ class CVEDerivationClusterProposal(TimeStampMixin):
     ) -> None:
         """Restore previously ignored packages, removing their `irrelevant` verdicts."""
         from shared.derived_state import remove_verdict
+        from shared.locking import lock_for_write
         from shared.models.matching import Verdict
 
         with transaction.atomic():
+            lock_for_write([self.pk])
             self.check_restore_packages(package_attributes)
             for package_attribute in package_attributes:
                 if Verdict.objects.filter(
@@ -1071,13 +1075,18 @@ class CVEDerivationClusterProposal(TimeStampMixin):
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         from shared.derived_state import flush_derived_states
+        from shared.locking import lock_for_write
 
         # Automatically remove from issue draft when changing status away from accepted
         if self.status != SuggestionStatus.ACCEPTED:
             self.in_issue_draft = False
-        super().save(*args, **kwargs)
-        # A status change marked the stored derived state stale (database trigger).
-        flush_derived_states([self.pk])
+        with transaction.atomic():
+            # Lock order (`shared.locking`): the advisory lock before the row's `UPDATE`.
+            if self.pk is not None:
+                lock_for_write([self.pk])
+            super().save(*args, **kwargs)
+            # A status change marked the stored derived state stale (database trigger).
+            flush_derived_states([self.pk] if self.pk is not None else [])
 
     class Meta:  # type: ignore[override]
         triggers = [

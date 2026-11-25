@@ -6,22 +6,20 @@ before `backfill_unified_model` reached them: every entry point, every status.
 from collections.abc import Callable
 from io import StringIO
 from typing import Any
-from unittest import mock
 
 import pytest
 from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.db import transaction
-from django.test import TestCase
 
 from shared.derived_state import derive_states
 from shared.listeners.package_clustering import refresh_and_cache_suggestion
-from shared.listeners.snapshot import apply_snapshot_changes
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.matching import SuggestionDerivedState, Verdict
 from shared.models.nix_evaluation import NixDerivation, NixEvaluation
 from shared.pipeline import on_cve_record_changed
 from shared.snapshot import update_branch_snapshot
+from shared.tests.conftest import run_snapshot_step
 
 Status = CVEDerivationClusterProposal.Status
 Reason = CVEDerivationClusterProposal.RejectionReason
@@ -66,15 +64,7 @@ def _evaluation(
     make_drv(attribute="foo", pname="foo", version="1.1", evaluation=evaluation)
     make_drv(attribute="foobar", pname="foobar", version="1.0", evaluation=evaluation)
     update_branch_snapshot(evaluation)
-    with (
-        mock.patch("pgpubsub.notify") as notify,
-        TestCase.captureOnCommitCallbacks(execute=True),
-    ):
-        apply_snapshot_changes(evaluation_pk=evaluation.pk, branch="master")
-    for call in notify.call_args_list:
-        _, kwargs = call
-        with transaction.atomic():
-            refresh_and_cache_suggestion(pk=kwargs["pk"])
+    run_snapshot_step(evaluation)
 
 
 def _mapping(s: CVEDerivationClusterProposal, **_: Any) -> None:

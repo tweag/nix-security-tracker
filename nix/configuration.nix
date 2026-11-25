@@ -612,6 +612,7 @@ in
                   shared.channels.NixEvaluationUpdateChannel \
                   shared.channels.NixEvaluationSnapshotChannel \
                   shared.channels.BranchSnapshotChannel \
+                  shared.channels.SuggestionRematchChannel \
                   shared.channels.SuggestionRefreshChannel \
             '';
           };

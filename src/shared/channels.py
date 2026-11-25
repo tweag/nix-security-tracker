@@ -90,6 +90,18 @@ class CvePresentationChannel(Channel):
 
 
 @dataclass
+class SuggestionRematchChannel(Channel):
+    """
+    Re-match suggestion `pk` with every enabled matcher, because evaluation `evaluation_pk`
+    added or changed attributes it matches or might match. Never re-emitted: not collected.
+    """
+
+    pk: int
+    evaluation_pk: int
+    lock_notifications = True
+
+
+@dataclass
 class BranchSnapshotChannel(Channel):
     """A branch's package snapshot advanced to `evaluation_pk`; its `BranchPackageChange` rows are written."""
 

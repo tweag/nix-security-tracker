@@ -237,8 +237,10 @@ class NixpkgsIssue(TimeStampMixin):
     ) -> "NixpkgsIssue":
         """Publish; the shown, not ignored attributes not decided yet become `affected` by `author`."""
         from shared.derived_state import flush_derived_states, record_acceptance
+        from shared.locking import lock_for_write
 
         with transaction.atomic():
+            lock_for_write([s.pk for s in suggestions])
             issue = cls.create_nixpkgs_issue(suggestions, title)
             issue.publish()
             for suggestion in suggestions:

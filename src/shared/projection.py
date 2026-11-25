@@ -188,8 +188,10 @@ def project_links(suggestion: CVEDerivationClusterProposal) -> ProjectionResult:
     create the missing links, delete the superfluous ones, fix flags. A no-op writes nothing.
     """
     from shared.legacy_backfill import ensure_backfilled
+    from shared.locking import lock_for_write
 
     with transaction.atomic():
+        lock_for_write([suggestion.pk])
         ensure_backfilled(suggestion)
         status, reason = (
             CVEDerivationClusterProposal.objects.select_for_update()

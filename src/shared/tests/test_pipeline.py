@@ -14,7 +14,7 @@ from shared.cache_suggestions import cache_new_suggestions
 from shared.derived_state import DerivedState, derive_states
 from shared.exposure import reconcile_exposures
 from shared.identity.keys import persist_product_keys
-from shared.listeners.snapshot import apply_snapshot_changes, snapshot_after_evaluation
+from shared.listeners.snapshot import snapshot_after_evaluation
 from shared.matching import matchers as matchers_module
 from shared.models.cached import CachedSuggestions
 from shared.models.cve import AffectedProduct, Container, Cpe, Tag, Version
@@ -32,6 +32,7 @@ from shared.pipeline import (
 )
 from shared.projection import project_links
 from shared.snapshot import update_branch_snapshot
+from shared.tests.conftest import run_snapshot_step
 
 Status = CVEDerivationClusterProposal.Status
 Reason = CVEDerivationClusterProposal.RejectionReason
@@ -60,8 +61,7 @@ def snapshot(
             )
         update_branch_snapshot(evaluation)
         if apply:
-            with mock.patch("shared.pipeline.pgpubsub.notify"):
-                apply_snapshot_changes(evaluation_pk=evaluation.pk, branch="master")
+            run_snapshot_step(evaluation)
         return evaluation
 
     return wrapped
@@ -576,7 +576,7 @@ def test_evaluation_to_cached_payload(
 
     with transaction.atomic():
         snapshot_after_evaluation(old=previous, new=evaluation)
-    apply_snapshot_changes(evaluation_pk=evaluation.pk, branch="master")
+    run_snapshot_step(evaluation)
 
     exposure = Exposure.objects.get(suggestion=pending, attrpath="foo")
     assert (exposure.version, exposure.observed) == (

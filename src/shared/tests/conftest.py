@@ -807,3 +807,33 @@ def make_legacy_suggestion(
         return suggestion
 
     return wrapped
+
+
+def run_snapshot_step(evaluation: NixEvaluation, branch: str = "master") -> list[Any]:
+    """
+    The evaluation listener for one branch, then the notifications it dispatched, each in its
+    own transaction through its real listener, as the workers process them. Returns the
+    dispatched (channel, kwargs).
+    """
+    from unittest import mock
+
+    from django.db import transaction
+
+    from shared.channels import SuggestionRefreshChannel, SuggestionRematchChannel
+    from shared.listeners.package_clustering import (
+        refresh_and_cache_suggestion,
+        rematch_after_evaluation,
+    )
+    from shared.listeners.snapshot import apply_snapshot_changes
+
+    handlers = {
+        SuggestionRefreshChannel: refresh_and_cache_suggestion,
+        SuggestionRematchChannel: rematch_after_evaluation,
+    }
+    with mock.patch("pgpubsub.notify") as notify, transaction.atomic():
+        apply_snapshot_changes(evaluation_pk=evaluation.pk, branch=branch)
+    dispatched = [(call.args[0], call.kwargs) for call in notify.call_args_list]
+    for channel, kwargs in dispatched:
+        with transaction.atomic():
+            handlers[channel](**kwargs)
+    return dispatched

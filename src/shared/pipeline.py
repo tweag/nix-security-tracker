@@ -31,7 +31,7 @@ from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
 from shared.cache_suggestions import cache_new_suggestions
-from shared.channels import SuggestionRefreshChannel
+from shared.channels import SuggestionRefreshChannel, SuggestionRematchChannel
 from shared.derived_state import flush_derived_states
 from shared.exposure import (
     ExposureResult,
@@ -41,6 +41,7 @@ from shared.exposure import (
     tracked_branches,
 )
 from shared.legacy_backfill import ensure_backfilled
+from shared.locking import lock_for_write
 from shared.matching.base import MatcherResult, Universe
 from shared.matching.matchers import collect_candidates
 from shared.matching.reconcile import ReconcileResult, reconcile_matches
@@ -309,6 +310,7 @@ def rematch(
     result = RematchResult()
     batch = uuid.uuid4()
     with transaction.atomic():
+        lock_for_write([suggestion.pk])
         suggestion.refresh_from_db(
             fields=["status", "rejection_reason", "comment", "algorithm_version"]
         )
@@ -432,8 +434,11 @@ def reverse_match_attributes(
 @dataclass
 class EvaluationOutcome:
     exposures: ExposureResult
+    # Dispatched to `SuggestionRematchChannel`.
     rematched: list[int] = field(default_factory=list)
+    # Exposures changed (dispatched to `SuggestionRefreshChannel` unless re-matched).
     projected: list[int] = field(default_factory=list)
+    # Dispatched to `SuggestionRefreshChannel`.
     dispatched: list[int] = field(default_factory=list)
     reverse_candidates: list[str] = field(default_factory=list)
     # Suggestions selected by reverse matching, with the attributes that pointed at them.
@@ -475,17 +480,19 @@ def apply_evaluation(
     evaluation: NixEvaluation, branch: NixpkgsBranch
 ) -> EvaluationOutcome:
     """
-    One evaluation step of one branch, from its `BranchPackageChange` rows:
-    1. exposures of referenced attributes (`apply_branch_changes`);
-    2. matches of suggestions that have `Match` rows on attributes that were added, changed
-       metadata, or are now gone from every tracked branch (a removal is acted on only then),
-       and of the open suggestions reverse matching selects for the added or changed ones;
-    3. projection and cache of every suggestion touched by 1 or 2;
-    4. fan-out of the remaining suggestions whose links point at an older evaluation of this
-       branch, so their links move to the current one (`refresh_suggestion`, after commit).
+    One evaluation step of one branch, in the listener's transaction, holding as little as
+    possible for as short as possible (see `shared.locking`):
+    1. read the change set: added or changed attributes, the suggestions with `Match` rows on
+       them, those reverse matching selects, and those whose links point at an older
+       evaluation of this branch (no locks);
+    2. exposures of referenced attributes (`apply_branch_changes`: exposure locks, ascending),
+       attributes now gone from every tracked branch, and the stored derived state of the
+       suggestions whose exposures changed;
+    3. dispatch, in the same transaction: `SuggestionRematchChannel` for every suggestion to
+       re-match (matches, exposures, links, cache), `SuggestionRefreshChannel` for the others
+       whose exposures changed or whose links are behind (links, cache). Each is idempotent and
+       runs in its own transaction with its own locks.
     """
-    exposure_result = apply_branch_changes(evaluation, branch)
-    outcome = EvaluationOutcome(exposures=exposure_result)
     changes = BranchPackageChange.objects.filter(
         new_evaluation=evaluation, branch=branch
     )
@@ -495,58 +502,18 @@ def apply_evaluation(
             | (Q(kind=Change.VERSION_CHANGED) & ~Q(changed_fields=[]))
         ).values_list("attrpath", flat=True)
     )
-    gone = _gone_attributes(
-        evaluation,
-        branch,
-        changes.filter(kind=Change.REMOVED).values_list("attrpath", flat=True),
-    )
-    outcome.gone = sorted(gone)
-
-    referencing = list(
-        Match.objects.filter(attrpath__in=changed | gone)
-        .filter(open_for_projection_q("suggestion__"))
-        .values_list("suggestion_id", "attrpath")
-        .distinct()
+    removed = list(
+        changes.filter(kind=Change.REMOVED).values_list("attrpath", flat=True)
     )
     # Every added or changed attribute, also those some suggestion already matches: the change
     # can make it the product of another CVE.
-    outcome.reverse_candidates = sorted(changed)
-    if outcome.reverse_candidates:
-        outcome.reverse_selected = reverse_match_attributes(
-            outcome.reverse_candidates, evaluation, branch
-        )
-    selected = set(outcome.reverse_selected) - {sid for sid, _ in referencing}
-    if selected:
-        # Not frozen: pending, accepted, and machine rejections (reverse selection returns
-        # those within the reopen window).
-        selected &= set(
-            CVEDerivationClusterProposal.objects.filter(pk__in=selected)
-            .filter(open_for_projection_q())
-            .values_list("pk", flat=True)
-        )
-
-    rematch_ids = sorted({sid for sid, _ in referencing} | selected)
-    for suggestion in CVEDerivationClusterProposal.objects.filter(pk__in=rematch_ids):
-        rematch(suggestion, Cause.EVALUATION, evaluation=evaluation)
-        outcome.rematched.append(suggestion.pk)
-
-    # Exposures changed: the shown status changes, also on published suggestions, whose links
-    # stay frozen; dismissed suggestions have no exposure updates.
-    touched = set(exposure_result.touched) - set(rematch_ids)
-    open_ids = set(
-        CVEDerivationClusterProposal.objects.filter(pk__in=touched)
-        .filter(open_for_projection_q())
-        .values_list("pk", flat=True)
+    reverse_candidates = sorted(changed)
+    reverse_selected = (
+        reverse_match_attributes(reverse_candidates, evaluation, branch)
+        if reverse_candidates
+        else {}
     )
-    for suggestion in CVEDerivationClusterProposal.objects.filter(pk__in=touched):
-        if suggestion.pk in open_ids:
-            project_links(suggestion)
-            outcome.projected.append(suggestion.pk)
-        cache_new_suggestions(suggestion)
-    flush_derived_states(touched)
-
-    done = set(rematch_ids) | touched
-    behind = (
+    behind = set(
         CVEDerivationClusterProposal.objects.filter(open_for_projection_q())
         .filter(
             Exists(
@@ -556,12 +523,41 @@ def apply_evaluation(
                 ).exclude(derivation__parent_evaluation=evaluation)
             )
         )
-        .exclude(pk__in=done)
         .values_list("pk", flat=True)
     )
-    outcome.dispatched = sorted(behind)
+
+    exposure_result = apply_branch_changes(evaluation, branch)
+    outcome = EvaluationOutcome(
+        exposures=exposure_result,
+        reverse_candidates=reverse_candidates,
+        reverse_selected=reverse_selected,
+    )
+    gone = _gone_attributes(evaluation, branch, removed)
+    outcome.gone = sorted(gone)
+    referencing = {
+        sid
+        for sid in Match.objects.filter(attrpath__in=changed | gone)
+        .filter(open_for_projection_q("suggestion__"))
+        .values_list("suggestion_id", flat=True)
+        .distinct()
+    }
+    # Not frozen: pending, accepted, and machine rejections (reverse selection returns
+    # those within the reopen window).
+    selected = set(
+        CVEDerivationClusterProposal.objects.filter(pk__in=set(reverse_selected))
+        .filter(open_for_projection_q())
+        .values_list("pk", flat=True)
+    )
+    rematch_ids = sorted(referencing | selected)
+    touched = set(exposure_result.touched)
+    flush_derived_states(touched)
 
     # In the transaction: delivered on commit, gone on rollback, never lost in between.
+    for pk in rematch_ids:
+        pgpubsub.notify(SuggestionRematchChannel, pk=pk, evaluation_pk=evaluation.pk)
+    outcome.rematched = rematch_ids
+    outcome.projected = sorted(touched - set(rematch_ids))
+    outcome.dispatched = sorted((behind | touched) - set(rematch_ids))
     for pk in outcome.dispatched:
         pgpubsub.notify(SuggestionRefreshChannel, pk=pk)
     logger.info(

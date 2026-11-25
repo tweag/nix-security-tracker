@@ -4,6 +4,7 @@ import pgpubsub
 
 from shared.cache_suggestions import cache_new_suggestions
 from shared.channels import CvePresentationChannel, CveUpdateChannel
+from shared.locking import lock_for_write
 from shared.models.cve import CveRecord
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.pipeline import on_cve_record_changed
@@ -26,5 +27,9 @@ def recache_after_cve_update(pk: int) -> None:
     cve_id = CveRecord.objects.filter(pk=pk).values_list("cve_id", flat=True).first()
     if cve_id is None:
         return
-    for suggestion in CVEDerivationClusterProposal.objects.filter(cve__cve_id=cve_id):
+    suggestions = list(
+        CVEDerivationClusterProposal.objects.filter(cve__cve_id=cve_id).order_by("pk")
+    )
+    lock_for_write([s.pk for s in suggestions])
+    for suggestion in suggestions:
         cache_new_suggestions(suggestion)

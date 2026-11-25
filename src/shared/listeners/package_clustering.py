@@ -2,11 +2,19 @@ import logging
 
 import pgpubsub
 
-from shared.channels import NixEvaluationUpdateChannel, SuggestionRefreshChannel
+from shared.cache_suggestions import cache_new_suggestions
+from shared.channels import (
+    NixEvaluationUpdateChannel,
+    SuggestionRefreshChannel,
+    SuggestionRematchChannel,
+)
+from shared.exposure import dismissed_q
+from shared.locking import lock_for_write
 from shared.models import NixDerivation, NixEvaluation
 from shared.models.linkage import CVEDerivationClusterProposal
+from shared.models.matching import TrackerEvent
 from shared.package_clustering import cluster_packages
-from shared.pipeline import open_for_projection_q, refresh_suggestion
+from shared.pipeline import refresh_suggestion, rematch
 from shared.snapshot import fill_package_groups
 
 logger = logging.getLogger(__name__)
@@ -41,16 +49,33 @@ def refresh_and_cache_suggestion(pk: int) -> None:
     """
     Re-run the suggestion's stale matchers (if any), bring its links to the current
     evaluations, and rebuild its cache. Dispatched at deploy for stale matchers and after
-    each evaluation for suggestions whose links point at an older one.
+    each evaluation for suggestions whose exposures changed or whose links point at an older
+    one. Published suggestions only get their cache rebuilt (their links are frozen, their
+    exposure status is shown); dismissed ones nothing.
     """
-    try:
-        suggestion = (
-            CVEDerivationClusterProposal.objects.select_for_update()
-            .filter(open_for_projection_q())
-            .get(pk=pk)
-        )
-    except CVEDerivationClusterProposal.DoesNotExist:
+    lock_for_write([pk])
+    suggestion = (
+        CVEDerivationClusterProposal.objects.select_for_update()
+        .exclude(dismissed_q())
+        .filter(pk=pk)
+        .first()
+    )
+    if suggestion is None:
         # We don't want to try again! If we crash here, the work is put back on the queue.
-        logger.info("Suggestion %d is frozen or gone, skipping refresh", pk)
+        logger.info("Suggestion %d is dismissed or gone, skipping refresh", pk)
+        return
+    if suggestion.status == CVEDerivationClusterProposal.Status.PUBLISHED:
+        cache_new_suggestions(suggestion)
         return
     refresh_suggestion(suggestion)
+
+
+@pgpubsub.listener(SuggestionRematchChannel)
+def rematch_after_evaluation(pk: int, evaluation_pk: int) -> None:
+    """Re-match with every enabled matcher after an evaluation changed what it may match."""
+    lock_for_write([pk])
+    suggestion = CVEDerivationClusterProposal.objects.filter(pk=pk).first()
+    evaluation = NixEvaluation.objects.filter(pk=evaluation_pk).first()
+    if suggestion is None:
+        return
+    rematch(suggestion, TrackerEvent.Cause.EVALUATION, evaluation=evaluation)
