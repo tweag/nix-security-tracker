@@ -14,7 +14,9 @@ from shared.derived_state import (
     derive_states,
     effective_status,
     pick_verdict,
+    possibly_fixed_keys,
     possibly_fixed_queue,
+    possibly_fixed_rows,
     remove_verdict,
     set_verdict,
 )
@@ -387,6 +389,14 @@ def test_queue_keeps_fix_after_earlier_affected_verdict(
     set_verdict(world.suggestion, "foo", V.AFFECTED, author)
     world.apply(world.package("2.0"))
     assert len(possibly_fixed_queue()) == 1
+
+
+def test_queue_keys_by_branch(world: World) -> None:  # noqa: F811
+    fixed_world(world)
+    (row,) = possibly_fixed_queue()
+    assert possibly_fixed_keys() == [(row.exposure_id, "master")]
+    assert possibly_fixed_keys(branch_ids=["release-26.05"]) == []
+    assert possibly_fixed_rows([row.exposure_id]) == [row]
 
 
 def test_queue_keeps_published(world: World) -> None:  # noqa: F811

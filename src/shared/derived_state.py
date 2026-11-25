@@ -17,7 +17,7 @@ publishing a suggestion writes `affected` for the attributes shown and not ignor
 import re
 import uuid
 from collections import defaultdict
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -425,8 +425,14 @@ def _was_fixed_or_gone(e: Exposure) -> bool:
     return e.observed == Observed.ABSENT and e.first_affected_evaluation_id is not None
 
 
-def load_facts(suggestion_ids: Collection[int]) -> dict[int, SuggestionFacts]:
-    """Prefetch the facts of many suggestions in a fixed number of queries."""
+def load_facts(
+    suggestion_ids: Collection[int], exposures: bool = True
+) -> dict[int, SuggestionFacts]:
+    """
+    Prefetch the facts of many suggestions in a fixed number of queries. `exposures=False`
+    skips the exposure rows, the bulk of the cost, for callers that only need candidates,
+    verdicts and event times.
+    """
     facts = {
         pk: SuggestionFacts(pk, status, reason)
         for pk, status, reason in CVEDerivationClusterProposal.objects.filter(
@@ -445,8 +451,9 @@ def load_facts(suggestion_ids: Collection[int]) -> dict[int, SuggestionFacts]:
         suggestion_id__in=ids
     ).values_list("suggestion_id", "attrpath", "branch_id", "verdict", "updated_at"):
         facts[sid].verdicts.append(VerdictFact(attr, branch_id, verdict, updated_at))
-    for e in Exposure.objects.filter(suggestion_id__in=ids):
-        facts[e.suggestion_id].exposures.append(e)
+    if exposures:
+        for e in Exposure.objects.filter(suggestion_id__in=ids):
+            facts[e.suggestion_id].exposures.append(e)
     for sid, attr, branch_id, kind, at in (
         TrackerEvent.objects.filter(
             suggestion_id__in=ids,
@@ -532,37 +539,50 @@ class PossiblyFixed:
         )
 
 
-def possibly_fixed_queue(
+def possibly_fixed_keys(
     suggestion_ids: Collection[int] | None = None,
-) -> list[PossiblyFixed]:
+    branch_ids: Collection[str] | None = None,
+) -> list[tuple[int, str]]:
     """
-    Exposures that were affected and are now observed unaffected (`fixed_evaluation` set),
-    on attributes that are still candidates, without a verdict answering the fix (see
-    `fix_settled`). Removal
-    is not listed here: a package that disappeared is not a fix. Oldest fixes first.
+    (exposure id, branch) of the queue, oldest fix first: exposures that were affected and
+    are now observed unaffected (`fixed_evaluation` set), on attributes that are still
+    candidates, without a verdict answering the fix (see `fix_settled`). Removal is not
+    listed here: a package that disappeared is not a fix. Loads no exposure rows, so a
+    caller can paginate the keys and fetch only a page with `possibly_fixed_rows`.
     """
     rows = (
         Exposure.objects.filter(
             fixed_evaluation__isnull=False, observed=Observed.UNAFFECTED
         )
         .exclude(dismissed_q("suggestion__"))
-        .select_related(
-            "fixed_evaluation", "last_affected_evaluation", "suggestion__cve"
-        )
         .order_by("fixed_evaluation__created_at", "pk")
     )
     if suggestion_ids is not None:
         rows = rows.filter(suggestion_id__in=suggestion_ids)
-    exposures = list(rows)
-    facts = load_facts({e.suggestion_id for e in exposures})
+    if branch_ids is not None:
+        rows = rows.filter(branch_id__in=branch_ids)
+    candidates = list(rows.values_list("pk", "suggestion_id", "attrpath", "branch_id"))
+    facts = load_facts({sid for _, sid, _, _ in candidates}, exposures=False)
+    keys = []
+    for pk, sid, attr, branch_id in candidates:
+        f = facts[sid]
+        if attr not in candidates_of(f):
+            continue
+        v = pick_verdict(f.verdicts, attr, branch_id)
+        if fix_settled(v, f.became_unaffected.get((attr, branch_id))):
+            continue
+        keys.append((pk, branch_id))
+    return keys
+
+
+def possibly_fixed_rows(exposure_ids: Sequence[int]) -> list[PossiblyFixed]:
+    """The queue rows of these exposures, in the given order, in one query."""
+    by_pk = Exposure.objects.select_related(
+        "fixed_evaluation", "last_affected_evaluation", "suggestion__cve"
+    ).in_bulk(list(exposure_ids))
     queue = []
-    for e in exposures:
-        f = facts[e.suggestion_id]
-        if e.attrpath not in candidates_of(f):
-            continue
-        v = pick_verdict(f.verdicts, e.attrpath, e.branch_id)
-        if fix_settled(v, f.became_unaffected.get((e.attrpath, e.branch_id))):
-            continue
+    for pk in exposure_ids:
+        e = by_pk[pk]
         assert e.fixed_evaluation is not None
         queue.append(
             PossiblyFixed(
@@ -578,3 +598,13 @@ def possibly_fixed_queue(
             )
         )
     return queue
+
+
+def possibly_fixed_queue(
+    suggestion_ids: Collection[int] | None = None,
+    branch_ids: Collection[str] | None = None,
+) -> list[PossiblyFixed]:
+    """The whole queue (`possibly_fixed_keys`), with its rows."""
+    return possibly_fixed_rows(
+        [pk for pk, _ in possibly_fixed_keys(suggestion_ids, branch_ids)]
+    )

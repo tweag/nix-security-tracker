@@ -18,7 +18,12 @@ from api.unified.serializers import (
     PossiblyFixedSerializer,
     StillAffectedSerializer,
 )
-from shared.derived_state import PossiblyFixed, possibly_fixed_queue, set_verdict
+from shared.derived_state import (
+    PossiblyFixed,
+    possibly_fixed_keys,
+    possibly_fixed_rows,
+    set_verdict,
+)
 from shared.exposure import tracked_branches
 from shared.models.matching import Exposure, Verdict
 
@@ -74,16 +79,13 @@ class PossiblyFixedViewSet(viewsets.GenericViewSet):
         responses={200: PossiblyFixedSerializer(many=True)},
     )
     def list(self, request: Request) -> Response:
-        branches = set(request.query_params.getlist("branch"))
-        rows = [
-            _row(p)
-            for p in possibly_fixed_queue()
-            if not branches or p.branch_id in branches
-        ]
-        page = self.paginate_queryset(rows)
+        branches = request.query_params.getlist("branch") or None
+        keys = possibly_fixed_keys(branch_ids=branches)
+        page = self.paginate_queryset(keys)
         assert page is not None
+        rows = possibly_fixed_rows([pk for pk, _ in page])
         return self.get_paginated_response(
-            PossiblyFixedSerializer(page, many=True).data
+            PossiblyFixedSerializer([_row(p) for p in rows], many=True).data
         )
 
     @extend_schema(
@@ -93,7 +95,7 @@ class PossiblyFixedViewSet(viewsets.GenericViewSet):
     )
     @action(detail=False, methods=["get"], url_path="branches", pagination_class=None)
     def branches(self, request: Request) -> Response:
-        counts = Counter(p.branch_id for p in possibly_fixed_queue())
+        counts = Counter(branch for _, branch in possibly_fixed_keys())
         names = [b.name for b in tracked_branches()]
         names += sorted(set(counts) - set(names))
         data = [{"name": n, "count": counts.get(n, 0)} for n in names]
