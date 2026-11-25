@@ -561,11 +561,9 @@ def apply_evaluation(
     )
     outcome.dispatched = sorted(behind)
 
-    def dispatch() -> None:
-        for pk in outcome.dispatched:
-            pgpubsub.notify(SuggestionRefreshChannel, pk=pk)
-
-    transaction.on_commit(dispatch)
+    # In the transaction: delivered on commit, gone on rollback, never lost in between.
+    for pk in outcome.dispatched:
+        pgpubsub.notify(SuggestionRefreshChannel, pk=pk)
     logger.info(
         "Applied evaluation %s to %s: %d rematched, %d projected, %d dispatched, %d reverse candidates",
         evaluation.pk,

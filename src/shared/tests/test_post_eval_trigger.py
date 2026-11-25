@@ -278,15 +278,21 @@ def test_refresh_not_dispatched_when_transaction_rolls_back(
     make_suggestion(container=cve, drvs={old_drv: ProvenanceFlags.PACKAGE_NAME_MATCH})
     update_branch_snapshot(new_eval)
 
-    with (
-        mock.patch("shared.pipeline.pgpubsub.notify") as mock_pgnotify,
-        pytest.raises(RuntimeError),
-        transaction.atomic(),
-    ):
+    from pgpubsub.models import Notification
+
+    from shared.channels import SuggestionRefreshChannel
+
+    def refreshes() -> int:
+        return Notification.objects.filter(
+            channel=SuggestionRefreshChannel.listen_safe_name()
+        ).count()
+
+    with pytest.raises(RuntimeError), transaction.atomic():
         apply_snapshot_changes(evaluation_pk=new_eval.pk, branch="master")
+        assert refreshes() == 1  # written in the transaction, not after commit
         raise RuntimeError("simulate a later failure in the same pgpubsub transaction")
 
-    mock_pgnotify.assert_not_called()
+    assert refreshes() == 0
 
 
 @pytest.mark.django_db(transaction=True)

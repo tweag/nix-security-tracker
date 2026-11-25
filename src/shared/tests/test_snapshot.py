@@ -488,26 +488,27 @@ def test_package_group(
     assert BranchPackage.objects.get(attrpath="bar").package == bar
 
 
-def test_notifies_after_commit(
+def test_notifies_in_the_transaction(
     evaluation: NixEvaluation,
     make_attr: Callable[..., NixDerivation],
-    django_capture_on_commit_callbacks: Any,
 ) -> None:
+    """
+    The notification row is written with the advanced pointer, not after commit (review
+    finding 9): a crash between commit and an `on_commit` callback would lose the step.
+    No `on_commit` callback runs in this test, so the row must already be there.
+    """
+    from shared.channels import BranchSnapshotChannel
+
     make_attr(evaluation, "foo")
+    update_branch_snapshot(evaluation)
+    update_branch_snapshot(evaluation)  # already current: no second notification
 
-    with (
-        mock.patch("shared.snapshot.pgpubsub.notify") as notify,
-        django_capture_on_commit_callbacks(execute=True),
-    ):
-        update_branch_snapshot(evaluation)
-        assert not notify.called
-        update_branch_snapshot(evaluation)
-
-    assert notify.call_count == 1
-    assert notify.call_args.kwargs == {
-        "evaluation_pk": evaluation.pk,
-        "branch": "master",
-    }
+    rows = PgpubsubNotification.objects.filter(
+        channel=BranchSnapshotChannel.listen_safe_name()
+    )
+    assert [r.payload["kwargs"] for r in rows] == [
+        {"evaluation_pk": evaluation.pk, "branch": "master"}
+    ]
 
 
 def test_snapshot_and_clustering_have_separate_notifications(

@@ -93,7 +93,7 @@ def update_branch_snapshot(
 
     Each branch is one transaction holding a lock on the branch row, so a crash leaves
     either the previous snapshot and pointer or the new ones, and a retry is a no-op.
-    After commit, notifies `BranchSnapshotChannel` for every branch whose snapshot changed.
+    In the same transaction, notifies `BranchSnapshotChannel` for every branch whose snapshot changed.
     """
     evaluation = NixEvaluation.objects.get(pk=evaluation.pk)
     result = SnapshotResult(evaluation=evaluation.pk)
@@ -172,10 +172,10 @@ def _update_branch(
         NixpkgsBranch.objects.filter(pk=branch_name).update(
             current_evaluation=evaluation
         )
-        transaction.on_commit(
-            lambda: pgpubsub.notify(
-                BranchSnapshotChannel, evaluation_pk=evaluation.pk, branch=branch_name
-            )
+        # In the transaction, not `on_commit`: the notification row commits with the advanced
+        # pointer, so a crash after the commit cannot lose the step (nothing re-emits it).
+        pgpubsub.notify(
+            BranchSnapshotChannel, evaluation_pk=evaluation.pk, branch=branch_name
         )
         return BranchSnapshotResult(
             branch_name,
