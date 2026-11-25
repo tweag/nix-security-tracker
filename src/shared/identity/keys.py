@@ -7,8 +7,15 @@ from collections.abc import Iterable, Mapping, Sequence
 
 from django.db.models import Q
 
-from shared.matching.view import KeySpec, ProductFields, product_keys
-from shared.models.cve import AffectedProduct
+from shared.matching.view import (
+    KeySpec,
+    ProductFields,
+    applicability_pairs,
+    attribute_applicability,
+    cpe_pair_keys,
+    product_keys,
+)
+from shared.models.cve import AffectedProduct, Container
 from shared.models.matching import ProductKey
 
 Through = AffectedProduct.product_keys.through
@@ -100,3 +107,20 @@ def stored_or_derived_keys(affected: Iterable[int]) -> dict[int, frozenset[KeySp
         )
         result[row.pk] = stored or product_keys(ProductFields.of(row))
     return result
+
+
+def attach_applicability_keys(containers: Iterable[Container]) -> int:
+    """
+    Attach the `cpe` keys of each container's `cpeApplicability` pairs to the affected
+    products `attribute_applicability` assigns them to, so reverse matching and mappings find
+    the CVE by them. Pairs no affected product claims stay unindexed: they reach the matchers
+    through `CveView` only. Additive; a criterion removed later leaves its key link behind.
+    """
+    links: dict[int, set[KeySpec]] = {}
+    for container in containers:
+        own = [(a.pk, ProductFields.of(a)) for a in container.affected.all()]
+        pairs = applicability_pairs(container.cpe_applicability.all())
+        for pk, assigned in attribute_applicability(own, pairs).items():
+            if pk is not None:
+                links.setdefault(pk, set()).update(cpe_pair_keys(assigned))
+    return attach_product_keys(links) if links else 0

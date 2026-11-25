@@ -113,7 +113,7 @@ def test_view_queries_are_bounded(
         views = build_cve_views([c.cve.cve_id for c in containers])
 
     assert len(views) == 3
-    assert len(one) == len(many) == 7
+    assert len(one) == len(many) == 8
 
 
 def test_parse_cpe_is_cached() -> None:

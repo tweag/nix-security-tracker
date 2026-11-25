@@ -3,6 +3,7 @@
 """
 
 import functools
+from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import NamedTuple
@@ -20,7 +21,13 @@ from shared.matching.names import (
     normalise_repo,
     package_name_tail,
 )
-from shared.models.cve import AffectedProduct, Container, CveRecord, Tag
+from shared.models.cve import (
+    AffectedProduct,
+    Container,
+    CpeApplicability,
+    CveRecord,
+    Tag,
+)
 from shared.models.matching import ProductKey
 
 EXCLUSIVELY_HOSTED_SERVICE = "exclusively-hosted-service"
@@ -220,7 +227,8 @@ class ViewProduct:
 
     fields: ProductFields
     # (AffectedProduct pk, container type) of every row merged into this product, CNA first.
-    sources: tuple[tuple[int, str], ...]
+    # Pk None: the container-level `cpeApplicability` pairs no affected product claims.
+    sources: tuple[tuple[int | None, str], ...]
     cpe_pairs: frozenset[tuple[str, str]]
     # Has CPEs, and all of them are hardware.
     hardware_only: bool
@@ -229,7 +237,7 @@ class ViewProduct:
     repos: tuple[str, ...]
 
     @property
-    def affected_product(self) -> int:
+    def affected_product(self) -> int | None:
         return self.sources[0][0]
 
     @property
@@ -288,17 +296,84 @@ def _dedup_key(fields: ProductFields) -> tuple[str, ...]:
     )
 
 
+# Operating-system CPEs that name something nixpkgs ships. Every other `o` part (Windows,
+# macOS, iOS, Android, router firmware) is the platform of the CVE, never a package.
+NIXPKGS_OS_VENDORS = frozenset({"linux"})
+_PLACEHOLDERS = frozenset({"", "*", "-"})
+
+
+def applicability_pairs(rows: Iterable[CpeApplicability]) -> set[tuple[str, str]]:
+    """
+    The (vendor, product) pairs of a container's `cpeApplicability` that name the vulnerable
+    product: vulnerable, not negated, application part (or an operating system nixpkgs ships),
+    no placeholder. Platform criteria of "application on platform" configurations are not
+    vulnerable and drop out; the application stays.
+    """
+    return {
+        (row.vendor, row.product)
+        for row in rows
+        if row.vulnerable
+        and not row.negated
+        and (row.part == "a" or (row.part == "o" and row.vendor in NIXPKGS_OS_VENDORS))
+        and row.vendor not in _PLACEHOLDERS
+        and row.product not in _PLACEHOLDERS
+    }
+
+
+def attribute_applicability(
+    products: Sequence[tuple[int, ProductFields]], pairs: Iterable[tuple[str, str]]
+) -> dict[int | None, set[tuple[str, str]]]:
+    """
+    Which affected product of the container each `cpeApplicability` pair belongs to, so that
+    evidence names an affected product and the version classifier scopes to its ranges:
+    1. the products whose product or packageName is the CPE product (normalised);
+    2. else the container's only affected product without hardware-only CPEs;
+    3. else none (key None): a container-level product of its own, scoped to all ranges.
+    """
+    matchable = [
+        (pk, f)
+        for pk, f in products
+        if not (f.cpes and all(parse_cpe(c).is_hardware for c in f.cpes))
+    ]
+    result: dict[int | None, set[tuple[str, str]]] = defaultdict(set)
+    for vendor, product in pairs:
+        name = normalise_name(product)
+        named = [
+            pk
+            for pk, f in matchable
+            if name in {normalise_name(f.product), normalise_name(f.package_name)}
+        ]
+        if named:
+            for pk in named:
+                result[pk].add((vendor, product))
+        elif len(matchable) == 1:
+            result[matchable[0][0]].add((vendor, product))
+        else:
+            result[None].add((vendor, product))
+    return dict(result)
+
+
 def view_from_containers(cve_id: str, containers: Sequence[Container]) -> CveView:
-    """Build the view from containers whose `affected`, `affected.cpes` and `tags` are prefetched."""
-    merged: dict[tuple[str, ...], tuple[ProductFields, list[tuple[int, str]]]] = {}
+    """
+    Build the view from containers whose `affected` (with `cpes`, `product_keys`), `tags` and
+    `cpe_applicability` are prefetched. `cpeApplicability` pairs join the affected product
+    `attribute_applicability` assigns them to, as CPE pairs and `cpe` keys.
+    """
+    merged: dict[
+        tuple[str, ...], tuple[ProductFields, list[tuple[int | None, str]]]
+    ] = {}
     tags: set[str] = set()
     ordered = sorted(
         containers, key=lambda c: (c._type != Container.Type.CNA, c.pk or 0)
     )
     # Persisted keys per merged product; None once a merged row has none, then they are derived.
     persisted: dict[tuple[str, ...], set[KeySpec] | None] = {}
+    applicable: dict[tuple[str, ...], set[tuple[str, str]]] = defaultdict(set)
+    unclaimed: dict[str, set[tuple[str, str]]] = defaultdict(set)
     for container in ordered:
         tags.update(tag.value for tag in container.tags.all())
+        own: list[tuple[int, ProductFields]] = []
+        dedup_of: dict[int, tuple[str, ...]] = {}
         for affected in sorted(container.affected.all(), key=lambda a: a.pk):
             fields = ProductFields.of(affected)
             key = _dedup_key(fields)
@@ -313,22 +388,49 @@ def view_from_containers(cve_id: str, containers: Sequence[Container]) -> CveVie
             stored = _stored_keys(affected)
             known = persisted[key]
             persisted[key] = known | stored if known is not None and stored else None
+            own.append((affected.pk, fields))
+            dedup_of[affected.pk] = key
+        pairs = applicability_pairs(container.cpe_applicability.all())
+        for pk, assigned in attribute_applicability(own, pairs).items():
+            if pk is None:
+                unclaimed[container._type] |= assigned
+            else:
+                applicable[dedup_of[pk]] |= assigned
 
     products = []
     for dedup, (fields, sources) in merged.items():
         parsed = [parse_cpe(name) for name in fields.cpes]
         keys = persisted[dedup]
+        extra = applicable.get(dedup, set())
         products.append(
             ViewProduct(
                 fields=fields,
                 sources=tuple(dict.fromkeys(sources)),
                 cpe_pairs=frozenset(
                     pair for p in parsed if not p.is_hardware for pair in p.pairs
-                ),
-                hardware_only=bool(parsed) and all(p.is_hardware for p in parsed),
-                keys=frozenset(keys) if keys else product_keys(fields),
+                )
+                | extra,
+                hardware_only=bool(parsed)
+                and all(p.is_hardware for p in parsed)
+                and not extra,
+                keys=(frozenset(keys) if keys else product_keys(fields))
+                | cpe_pair_keys(extra),
                 names=name_terms(fields),
                 repos=repositories(fields),
+            )
+        )
+    for container_type, pairs in sorted(
+        unclaimed.items(), key=lambda kv: kv[0] != Container.Type.CNA
+    ):
+        products.append(
+            ViewProduct(
+                fields=ProductFields(),
+                sources=((None, container_type),),
+                cpe_pairs=frozenset(pairs),
+                hardware_only=False,
+                keys=cpe_pair_keys(pairs),
+                names=(),
+                repos=(),
             )
         )
     return CveView(
@@ -358,12 +460,13 @@ def _containers_prefetch() -> Prefetch:
                 ).prefetch_related("cpes", "product_keys"),
             ),
             Prefetch("tags", queryset=Tag.objects.all()),
+            Prefetch("cpe_applicability", queryset=CpeApplicability.objects.all()),
         ),
     )
 
 
 def build_cve_views(cves: QuerySet[CveRecord] | Iterable[str]) -> dict[str, CveView]:
-    """Views of many CVEs, by CVE id, in a constant number of queries (seven)."""
+    """Views of many CVEs, by CVE id, in a constant number of queries (eight)."""
     queryset = (
         cves
         if isinstance(cves, QuerySet)
@@ -387,6 +490,6 @@ def build_cve_views(cves: QuerySet[CveRecord] | Iterable[str]) -> dict[str, CveV
 
 
 def build_cve_view(cve: CveRecord | str) -> CveView:
-    """View of one CVE, in seven queries."""
+    """View of one CVE, in eight queries."""
     cve_id = cve if isinstance(cve, str) else cve.cve_id
     return build_cve_views([cve_id]).get(cve_id) or CveView(cve_id=cve_id, products=())

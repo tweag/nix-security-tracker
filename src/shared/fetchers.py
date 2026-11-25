@@ -19,7 +19,7 @@ from requests import get
 
 from shared import models
 from shared.channels import CvePresentationChannel, CveUpdateChannel
-from shared.identity.keys import persist_product_keys
+from shared.identity.keys import attach_applicability_keys, persist_product_keys
 
 logger = logging.getLogger(__name__)
 
@@ -664,6 +664,7 @@ def _update_container(
     _reconcile_products(obj, data.get("affected", []), result)
     if reconcile_cpe_applicability(obj, data):
         result.matching_changed = True
+    attach_applicability_keys([obj])
     result.containers_updated += 1
 
 
@@ -824,6 +825,7 @@ def make_container(
         for criterion in cpe_applicability_criteria(data)
         if (row := _make_cpe_applicability(obj, criterion)) is not None
     )
+    attach_applicability_keys([obj])
     return obj
 
 

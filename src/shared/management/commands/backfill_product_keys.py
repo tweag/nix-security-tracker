@@ -4,12 +4,15 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandParser
 from django.db import transaction
 
-from shared.identity.keys import persist_product_keys
-from shared.models.cve import AffectedProduct
+from shared.identity.keys import attach_applicability_keys, persist_product_keys
+from shared.models.cve import AffectedProduct, Container
 
 
 class Command(BaseCommand):
-    help = "Attach derived `ProductKey` rows to existing affected products, in batches."
+    help = (
+        "Attach derived `ProductKey` rows to existing affected products, in batches, "
+        "including the `cpe` keys of their containers' `cpeApplicability`."
+    )
 
     def add_arguments(self, parser: CommandParser) -> None:
         parser.add_argument("--batch-size", type=int, default=2000)
@@ -44,6 +47,20 @@ class Command(BaseCommand):
             if options["verbosity"] > 1:
                 rate = total / max(time.monotonic() - start, 1e-9)
                 self.stdout.write(f"{total} rows, {rate:.0f} rows/s")
+        containers = (
+            Container.objects.filter(cpe_applicability__isnull=False)
+            .distinct()
+            .order_by("pk")
+            .prefetch_related("affected__cpes", "cpe_applicability")
+        )
+        last = 0
+        while True:
+            batch_c = list(containers.filter(pk__gt=last)[: options["batch_size"]])
+            if not batch_c:
+                break
+            with transaction.atomic():
+                links += attach_applicability_keys(batch_c)
+            last = batch_c[-1].pk
         elapsed = time.monotonic() - start
         self.stdout.write(
             self.style.SUCCESS(
