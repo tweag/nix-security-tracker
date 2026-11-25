@@ -326,6 +326,10 @@ class AffectedProduct(models.Model):
     modules = models.ManyToManyField(Module)
     program_files = models.ManyToManyField(ProgramFile)
     program_routines = models.ManyToManyField(ProgramRoutine)
+    # Normalised identities of this product, filled at ingestion.
+    product_keys = models.ManyToManyField(
+        "ProductKey", related_name="affected_products"
+    )
 
     search_vector = SearchVectorField(null=True)
 

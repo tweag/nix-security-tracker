@@ -163,6 +163,7 @@ class Command(BaseCommand):
                 maintainer_overlays__isnull=True,
                 package_overlays__isnull=True,
                 reference_url_overlays__isnull=True,
+                verdicts__isnull=True,
             )
             .distinct()
         )

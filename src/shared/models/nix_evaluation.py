@@ -147,6 +147,11 @@ class NixpkgsBranch(models.Model):
 
     name = models.CharField(max_length=126, primary_key=True)
     head_sha1_commit = models.CharField(max_length=40)
+    # Explicit pointer to the evaluation the branch's `BranchPackage` rows reflect.
+    # Advanced only by the snapshot engine, only to a completed evaluation newer by creation order.
+    current_evaluation = models.ForeignKey(
+        "NixEvaluation", null=True, on_delete=models.SET_NULL, related_name="+"
+    )
 
     class Meta:
         constraints = [

@@ -8,10 +8,27 @@ from .linkage import (
     PackageOverlay,
     ProvenanceFlags,
 )
+from .matching import (
+    Exposure,
+    Match,
+    ProductKey,
+    ProductMapping,
+    TrackerEvent,
+    Verdict,
+)
 from .nix_evaluation import *
 from .package import *
+from .snapshot import BranchPackage, BranchPackageChange
 
 __all__ = [
+    "BranchPackage",
+    "BranchPackageChange",
+    "Exposure",
+    "Match",
+    "ProductKey",
+    "ProductMapping",
+    "TrackerEvent",
+    "Verdict",
     "CVEDerivationClusterProposal",
     "MaintainerOverlay",
     "PackageOverlay",
