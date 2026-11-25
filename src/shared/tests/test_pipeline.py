@@ -552,3 +552,47 @@ def test_evaluation_to_cached_payload(
     assert derive_states([pending.pk])[pending.pk].state == DerivedState.POSSIBLY_FIXED
     pending.refresh_from_db()
     assert pending.status == Status.PENDING
+
+
+def test_new_cve_is_atomic(
+    make_container: Callable[..., Container],
+    snapshot: Callable[..., NixEvaluation],
+) -> None:
+    """A failure after creating the suggestion leaves nothing behind; a retry succeeds."""
+    snapshot({"foo": ("foo", "1.0")})
+    container = make_container(package_name="foo", product=None)
+    with (
+        mock.patch(
+            "shared.pipeline.project_links", side_effect=RuntimeError("simulated")
+        ),
+        pytest.raises(RuntimeError),
+    ):
+        build_new_links(container)
+    assert not CVEDerivationClusterProposal.objects.exists()
+    assert not Match.objects.exists()
+
+    assert build_new_links(container)
+    assert list(linked(CVEDerivationClusterProposal.objects.get())) == ["foo"]
+
+
+def test_untracked_branch_is_not_matched(
+    make_container: Callable[..., Container],
+    make_branch: Callable[..., Any],
+    make_channel: Callable[..., Any],
+    make_evaluation: Callable[..., NixEvaluation],
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    from shared.models.nix_evaluation import NixChannel
+
+    eol = make_channel(
+        channel_branch="nixos-24.05",
+        release_branch=make_branch("release-24.05"),
+        state=NixChannel.ChannelState.END_OF_LIFE,
+    )
+    evaluation = make_evaluation(channel=eol)
+    make_drv(pname="foo", evaluation=evaluation)
+    update_branch_snapshot(evaluation)
+    assert build_new_links(make_container(package_name="foo", product=None))
+    suggestion = CVEDerivationClusterProposal.objects.get()
+    assert suggestion.rejection_reason == Reason.NO_MATCHES
+    assert not suggestion.derivations.exists()
