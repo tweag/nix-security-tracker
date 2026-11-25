@@ -65,3 +65,12 @@ class NixpkgsIssueChannel(TriggerChannel):
 class SuggestionRefreshChannel(Channel):
     pk: int
     lock_notifications = True
+
+
+@dataclass
+class BranchSnapshotChannel(Channel):
+    """A branch's package snapshot advanced to `evaluation_pk`; its `BranchPackageChange` rows are written."""
+
+    evaluation_pk: int
+    branch: str
+    lock_notifications = True
