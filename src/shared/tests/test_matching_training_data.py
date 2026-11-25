@@ -285,6 +285,74 @@ def test_export_skips_overlay_on_unlinked_package(
     assert record["ignored_packages"] == []
 
 
+def test_export_import_manually_added_package(
+    make_container: Callable[..., Container],
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    container = make_container(cve_id="CVE-2026-3333", package_name="foo")
+    proposal = CVEDerivationClusterProposal.objects.create(
+        cve=container.cve,
+        status=CVEDerivationClusterProposal.Status.ACCEPTED,
+        algorithm_version=1,
+    )
+    DerivationClusterProposalLink.objects.create(
+        proposal=proposal,
+        derivation=make_drv(pname="foo", attribute="foo"),
+        provenance_flags=int(ProvenanceFlags.PACKAGE_NAME_MATCH),
+    )
+    PackageOverlay.objects.create(
+        suggestion=proposal,
+        package_attribute="added",
+        package=Package.objects.get_or_create(name="added")[0],
+        type=PackageOverlay.Type.ADDITIONAL,
+    ).derivations.add(make_drv(pname="added", attribute="added"))
+    # In no tracked channel, so there is nothing to train on.
+    PackageOverlay.objects.create(
+        suggestion=proposal,
+        package_attribute="gone",
+        package=Package.objects.get_or_create(name="gone")[0],
+        type=PackageOverlay.Type.ADDITIONAL,
+    )
+
+    record = dict(serializers.CVEDerivationClusterProposal(proposal).data)
+    (overlay,) = record["package_overlays"]
+    assert overlay["package_attribute"] == "added"
+    assert [d["attribute"] for d in overlay["derivations"]] == ["added"]
+    assert {d["attribute"] for d in record["kept_derivations"]} == {"foo", "added"}
+
+    CveRecord.objects.filter(cve_id="CVE-2026-3333").delete()
+    serializer = serializers.CVEDerivationClusterProposal(data=record)
+    assert serializer.is_valid(), serializer.errors
+    imported = cast(CVEDerivationClusterProposal, serializer.save())
+
+    assert imported.added_package_attributes() == {"added"}
+    assert [d.attribute for d in imported.added_derivations()] == ["added"]
+    assert serializers.CVEDerivationClusterProposal(imported).data == record
+
+
+def test_schema_version_1_accepted(
+    make_container: Callable[..., Container],
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    """Version 1 only lacks manually added packages."""
+    container = make_container(cve_id="CVE-2026-4444", package_name="foo")
+    proposal = CVEDerivationClusterProposal.objects.create(
+        cve=container.cve,
+        status=CVEDerivationClusterProposal.Status.ACCEPTED,
+        algorithm_version=1,
+    )
+    DerivationClusterProposalLink.objects.create(
+        proposal=proposal,
+        derivation=make_drv(pname="foo", attribute="foo"),
+        provenance_flags=int(ProvenanceFlags.PACKAGE_NAME_MATCH),
+    )
+    record = dict(serializers.CVEDerivationClusterProposal(proposal).data)
+    record["schema_version"] = 1
+
+    serializer = serializers.CVEDerivationClusterProposal(data=record)
+    assert serializer.is_valid(), serializer.errors
+
+
 def test_ensure_benchmark_evaluation_idempotency(db: None) -> None:
     first = ensure_benchmark_evaluation()
     second = ensure_benchmark_evaluation()

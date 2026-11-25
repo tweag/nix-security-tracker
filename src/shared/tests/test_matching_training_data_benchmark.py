@@ -166,6 +166,30 @@ def test_accepted_kept_hit(
     assert score.rejection_agree
 
 
+def test_manually_added_package_is_kept(
+    make_container: Callable[..., Container],
+    make_drv: Callable[..., NixDerivation],
+) -> None:
+    """A package a user added is one the matcher should find."""
+    pkg = "benchaddeduniq"
+    drv = make_drv(pname=pkg, version="1.0", attribute=pkg)
+    container = make_container(
+        cve_id="CVE-2026-bench-added", package_name=pkg, product=pkg
+    )
+    proposal = _proposal(container)
+    PackageOverlay.objects.create(
+        suggestion=proposal,
+        package_attribute=pkg,
+        package=Package.objects.get_or_create(name=pkg)[0],
+        type=PackageOverlay.Type.ADDITIONAL,
+    ).derivations.add(drv)
+
+    kept, _ = label_sets(proposal)
+    assert {key.attr for key in kept} == {pkg}
+    score = score_proposal(proposal, rematch(proposal))
+    assert score.true_positives == 1
+
+
 def test_ignored_overlay_counts_as_fp(
     make_container: Callable[..., Container],
     make_drv: Callable[..., NixDerivation],

@@ -47,7 +47,7 @@ class MatchingTrainingDataView(ListAPIView):
                         "derivation__metadata"
                     ),
                 ),
-                "package_overlays",
+                "package_overlays__derivations__metadata",
             )
             .order_by("pk")
         )

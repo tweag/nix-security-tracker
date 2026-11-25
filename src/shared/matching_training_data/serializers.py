@@ -12,6 +12,7 @@ Serializers are named after the models they read/write. Export with
 from __future__ import annotations
 
 import uuid
+from itertools import chain
 from typing import Any, cast
 
 from django.db import transaction
@@ -21,7 +22,10 @@ from shared import models
 from shared.evaluation import DerivationKey, derivation_as_key
 from shared.package_clustering import cluster_packages
 
-SCHEMA_VERSION = 1
+# 2: Manually added packages, as overlays with their derivations.
+SCHEMA_VERSION = 2
+# Version 1 differs only by not having manually added packages.
+COMPATIBLE_SCHEMA_VERSIONS = {1, 2}
 
 # Synthetic release branch used when materializing a local benchmark corpus
 BENCHMARK_RELEASE_BRANCH = "benchmark-master"
@@ -172,13 +176,24 @@ class DerivationClusterProposalLink(serializers.ModelSerializer):
 
 class PackageOverlay(serializers.ModelSerializer):
     type = serializers.ChoiceField(choices=models.PackageOverlay.Type.choices)
+    derivations = NixDerivation(many=True, required=False)
 
     class Meta:
         model = models.PackageOverlay
-        fields = ("package_attribute", "type")
+        fields = ("package_attribute", "type", "derivations")
 
     def to_representation(self, instance: models.PackageOverlay) -> dict[str, Any]:
-        return cast(dict[str, Any], super().to_representation(instance))
+        return {
+            "package_attribute": instance.package_attribute,
+            "type": instance.type,
+            "derivations": [
+                NixDerivation().to_representation(derivation)
+                for derivation in sorted(
+                    instance.derivations.all(),
+                    key=lambda d: (d.attribute, d.name, d.system),
+                )
+            ],
+        }
 
 
 class CVEDerivationClusterProposal(serializers.ModelSerializer):
@@ -224,10 +239,10 @@ class CVEDerivationClusterProposal(serializers.ModelSerializer):
         read_only_fields = ("kept_derivations", "ignored_packages")
 
     def validate_schema_version(self, value: int) -> int:
-        if value != SCHEMA_VERSION:
+        if value not in COMPATIBLE_SCHEMA_VERSIONS:
             raise serializers.ValidationError(
                 f"Unsupported matching training-data schema_version={value}; "
-                f"expected {SCHEMA_VERSION}"
+                f"expected one of {sorted(COMPATIBLE_SCHEMA_VERSIONS)}"
             )
         return value
 
@@ -261,16 +276,21 @@ class CVEDerivationClusterProposal(serializers.ModelSerializer):
         if obj.status == models.CVEDerivationClusterProposal.Status.REJECTED:
             return []
         ignored = set(self.get_ignored_packages(obj))
-        kept = [
-            {
-                "attribute": link.derivation.attribute,
-                "name": link.derivation.name,
-                "system": link.derivation.system,
-            }
-            for link in obj.derivationclusterproposallink_set.all()
-            if link.derivation.attribute not in ignored
+        kept = {
+            (derivation.attribute, derivation.name, derivation.system)
+            for derivation in chain(
+                (
+                    link.derivation
+                    for link in obj.derivationclusterproposallink_set.all()
+                ),
+                obj.added_derivations(),
+            )
+            if derivation.attribute not in ignored
+        }
+        return [
+            {"attribute": attribute, "name": name, "system": system}
+            for attribute, name, system in sorted(kept)
         ]
-        return sorted(kept, key=lambda d: (d["attribute"], d["name"], d["system"]))
 
     def to_representation(
         self, instance: models.CVEDerivationClusterProposal
@@ -300,7 +320,8 @@ class CVEDerivationClusterProposal(serializers.ModelSerializer):
                 instance.package_overlays.all(),
                 key=lambda overlay: (overlay.package_attribute, overlay.type),
             )
-            if overlay.package_attribute in link_attrs
+            # Additions in no tracked channel have nothing to train on.
+            if overlay.package_attribute in link_attrs or overlay.derivations.all()
         ]
 
         return {
@@ -367,8 +388,8 @@ class CVEDerivationClusterProposal(serializers.ModelSerializer):
             container.affected.add(affected)
 
         by_fingerprint: dict[DerivationKey, models.NixDerivation] = {}
-        for link_data in links_data:
-            drv_data = link_data["derivation"]
+
+        def derivation(drv_data: dict[str, Any]) -> models.NixDerivation:
             attribute = drv_data["attribute"]
             name = drv_data["name"]
             system = drv_data["system"]
@@ -404,6 +425,16 @@ class CVEDerivationClusterProposal(serializers.ModelSerializer):
                     system=system,
                     parent_evaluation=evaluation,
                 )
+            return by_fingerprint[key]
+
+        link_derivations = [
+            (derivation(link_data["derivation"]), link_data["provenance_flags"])
+            for link_data in links_data
+        ]
+        overlay_derivations = [
+            [derivation(drv_data) for drv_data in overlay.get("derivations", [])]
+            for overlay in overlays_data
+        ]
 
         proposal = models.CVEDerivationClusterProposal.objects.create(
             cve=cve,
@@ -417,29 +448,12 @@ class CVEDerivationClusterProposal(serializers.ModelSerializer):
             algorithm_version=validated_data["algorithm_version"],
         )
 
-        link_objs = []
-        for link_data in links_data:
-            drv_data = link_data["derivation"]
-            attribute = drv_data["attribute"]
-            name = drv_data["name"]
-            system = drv_data["system"]
-            key = derivation_as_key(
-                drv_path=_training_drv_path(
-                    attribute=attribute, name=name, system=system
-                ),
-                attr=attribute,
-                name=name,
-                meta_name=name,
+        models.DerivationClusterProposalLink.objects.bulk_create(
+            models.DerivationClusterProposalLink(
+                proposal=proposal, derivation=derivation, provenance_flags=flags
             )
-            link_objs.append(
-                models.DerivationClusterProposalLink(
-                    proposal=proposal,
-                    derivation=by_fingerprint[key],
-                    provenance_flags=link_data["provenance_flags"],
-                )
-            )
-        if link_objs:
-            models.DerivationClusterProposalLink.objects.bulk_create(link_objs)
+            for derivation, flags in link_derivations
+        )
 
         # Overlays refer to packages, so the imported derivations need to be
         # clustered into packages first, as it happens on evaluation ingestion.
@@ -448,7 +462,9 @@ class CVEDerivationClusterProposal(serializers.ModelSerializer):
                 pk__in=[drv.pk for drv in by_fingerprint.values()]
             )
         )
-        for overlay in overlays_data:
+        for overlay, derivations in zip(
+            overlays_data, overlay_derivations, strict=True
+        ):
             models.PackageOverlay.objects.create(
                 suggestion=proposal,
                 package_attribute=overlay["package_attribute"],
@@ -456,6 +472,6 @@ class CVEDerivationClusterProposal(serializers.ModelSerializer):
                     attrpath=overlay["package_attribute"]
                 ).package,
                 type=overlay["type"],
-            )
+            ).derivations.set(derivations)
 
         return proposal

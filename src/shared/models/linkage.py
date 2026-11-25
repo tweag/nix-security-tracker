@@ -622,6 +622,15 @@ class CVEDerivationClusterProposal(TimeStampMixin):
             if overlay.type == PackageOverlay.Type.ADDITIONAL
         }
 
+    def added_derivations(self) -> list[NixDerivation]:
+        """The derivations of the manually added packages, from prefetched overlays if there are any."""
+        return [
+            derivation
+            for overlay in self.package_overlays.all()
+            if overlay.type == PackageOverlay.Type.ADDITIONAL
+            for derivation in overlay.derivations.all()
+        ]
+
     def _lock(self) -> None:
         """
         Wait for concurrent changes to this suggestion, such as a refresh, and read their outcome.

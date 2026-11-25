@@ -33,6 +33,7 @@ from shared.models.linkage import (
     ProvenanceFlags,
     SuggestionStatus,
 )
+from shared.models.nix_evaluation import NixDerivation
 
 
 def label_sets(
@@ -49,23 +50,35 @@ def label_sets(
     if original_match.status == CVEDerivationClusterProposal.Status.REJECTED:
         return set(), ignored
 
-    kept: set[DerivationKey] = set()
-    for link in original_match.derivationclusterproposallink_set.select_related(
-        "derivation__metadata"
-    ):
-        drv = link.derivation
-        if drv.attribute in ignored:
-            continue
-        metadata = drv.metadata
-        kept.add(
+    return {
+        key
+        for drv, key in reviewed_derivations(original_match)
+        if drv.attribute not in ignored
+    }, ignored
+
+
+def reviewed_derivations(
+    proposal: CVEDerivationClusterProposal,
+) -> list[tuple[NixDerivation, DerivationKey]]:
+    """The derivations users saw on a proposal: those the matcher linked and those they added."""
+    derivations = [
+        link.derivation
+        for link in proposal.derivationclusterproposallink_set.select_related(
+            "derivation__metadata"
+        )
+    ] + proposal.added_derivations()
+    return [
+        (
+            drv,
             derivation_as_key(
                 drv_path=drv.derivation_path,
                 attr=drv.attribute,
                 name=drv.name,
-                meta_name=metadata.name if metadata is not None else None,
-            )
+                meta_name=drv.metadata.name if drv.metadata is not None else None,
+            ),
         )
-    return kept, ignored
+        for drv in derivations
+    ]
 
 
 def snr(true_positives: int, false_positives: int) -> float:
@@ -250,19 +263,7 @@ def score_proposal(
     Compare a rematch outcome to curated labels for one training proposal.
     """
     kept, _ignored = label_sets(original)
-    reviewed = {
-        derivation_as_key(
-            drv_path=link.derivation.derivation_path,
-            attr=link.derivation.attribute,
-            name=link.derivation.name,
-            meta_name=link.derivation.metadata.name
-            if link.derivation.metadata is not None
-            else None,
-        )
-        for link in original.derivationclusterproposallink_set.select_related(
-            "derivation__metadata"
-        )
-    }
+    reviewed = {key for _, key in reviewed_derivations(original)}
     proposed: set[DerivationKey] = set()
     if new_match.derivations:
         proposed = {
@@ -319,7 +320,7 @@ def training_corpus_queryset() -> QuerySet[CVEDerivationClusterProposal]:
         .distinct()
         .select_related("cve")
         .prefetch_related(
-            "package_overlays",
+            "package_overlays__derivations__metadata",
             "derivationclusterproposallink_set__derivation",
             "cve__container__tags",
             "cve__container__affected__cpes",
