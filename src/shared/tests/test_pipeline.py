@@ -429,6 +429,18 @@ def test_attribute_missing_from_one_evaluation(
     assert linked(pending) == {"foo": ["foo-1.1"], "foo-cli": ["foo-1.1"]}
 
 
+def test_rematch_while_attribute_is_missing_keeps_its_match(
+    pending: CVEDerivationClusterProposal,
+    snapshot: Callable[..., NixEvaluation],
+) -> None:
+    """A CVE update re-matches while `foo-cli` failed to evaluate once: its match stays."""
+    snapshot({"foo": ("foo", "1.1"), "x": ("x", "1")})
+    refresh_suggestion(pending, TrackerEvent.Cause.CVE_UPDATE, matchers=None)
+    on_cve_record_changed(pending.cve.pk)
+    assert Match.objects.active().filter(attrpath="foo-cli").exists()
+    assert list(linked(pending)) == ["foo", "foo-cli"]
+
+
 def test_attribute_gone_from_every_branch_is_retracted(
     pending: CVEDerivationClusterProposal,
     snapshot: Callable[..., NixEvaluation],

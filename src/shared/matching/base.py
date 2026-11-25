@@ -8,11 +8,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, NamedTuple
 
-from django.db.models import Lookup, QuerySet
+from django.db.models import Lookup, Q, QuerySet
 
 from shared.matching.scoring import weight_of
 from shared.matching.view import CveView, ViewProduct
-from shared.models.nix_evaluation import NixChannel, NixpkgsBranch
+from shared.models.nix_evaluation import NixChannel, NixEvaluation, NixpkgsBranch
 from shared.models.snapshot import BranchPackage
 
 # Rows a single matcher query may return before the matcher reports truncation
@@ -44,23 +44,55 @@ class MatcherResult:
 
 @dataclass(frozen=True)
 class Universe:
-    """What matchers search: present `BranchPackage` rows on tracked branches, without `tests.*`."""
+    """
+    What matchers search: `BranchPackage` rows on tracked branches, without `tests.*`; present
+    ones, and absent ones not yet called removed (missing from fewer than
+    `REMOVAL_AFTER_EVALUATIONS` completed evaluations), so that a re-match while an attribute
+    fails to evaluate once does not retract its match.
+    """
 
     branches: tuple[str, ...]
+    # Per branch: absent rows last seen in one of these evaluations (the most recent completed
+    # ones up to the current one) still count.
+    absent_since: tuple[tuple[str, tuple[int, ...]], ...] = ()
 
     @classmethod
     def tracked(cls) -> "Universe":
         """Branches with a channel in a tracked state, as `latest_completed_per_branch` defines them."""
-        names = (
+        from shared.exposure import REMOVAL_AFTER_EVALUATIONS
+
+        branches = list(
             NixpkgsBranch.objects.filter(channels__state__in=NixChannel.TRACKED_STATES)
-            .values_list("name", flat=True)
+            .select_related("current_evaluation")
             .distinct()
+            .order_by("name")
         )
-        return cls(tuple(sorted(names)))
+        absent_since = []
+        for branch in branches:
+            current = branch.current_evaluation
+            if current is None:
+                continue
+            recent = list(
+                NixEvaluation.objects.filter(
+                    on_branches=branch,
+                    state=NixEvaluation.EvaluationState.COMPLETED,
+                    created_at__lte=current.created_at,
+                )
+                .order_by("-created_at", "-pk")
+                .values_list("pk", flat=True)[:REMOVAL_AFTER_EVALUATIONS]
+            )
+            if recent:
+                absent_since.append((branch.name, tuple(recent)))
+        return cls(tuple(b.name for b in branches), tuple(absent_since))
 
     def packages(self) -> QuerySet[BranchPackage]:
+        condition = Q(present=True)
+        for branch, evaluations in self.absent_since:
+            condition |= Q(
+                branch_id=branch, present=False, evaluation_id__in=evaluations
+            )
         return (
-            BranchPackage.objects.present()
+            BranchPackage.objects.filter(condition)
             .filter(branch_id__in=self.branches)
             .exclude(
                 # Test derivations are a Nixpkgs implementation detail and never represent software to be distributed.
