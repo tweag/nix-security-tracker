@@ -248,8 +248,19 @@ class ViewProduct:
     def containers(self) -> tuple[str, ...]:
         return tuple(sorted({kind for _, kind in self.sources}))
 
+    @property
+    def affected_products(self) -> list[int]:
+        """Every affected product row merged into this one, CNA first."""
+        return list(dict.fromkeys(pk for pk, _ in self.sources if pk is not None))
+
     def evidence(self) -> dict[str, object]:
-        return {"affected_product": self.affected_product, "container": self.container}
+        # `affected_product` (the first source) stays for existing readers; the version
+        # classifier needs all of them (the kernel CNA's git and semver products merge here).
+        return {
+            "affected_product": self.affected_product,
+            "affected_products": self.affected_products,
+            "container": self.container,
+        }
 
 
 @dataclass(frozen=True)

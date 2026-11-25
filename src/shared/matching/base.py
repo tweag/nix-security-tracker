@@ -120,7 +120,7 @@ class Hit(NamedTuple):
         evidence: dict[str, Any] = (
             self.product.evidence()
             if self.product is not None
-            else {"affected_product": None, "container": None}
+            else {"affected_product": None, "affected_products": [], "container": None}
         )
         evidence |= {
             "cve_field": self.cve_field,

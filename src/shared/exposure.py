@@ -408,16 +408,39 @@ class _Context:
 
     def products_for(self, suggestion_id: int, attrpath: str) -> list[ProductVersions]:
         """
-        The affected products the attribute's matches came from; all of the CVE's products
+        The affected products the attribute's matches came from, together with the CVE's
+        other products of the same identity (vendor, product, package name): those describe
+        the same thing, like the kernel CNA's git and semver products, and evidence stored
+        before `affected_products` existed names only one of them. All of the CVE's products
         when no match names one (or the named ones are no longer part of the record).
         """
         everything = self.products.get(suggestion_id, [])
         wanted = self.scope.get((suggestion_id, attrpath))
         if wanted:
-            scoped = [p for p in everything if p.id in wanted]
+            keys = {p.key for p in everything if p.id in wanted}
+            scoped = [p for p in everything if p.id in wanted or p.key in keys]
             if scoped:
                 return scoped
         return everything
+
+
+def evidence_products(evidence: object) -> set[int]:
+    """
+    The affected product pks a match names: `affected_products` (every source of a merged
+    view product), and `affected_product` (the first, the only one stored before).
+    """
+    if not isinstance(evidence, dict):
+        return set()
+    named = evidence.get("affected_products")
+    pks = (
+        {pk for pk in named if isinstance(pk, int)}
+        if isinstance(named, list)
+        else set()
+    )
+    first = evidence.get("affected_product")
+    if isinstance(first, int):
+        pks.add(first)
+    return pks
 
 
 def _load_context(
@@ -439,15 +462,12 @@ def _load_context(
         match_filter
     ).values_list("suggestion_id", "attrpath", "evidence", "retracted_at"):
         key = (sid, attr)
-        product = (
-            evidence.get("affected_product") if isinstance(evidence, dict) else None
-        )
+        named = evidence_products(evidence)
         if retracted_at is None:
             relevant.add(key)
-            if isinstance(product, int):
-                active_scope[key].add(product)
-        elif isinstance(product, int):
-            retracted_scope[key].add(product)
+            active_scope[key] |= named
+        else:
+            retracted_scope[key] |= named
     relevant |= set(
         Verdict.objects.filter(match_filter).values_list("suggestion_id", "attrpath")
     )

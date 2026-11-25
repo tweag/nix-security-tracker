@@ -33,7 +33,9 @@ LAST_SEEN_RESOLUTION = timedelta(days=7)
 SCORE_EPSILON = 0.01
 # Evidence keys whose change alone is not worth an event: where else the attribute was
 # found, and the primary key of the affected product row (re-ingestion renumbers it).
-IMMATERIAL_EVIDENCE_KEYS = frozenset({"branches", "other_hits", "affected_product"})
+IMMATERIAL_EVIDENCE_KEYS = frozenset(
+    {"branches", "other_hits", "affected_product", "affected_products"}
+)
 
 
 @dataclass

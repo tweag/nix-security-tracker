@@ -113,6 +113,7 @@ def test_curated(
     assert found(container, "curated") == {
         "nvidia-settings": {
             "affected_product": container.affected.get().pk,
+            "affected_products": [container.affected.get().pk],
             "container": "cna",
             "cve_field": "product_key",
             "cve_value": "cna:/gpu display driver",
