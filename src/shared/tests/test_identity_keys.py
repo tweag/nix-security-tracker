@@ -134,3 +134,21 @@ def test_qualified_package_name_in_a_collection_path_is_not_a_repository() -> No
     assert repositories(
         ProductFields(package_name="owner/repo", collection_url="https://github.com")
     ) == ("github.com/owner/repo",)
+
+
+def test_qualified_package_name_in_a_registry_is_not_a_repository() -> None:
+    from shared.matching.view import ProductFields, product_keys, repositories
+
+    fields = ProductFields(
+        vendor="craftcms",
+        product="cms",
+        package_name="craftcms/cms",
+        collection_url="https://packagist.org",
+    )
+    assert repositories(fields) == ()
+    assert KeySpec("purl", "composer", "craftcms/cms") in product_keys(fields)
+    assert repositories(
+        ProductFields(
+            package_name="github.com/foo/bar", collection_url="https://pkg.go.dev"
+        )
+    ) == ("github.com/foo/bar",)

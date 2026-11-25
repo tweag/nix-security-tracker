@@ -177,7 +177,13 @@ def repositories(fields: ProductFields) -> tuple[str, ...]:
         # (`https://access.redhat.com/downloads/content/package-browser`), not its repository.
         if collection and collection.count("/") >= 2 and not fields.package_name:
             candidates.append(collection)
-        elif "/" not in host and fields.package_name and "/" in fields.package_name:
+        elif (
+            "/" not in host
+            and fields.package_name
+            and "/" in fields.package_name
+            # `https://packagist.org` + `craftcms/cms` names a registry package, not a repo.
+            and ecosystem_for(fields.collection_url) is None
+        ):
             candidates.append(normalise_repo(f"https://{host}/{fields.package_name}"))
     if fields.package_name:
         candidates.append(go_module_repo(fields.package_name))
