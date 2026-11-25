@@ -8,7 +8,7 @@ from datetime import datetime
 from itertools import chain
 from typing import Any, overload
 
-from django.db.models import Case, IntegerField, Prefetch, Q, When
+from django.db.models import Case, IntegerField, Prefetch, Q, QuerySet, When
 from pydantic import BaseModel, field_serializer
 
 from shared.models import NixDerivation, NixMaintainer
@@ -124,11 +124,10 @@ class CachedSuggestion(BaseModel):
 
 
 def apply_package_overlays(
-    packages: dict, edits: list[PackageOverlay]
+    packages: dict[str, CachedSuggestion.Package], edits: Iterable[PackageOverlay]
 ) -> dict[str, CachedSuggestion.Package]:
     """
-    Returns the packages dict with user-supplied package edits applied.
-    Packages marked for removal are filtered out.
+    Returns the packages dict without the packages users ignored.
     """
     to_skip = {
         edit.package_attribute
@@ -137,6 +136,34 @@ def apply_package_overlays(
     }
 
     return {attr: data for attr, data in packages.items() if attr not in to_skip}
+
+
+def active_derivations(
+    suggestion: CVEDerivationClusterProposal,
+) -> QuerySet[NixDerivation]:
+    """The derivations the matcher linked and those of manually added packages."""
+    return NixDerivation.objects.filter(
+        Q(pk__in=suggestion.derivations.values("pk"))
+        | Q(
+            pk__in=NixDerivation.objects.filter(
+                package_additions__suggestion=suggestion
+            ).values("pk")
+        )
+    )
+
+
+def grouped_attributes(
+    suggestion: CVEDerivationClusterProposal,
+) -> list[CachedSuggestion.AttributePackageGroup]:
+    """The attributes of the suggestion's active derivations, grouped by package."""
+    return group_attributes_by_package(
+        list(
+            # Clustering skips derivations another transaction is clustering at the same time.
+            active_derivations(suggestion)
+            .filter(package_link__isnull=False)
+            .select_related("package_link__package", "parent_evaluation")
+        )
+    )
 
 
 def to_dict(instance: Any) -> dict[str, Any]:
@@ -234,36 +261,18 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
     # Most of the time this is a cheap noop, since clustering happens on evaluation and on linkage.
     cluster_packages(suggestion.derivations.filter(package_link__isnull=True))
 
-    derivations = list(
-        suggestion.derivations.select_related(
-            "metadata",
-            "package_link__package",
-            "parent_evaluation",
-        )
-        .prefetch_related(
-            "parent_evaluation__on_branches",
-            Prefetch(
-                "metadata__maintainers",
-                queryset=NixMaintainer.objects.distinct(),
-                to_attr="prefetched_maintainers",
-            ),
-        )
-        # Oldest first, primary key is tie breaker.
-        # That way the most recent information will end up being displayed.
-        # Sorting in the database is surely faster than conditional update in Python, since there's a low limit of `settings.MAX_MATCHES`
-        .order_by("parent_evaluation__updated_at", "pk")
-        .all()
-    )
-
     prefetched_metrics = Metric.objects.filter(container__cve=suggestion.cve).order_by(
         "-format"
     )
-    original_packages = channel_structure(all_versions, derivations)
+    original_packages = channel_structure(all_versions, suggestion.derivations.all())
     maintainer_overlays = list(
         suggestion.maintainer_overlays.select_related("maintainer").all()
     )
     package_overlays = list(suggestion.package_overlays.all())
-    packages = apply_package_overlays(original_packages, package_overlays)
+    packages = apply_package_overlays(
+        channel_structure(all_versions, active_derivations(suggestion)),
+        package_overlays,
+    )
 
     only_relevant_data = CachedSuggestion(
         pk=suggestion.pk,
@@ -273,7 +282,7 @@ def cache_new_suggestions(suggestion: CVEDerivationClusterProposal) -> None:
         affected_products=affected_products,
         original_packages=original_packages,
         packages=packages,
-        attribute_package_groups=group_attributes_by_package(derivations),
+        attribute_package_groups=grouped_attributes(suggestion),
         metrics=[to_dict(m) for m in prefetched_metrics],
         categorized_maintainers=categorize_maintainers(
             original_packages, packages, maintainer_overlays
@@ -344,11 +353,30 @@ def src_position_url(commit_sha1: str, position: str | None) -> str | None:
 
 
 def channel_structure(
-    version_constraints: list[Version], derivations: list[NixDerivation]
+    version_constraints: list[Version], derivations: QuerySet[NixDerivation]
 ) -> dict[str, CachedSuggestion.Package]:
     """
     For a list of derivations and a list of version constraints that all belong to the same package, massage the data so that it can be rendered easily in the suggestions view
     """
+    derivations = (
+        derivations.select_related(
+            "metadata",
+            "package_link__package",
+            "parent_evaluation",
+        )
+        .prefetch_related(
+            "parent_evaluation__on_branches",
+            Prefetch(
+                "metadata__maintainers",
+                queryset=NixMaintainer.objects.distinct(),
+                to_attr="prefetched_maintainers",
+            ),
+        )
+        # Oldest first, primary key is tie breaker.
+        # That way the most recent information will end up being displayed.
+        # Sorting in the database is surely faster than conditional update in Python, since there's a low limit of `settings.MAX_MATCHES`
+        .order_by("parent_evaluation__updated_at", "pk")
+    )
     packages = dict()
     for derivation in derivations:
         attribute_path = derivation.attribute
@@ -510,16 +538,15 @@ def categorize_maintainers(
     """
     Categorize maintainers associated to the packages of a suggestion.
 
-    `original_packages` is the full set of packages the suggestion ever had
-    (ignoring package overlays); `active_packages` is the subset that is
-    currently active (package overlays applied). `original`/`active`/`ignored`
-    are derived from `original_packages` and the maintainer overlays only, so
-    they never shrink when a package is ignored. `orphan` tracks maintainers
-    who no longer have any currently active package.
+    - `original_packages`: full set of packages the matcher found (not taking into account package overlays)
+    - `active_packages`: set that is currently active (package overlays applied, i.e., ignored packages removed, manually added packages included)
+    - `ignored_packages`: intersection of packages in `ignore` overlays and `original_packages`
+    - `orphan` tracks maintainers who no longer have any currently active package.
     """
-    # Collect all original maintainers from all original packages (deduplicated by github_id)
+    # Collect all maintainers from all original and manually added packages (deduplicated by github_id).
+    # Active packages are a subset of those.
     original_maintainers_dict: dict[int, CachedSuggestion.Maintainer] = {}
-    for package in original_packages.values():
+    for package in chain(original_packages.values(), active_packages.values()):
         for maintainer in package.maintainers:
             original_maintainers_dict[maintainer.github_id] = maintainer
 

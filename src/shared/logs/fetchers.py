@@ -5,6 +5,7 @@ from django.contrib.auth.models import User
 from django.db.models import (
     BigIntegerField,
     Case,
+    Exists,
     OuterRef,
     Q,
     Subquery,
@@ -201,15 +202,25 @@ def fetch_status_events_for_package(package_name: str) -> list[RawEventType]:
 
     suggestion_ids = list(
         CVEDerivationClusterProposal.objects.filter(
-            derivations__attribute=package_name,
+            Q(derivations__attribute=package_name)
+            | Q(
+                package_overlays__package_attribute=package_name,
+                package_overlays__type=PackageOverlay.Type.ADDITIONAL,
+            )
         )
         # This will not display any events to users who query the feed after the package got ignored.
         # That is by design, to avoid noise.
         # This trades against the case where users who *did* query the feed *before* the package got ignored will never get notified that the event was irrelevant.
         # We deem it to be more beneficial like this than the other way round.
         .exclude(
-            package_overlays__package_attribute=package_name,
-            package_overlays__type=PackageOverlay.Type.IGNORED,
+            # Not as `exclude()` keyword arguments, which could match the attribute and the type on different overlays.
+            Exists(
+                PackageOverlay.objects.filter(
+                    suggestion=OuterRef("pk"),
+                    package_attribute=package_name,
+                    type=PackageOverlay.Type.IGNORED,
+                )
+            )
         )
         .distinct()
         .values_list("pk", flat=True)

@@ -199,7 +199,8 @@ class Command(BaseCommand):
         # This set is O(500k), not great but still faster than a subquery.
         linked_ids = set(
             NixDerivation.objects.filter(
-                cve_links_proposals__isnull=False,
+                Q(cve_links_proposals__isnull=False)
+                | Q(package_additions__isnull=False)
             ).values_list("id", flat=True)
         )
         stale_evaluations = NixEvaluation.objects.filter(

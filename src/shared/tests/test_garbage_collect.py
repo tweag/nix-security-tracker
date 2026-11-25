@@ -485,6 +485,29 @@ def test_gc_preserves_linked_derivation_from_stale_eval(
     assert NixDerivation.objects.filter(pk=drv.pk).exists()
 
 
+def test_gc_preserves_derivation_of_added_package_from_stale_eval(
+    make_evaluation: Callable[..., NixEvaluation],
+    make_drv: Callable[..., NixDerivation],
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    drv = make_drv(evaluation=make_evaluation(age=timedelta(days=1)))
+    cluster_packages(NixDerivation.objects.filter(pk=drv.pk))
+    suggestion = make_suggestion(status=CVEDerivationClusterProposal.Status.ACCEPTED)
+    overlay = PackageOverlay.objects.create(
+        suggestion=suggestion,
+        package_attribute=drv.attribute,
+        package=drv.package_link.package,
+        type=PackageOverlay.Type.ADDITIONAL,
+    )
+    overlay.derivations.add(drv)
+
+    make_evaluation()
+
+    call_command("garbage_collect", stdout=StringIO())
+
+    assert NixDerivation.objects.filter(pk=drv.pk).exists()
+
+
 def test_gc_preserves_unlinked_derivation_from_latest_eval(
     drv: NixDerivation,
     evaluation: NixEvaluation,

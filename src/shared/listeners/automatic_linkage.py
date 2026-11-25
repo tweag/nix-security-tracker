@@ -391,6 +391,8 @@ def refresh_suggestion_derivation_links(
 
         if outcome.derivations is not None:
             build_links(suggestion, outcome.derivations)
+        # Added packages follow the latest evaluations too, even if the suggestion was just rejected.
+        suggestion.refresh_added_packages()
 
     logger.info(
         "Refreshed derivation links for suggestion %d (rejection_reason=%s, derivations=%s).",

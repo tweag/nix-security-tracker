@@ -1,4 +1,5 @@
-from collections.abc import Callable
+from collections import defaultdict
+from collections.abc import Callable, Collection
 from copy import copy
 from dataclasses import dataclass
 from enum import STRICT, IntFlag
@@ -17,9 +18,15 @@ from django.utils.functional import classproperty
 from django.utils.translation import gettext_lazy as _
 
 import shared.models.cached
-from shared.models.cve import AffectedProduct, CveRecord, Reference
-from shared.models.nix_evaluation import NixDerivation, NixMaintainer, TimeStampMixin
+from shared.models.cve import AffectedProduct, CveRecord, Reference, Version
+from shared.models.nix_evaluation import (
+    NixDerivation,
+    NixEvaluation,
+    NixMaintainer,
+    TimeStampMixin,
+)
 from shared.models.package import Package, PackageAttrpath
+from shared.package_clustering import cluster_packages
 
 
 class Overlay(models.Model):
@@ -409,7 +416,12 @@ class CVEDerivationClusterProposalQuerySet(models.QuerySet):
             comments.add(comment or "")
             packages.append(
                 (
-                    {attribute: attribute for attribute in active_packages},
+                    # Packages only added by hand can be deleted, not ignored.
+                    {
+                        attribute: attribute
+                        for attribute in active_packages
+                        if attribute in original_packages
+                    },
                     {
                         attribute: attribute
                         for attribute in original_packages
@@ -442,6 +454,31 @@ class CVEDerivationClusterProposalQuerySet(models.QuerySet):
                 merge=merge_references,
             ),
         )
+
+
+def latest_derivations(attributes: set[str]) -> dict[str, list[int]]:
+    """
+    The derivations of these attributes in the latest evaluation of each tracked branch, clustered into packages.
+    Attributes that are in no tracked channel are left out.
+    """
+    derivations = NixDerivation.objects.filter(
+        pk__in=list(
+            NixDerivation.objects.filter(
+                attribute__in=attributes,
+                parent_evaluation__in=NixEvaluation.objects.latest_completed_per_branch(),
+                # Can't be clustered without.
+                metadata__isnull=False,
+            ).values_list("pk", flat=True)
+        )
+    )
+    # Clustering skips the derivations other transactions are clustering at the same time.
+    # Wait for those instead, so they all have a package.
+    list(derivations.select_for_update().order_by("pk").values_list("pk"))
+    cluster_packages(derivations, update_packages=True)
+    result: dict[str, list[int]] = defaultdict(list)
+    for pk, attribute in derivations.values_list("pk", "attribute"):
+        result[attribute].append(pk)
+    return result
 
 
 @pghistory.track(
@@ -555,6 +592,17 @@ class CVEDerivationClusterProposal(TimeStampMixin):
         """Get all unique references from all containers of the CVE attached to this suggestion."""
         return list(Reference.objects.filter(container__cve=self.cve).distinct())
 
+    def affected_version_constraints(self) -> models.QuerySet[Version]:
+        """
+        All version constraints of the products affected by the suggestion's CVE.
+        Lazy, so it costs nothing unless used.
+        """
+        return Version.objects.filter(
+            Q(affectedproduct__package_name__isnull=False)
+            | Q(affectedproduct__product__isnull=False),
+            affectedproduct__container__cve=self.cve,
+        )
+
     @property
     def is_cache_stale(self) -> bool:
         return not getattr(self, "cached", None) or self.cached.is_stale
@@ -567,38 +615,92 @@ class CVEDerivationClusterProposal(TimeStampMixin):
             cache_new_suggestions(self)
             self.refresh_from_db()
 
+    def added_package_attributes(self) -> set[str]:
+        return {
+            overlay.package_attribute
+            for overlay in self.package_overlays.all()
+            if overlay.type == PackageOverlay.Type.ADDITIONAL
+        }
+
+    def _lock(self) -> None:
+        """
+        Wait for concurrent changes to this suggestion, such as a refresh, and read their outcome.
+        """
+        CVEDerivationClusterProposal.objects.select_for_update().get(pk=self.pk)
+        self.cached.refresh_from_db()
+
+    def refresh_added_packages(self) -> None:
+        """Point the manually added packages at their derivations in the latest evaluations."""
+        additions = list(
+            self.package_overlays.filter(type=PackageOverlay.Type.ADDITIONAL)
+        )
+        if not additions:
+            return
+        derivations = latest_derivations(
+            {overlay.package_attribute for overlay in additions}
+        )
+        for overlay in additions:
+            overlay.derivations.set(derivations.get(overlay.package_attribute, []))
+
     def check_ignore_packages(self, package_attributes: list[str]) -> None:
         """
         Raise unless all these packages can be ignored on this suggestion.
         """
         original_packages = self.cached.payload["original_packages"]
+        overlay_types = dict(
+            self.package_overlays.filter(
+                package_attribute__in=package_attributes
+            ).values_list("package_attribute", "type")
+        )
         errors = []
-        missing = [a for a in package_attributes if a not in original_packages]
+        # Only added, not found by the matcher: there is nothing to ignore.
+        added = [
+            a
+            for a in package_attributes
+            if a not in original_packages
+            and overlay_types.get(a) == PackageOverlay.Type.ADDITIONAL
+        ]
+        if added:
+            errors.append(
+                f"Packages were added manually, remove them instead: {', '.join(added)}"
+            )
+        missing = [
+            a
+            for a in package_attributes
+            if a not in original_packages and a not in added
+        ]
         if missing:
             errors.append(f"Packages not found in the suggestion: {', '.join(missing)}")
-        already_ignored = set(
-            self.package_overlays.filter(
-                package_attribute__in=package_attributes,
-                type=PackageOverlay.Type.IGNORED,
-            ).values_list("package_attribute", flat=True)
-        )
+        already_ignored = [
+            a
+            for a in package_attributes
+            if overlay_types.get(a) == PackageOverlay.Type.IGNORED
+        ]
         if already_ignored:
-            errors.append(
-                "Packages already ignored: "
-                + ", ".join(a for a in package_attributes if a in already_ignored)
-            )
+            errors.append(f"Packages already ignored: {', '.join(already_ignored)}")
         if errors:
             raise ValidationError({"package_attributes": errors})
 
     def ignore_packages(self, package_attributes: list[str]) -> None:
         """Ignore packages, updating the overlays and the cache."""
         with transaction.atomic():
+            self._lock()
             self.check_ignore_packages(package_attributes)
             package_ids = dict(
                 PackageAttrpath.objects.filter(
                     attrpath__in=package_attributes
                 ).values_list("attrpath", "package_id")
             )
+            # A package that was added manually and then found by the matcher on rematch is both.
+            # Ignoring it replaces the addition.
+            added = self.package_overlays.filter(
+                package_attribute__in=package_attributes,
+                type=PackageOverlay.Type.ADDITIONAL,
+            )
+            for overlay in added:
+                overlay.type = PackageOverlay.Type.IGNORED
+                overlay.save(update_fields=["type"])
+                overlay.derivations.clear()
             for package_attribute in package_attributes:
                 self.package_overlays.get_or_create(
                     package_attribute=package_attribute,
@@ -631,10 +733,119 @@ class CVEDerivationClusterProposal(TimeStampMixin):
     def restore_packages(self, package_attributes: list[str]) -> None:
         """Restore previously ignored packages."""
         with transaction.atomic():
+            self._lock()
             self.check_restore_packages(package_attributes)
             self.package_overlays.filter(
                 package_attribute__in=package_attributes,
                 type=PackageOverlay.Type.IGNORED,
+            ).delete()
+            self._recompute_package_cache()
+
+    def check_add_packages(
+        self, package_attributes: list[str], available: Collection[str]
+    ) -> None:
+        """
+        Raise unless all these packages can be manually added to this suggestion.
+        `available` are the attributes that are in a tracked channel.
+        """
+        original_packages = self.cached.payload["original_packages"]
+        errors = []
+        original = [a for a in package_attributes if a in original_packages]
+        if original:
+            errors.append(
+                f"Packages already part of the suggestion: {', '.join(original)}"
+            )
+        overlay_types = dict(
+            self.package_overlays.filter(
+                package_attribute__in=package_attributes
+            ).values_list("package_attribute", "type")
+        )
+        already_added = [
+            a
+            for a in package_attributes
+            if overlay_types.get(a) == PackageOverlay.Type.ADDITIONAL
+        ]
+        packages = self.cached.payload["packages"]
+        shown = [a for a in already_added if a in packages]
+        if shown:
+            errors.append(f"Packages already added: {', '.join(shown)}")
+        hidden = [a for a in already_added if a not in packages]
+        if hidden:
+            errors.append(
+                f"Packages already added, currently not in any tracked channel: {', '.join(hidden)}"
+            )
+        unavailable = [
+            a
+            for a in package_attributes
+            if a not in available and a not in already_added
+        ]
+        if unavailable:
+            errors.append(f"Not in any tracked channel: {', '.join(unavailable)}")
+        if errors:
+            raise ValidationError({"package_attributes": errors})
+
+    def add_packages(self, package_attributes: list[str]) -> None:
+        """Manually add packages, updating the overlays and the cache."""
+        with transaction.atomic():
+            self._lock()
+            derivations = latest_derivations(set(package_attributes))
+            self.check_add_packages(package_attributes, derivations.keys())
+            # Clustering the derivations recorded their attribute paths.
+            package_ids = dict(
+                PackageAttrpath.objects.filter(
+                    attrpath__in=package_attributes
+                ).values_list("attrpath", "package_id")
+            )
+            # An ignored package the matcher no longer finds can't be restored, only added again.
+            ignored = {
+                overlay.package_attribute: overlay
+                for overlay in self.package_overlays.filter(
+                    package_attribute__in=package_attributes,
+                    type=PackageOverlay.Type.IGNORED,
+                )
+            }
+            # One by one rather than `bulk_create()`, so the signals record activity log events.
+            for package_attribute in dict.fromkeys(package_attributes):
+                if overlay := ignored.get(package_attribute):
+                    overlay.type = PackageOverlay.Type.ADDITIONAL
+                    overlay.package_id = package_ids[package_attribute]
+                    overlay.save(update_fields=["type", "package"])
+                else:
+                    overlay = self.package_overlays.create(
+                        package_attribute=package_attribute,
+                        type=PackageOverlay.Type.ADDITIONAL,
+                        package_id=package_ids[package_attribute],
+                    )
+                overlay.derivations.set(derivations[package_attribute])
+            self._recompute_package_cache()
+
+    def check_remove_packages(self, package_attributes: list[str]) -> None:
+        """
+        Raise unless all these packages can be removed from this suggestion.
+        """
+        added = set(
+            self.package_overlays.filter(
+                package_attribute__in=package_attributes,
+                type=PackageOverlay.Type.ADDITIONAL,
+            ).values_list("package_attribute", flat=True)
+        )
+        not_added = [a for a in package_attributes if a not in added]
+        if not_added:
+            raise ValidationError(
+                {
+                    "package_attributes": "Packages were not added manually: "
+                    + ", ".join(not_added)
+                }
+            )
+
+    def remove_packages(self, package_attributes: list[str]) -> None:
+        """Remove manually added packages."""
+        with transaction.atomic():
+            self._lock()
+            self.check_remove_packages(package_attributes)
+            self.package_overlays.filter(
+                package_attribute__in=package_attributes,
+                type=PackageOverlay.Type.ADDITIONAL,
             ).delete()
             self._recompute_package_cache()
 
@@ -643,22 +854,31 @@ class CVEDerivationClusterProposal(TimeStampMixin):
         the current set of package overlays."""
         from shared.cache_suggestions import (
             CachedSuggestion,
+            active_derivations,
             apply_package_overlays,
             categorize_maintainers,
+            channel_structure,
+            grouped_attributes,
         )
 
-        self.cached.payload["packages"] = apply_package_overlays(
-            self.cached.payload["original_packages"],
-            self.package_overlays.all(),
-        )
+        # Not `self.package_overlays.all()`, which could return stale prefetched overlays.
+        package_overlays = list(PackageOverlay.objects.filter(suggestion=self))
         original_packages = {
             k: CachedSuggestion.Package.model_validate(v)
             for k, v in self.cached.payload["original_packages"].items()
         }
-        active_packages = {
-            k: CachedSuggestion.Package.model_validate(v)
-            for k, v in self.cached.payload["packages"].items()
+        active_packages = apply_package_overlays(
+            channel_structure(
+                list(self.affected_version_constraints()), active_derivations(self)
+            ),
+            package_overlays,
+        )
+        self.cached.payload["packages"] = {
+            k: v.model_dump(mode="json") for k, v in active_packages.items()
         }
+        self.cached.payload["attribute_package_groups"] = [
+            group.model_dump(mode="json") for group in grouped_attributes(self)
+        ]
         self.cached.payload["categorized_maintainers"] = categorize_maintainers(
             original_packages,
             active_packages,
@@ -1058,6 +1278,8 @@ class MaintainerOverlay(Overlay):
 @pghistory.track(
     pghistory.ManualEvent("package.restore"),
     pghistory.ManualEvent("package.ignore"),
+    pghistory.ManualEvent("package.add"),
+    pghistory.ManualEvent("package.delete"),
     attrs={
         "package": models.ForeignKey(
             Package,
@@ -1084,6 +1306,11 @@ class PackageOverlay(Overlay):
         CVEDerivationClusterProposal,
         related_name="package_overlays",
         on_delete=models.CASCADE,
+    )
+    # Of an addition: the attribute's derivations in the latest evaluation of each tracked branch, as of the last refresh.
+    # Empty while the attribute is in no tracked channel.
+    derivations = models.ManyToManyField(
+        NixDerivation, related_name="package_additions", blank=True
     )
 
     class Meta(Overlay.Meta):
@@ -1131,12 +1358,19 @@ def track_package_overlay_save(
     sender: type[PackageOverlay],
     instance: PackageOverlay,
     created: bool,
+    update_fields: frozenset[str] | None = None,
     **kwargs: Any,
 ) -> None:
-    if created:
+    # An addition turns into an ignore when the matcher finds the package too, see `ignore_packages()`.
+    if created or (update_fields and "type" in update_fields):
+        label = (
+            "package.add"
+            if instance.type == PackageOverlay.Type.ADDITIONAL
+            else "package.ignore"
+        )
         pghistory.create_event(
             obj=instance,
-            label="package.ignore",
+            label=label,
         )
 
 
@@ -1144,9 +1378,14 @@ def track_package_overlay_save(
 def track_package_overlay_delete(
     sender: type[PackageOverlay], instance: PackageOverlay, **kwargs: Any
 ) -> None:
+    label = (
+        "package.delete"
+        if instance.type == PackageOverlay.Type.ADDITIONAL
+        else "package.restore"
+    )
     pghistory.create_event(
         obj=instance,
-        label="package.restore",
+        label=label,
     )
 
 
