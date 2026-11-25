@@ -784,3 +784,45 @@ def test_recompute_command_reports_and_fixes_drift(
     assert "wrong 1" in out.getvalue()
     call_command("recompute_derived_state", stdout=StringIO())
     assert_derived_states_consistent()
+
+
+def test_mapping_reopens_recent_too_many_matches_rejection(
+    make_container: Callable[..., Container],
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+    make_product_key: Callable[..., Any],
+    snapshot: Callable[..., NixEvaluation],
+    settings: Any,
+) -> None:
+    """A rule turns a legacy `max_matches_exceeded` rejection into a sensible candidate set."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from shared.identity.reconcile import reconcile_mapping_change
+    from shared.models.cve import CveRecord
+    from shared.models.matching import ProductMapping
+
+    settings.MATCHING_REOPEN_WINDOW_DAYS = 30
+    snapshot({"linuxKernel.kernels.linux_6_6": ("linux", "6.6.1"), "x": ("x", "1")})
+    container = make_container(package_name="Linux", product=None)
+    CveRecord.objects.filter(pk=container.cve.pk).update(
+        date_published=timezone.now() - timedelta(days=3)
+    )
+    suggestion = make_suggestion(
+        container=container,
+        drvs={},
+        status=Status.REJECTED,
+        rejection_reason=Reason.MAX_MATCHES_EXCEEDED,
+    )
+    persist_product_keys(list(AffectedProduct.objects.all()))
+    mapping = ProductMapping.objects.create(
+        product_key=make_product_key("linux", "", "cna"),
+        relation=ProductMapping.Relation.SAME,
+        attr_glob="linuxKernel.kernels.*",
+        source=ProductMapping.Source.RULE_FILE,
+    )
+    reconcile_mapping_change(mapping)
+
+    suggestion.refresh_from_db()
+    assert suggestion.status == Status.PENDING
+    assert list(linked(suggestion)) == ["linuxKernel.kernels.linux_6_6"]

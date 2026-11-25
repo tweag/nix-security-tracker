@@ -219,6 +219,15 @@ class Settings(BaseSettings):
             """,
             default=0.2,
         )
+        MATCHING_REOPEN_WINDOW_DAYS: int = Field(
+            description="""
+            Suggestions the matcher rejected (no matches, too many matches) whose CVE was
+            published at most this many days ago are re-matched at deploy, on product mapping
+            changes and by reverse matching, and reopened as pending if they now find
+            something to show. Older ones are only re-matched on a CVE update. 0 disables.
+            """,
+            default=30,
+        )
         MATCHING_MAX_ATTRIBUTES: int = Field(
             description="""
             A suggestion shows at most this many matched attributes, best scored first.

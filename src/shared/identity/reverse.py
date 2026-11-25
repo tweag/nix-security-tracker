@@ -22,7 +22,11 @@ from shared.identity.reconcile import OPEN_STATUSES, reconcile_suggestions
 from shared.matching.matchers import NameTrigram
 from shared.matching.names import normalise_repo
 from shared.matching.reconcile import ReconcileResult
-from shared.models.linkage import CVEDerivationClusterProposal
+from shared.matching.selection import reopen_cutoff, reopenable_q
+from shared.models.linkage import (
+    MACHINE_REOPENABLE_REJECTIONS,
+    CVEDerivationClusterProposal,
+)
 from shared.models.matching import ProductKey, ProductMapping, TrackerEvent
 from shared.models.nix_evaluation import NixpkgsBranch
 from shared.models.snapshot import BranchPackage
@@ -106,6 +110,7 @@ def _open_suggestions_by_key(key_ids: Iterable[int]) -> dict[int, set[int]]:
     ids = sorted(set(key_ids))
     if not ids:
         return {}
+    cutoff = reopen_cutoff()
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -114,9 +119,20 @@ def _open_suggestions_by_key(key_ids: Iterable[int]) -> dict[int, set[int]]:
             JOIN shared_container_affected ca ON ca.affectedproduct_id = apk.affectedproduct_id
             JOIN shared_container c ON c.id = ca.container_id
             JOIN shared_cvederivationclusterproposal s ON s.cve_id = c.cve_id
-            WHERE apk.productkey_id = ANY(%s) AND s.status = ANY(%s)
+            JOIN shared_cverecord r ON r.id = s.cve_id
+            WHERE apk.productkey_id = ANY(%s) AND (
+                s.status = ANY(%s)
+                OR (%s::timestamptz IS NOT NULL AND s.status = 'rejected'
+                    AND s.rejection_reason = ANY(%s) AND r.date_published >= %s::timestamptz)
+            )
             """,
-            [ids, list(OPEN_STATUSES)],
+            [
+                ids,
+                list(OPEN_STATUSES),
+                cutoff,
+                MACHINE_REOPENABLE_REJECTIONS,
+                cutoff,
+            ],
         )
         found: dict[int, set[int]] = defaultdict(set)
         for suggestion, key_id in cursor.fetchall():
@@ -165,7 +181,8 @@ def select_suggestions(
                 named[cve_id.upper()].add(row.attrpath)
     if named:
         for pk, cve_id in CVEDerivationClusterProposal.objects.filter(
-            cve__cve_id__in=list(named), status__in=OPEN_STATUSES
+            Q(status__in=OPEN_STATUSES) | reopenable_q(),
+            cve__cve_id__in=list(named),
         ).values_list("pk", "cve__cve_id"):
             selected[pk] |= named[cve_id]
     return dict(selected)

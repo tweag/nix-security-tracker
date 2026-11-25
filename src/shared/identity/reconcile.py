@@ -9,10 +9,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from django.contrib.auth.models import User
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 
 from shared.matching.base import Universe
 from shared.matching.reconcile import ReconcileResult
+from shared.matching.selection import reopenable_q
 from shared.matching.view import build_cve_views
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.matching import ProductMapping, TrackerEvent
@@ -44,9 +45,12 @@ class MappingReconcileResult:
 def open_suggestions_for_keys(
     key_ids: Iterable[int],
 ) -> QuerySet[CVEDerivationClusterProposal]:
-    """Pending and accepted suggestions whose CVE has an affected product with one of these keys."""
+    """
+    Pending and accepted suggestions, and machine rejections within the reopen window
+    (`reopenable_q`), whose CVE has an affected product with one of these keys.
+    """
     return CVEDerivationClusterProposal.objects.filter(
-        status__in=OPEN_STATUSES,
+        Q(status__in=OPEN_STATUSES) | reopenable_q(),
         cve__container__affected__product_keys__in=list(key_ids),
     ).distinct()
 

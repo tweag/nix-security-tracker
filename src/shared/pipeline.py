@@ -513,7 +513,8 @@ def apply_evaluation(
         )
     selected = set(outcome.reverse_selected) - {sid for sid, _ in referencing}
     if selected:
-        # Reverse selection reads pending and accepted suggestions only.
+        # Not frozen: pending, accepted, and machine rejections (reverse selection returns
+        # those within the reopen window).
         selected &= set(
             CVEDerivationClusterProposal.objects.filter(pk__in=selected)
             .filter(open_for_projection_q())

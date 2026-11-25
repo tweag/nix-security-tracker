@@ -6,8 +6,11 @@ and `MATCHING_MAX_ATTRIBUTES` (cap, best scored first).
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 
 from django.conf import settings
+from django.db.models import Q
+from django.utils import timezone
 
 from shared.matching.base import REGISTRY
 from shared.matching.scoring import noisy_or
@@ -87,4 +90,26 @@ def select_attributes(
         shown=above[:limit],
         below_threshold=len(scored) - len(above),
         beyond_cap=max(0, len(above) - limit),
+    )
+
+
+def reopen_cutoff() -> datetime | None:
+    """Machine-rejected suggestions of CVEs published since then are re-matched and reopenable."""
+    days = settings.MATCHING_REOPEN_WINDOW_DAYS
+    return timezone.now() - timedelta(days=days) if days > 0 else None
+
+
+def reopenable_q(prefix: str = "", cutoff: datetime | None = None) -> Q:
+    """Machine-rejected suggestions within the reopen window (`MATCHING_REOPEN_WINDOW_DAYS`)."""
+    from shared.models.linkage import MACHINE_REOPENABLE_REJECTIONS
+
+    cutoff = cutoff or reopen_cutoff()
+    if cutoff is None:
+        return Q(pk__in=[])
+    return Q(
+        **{
+            f"{prefix}status": "rejected",
+            f"{prefix}rejection_reason__in": MACHINE_REOPENABLE_REJECTIONS,
+            f"{prefix}cve__date_published__gte": cutoff,
+        }
     )
