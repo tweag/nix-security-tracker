@@ -38,6 +38,17 @@ class NixEvaluationUpdateChannel(TriggerChannel):
 
 
 @dataclass
+class NixEvaluationSnapshotChannel(TriggerChannel):
+    """
+    Same events as `NixEvaluationUpdateChannel`, but its own notification and transaction,
+    so a failure of clustering does not prevent the snapshot, and vice versa.
+    """
+
+    model = NixEvaluation
+    lock_notifications = True
+
+
+@dataclass
 class NixDerivationChannel(TriggerChannel):
     model = NixDerivation
 

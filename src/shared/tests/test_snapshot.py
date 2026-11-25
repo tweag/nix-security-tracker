@@ -4,7 +4,12 @@ from typing import Any
 from unittest import mock
 
 import pytest
+from django.db import transaction
+from pgpubsub.models import Notification as PgpubsubNotification
 
+from shared.channels import NixEvaluationSnapshotChannel, NixEvaluationUpdateChannel
+from shared.listeners.package_clustering import cluster_after_evaluation
+from shared.listeners.snapshot import snapshot_after_evaluation
 from shared.models.matching import Match
 from shared.models.nix_evaluation import (
     NixChannel,
@@ -501,3 +506,56 @@ def test_notifies_after_commit(
         "evaluation_pk": evaluation.pk,
         "branch": "master",
     }
+
+
+def test_snapshot_and_clustering_have_separate_notifications(
+    evaluation: NixEvaluation,
+) -> None:
+    """Each channel gets its own notification row, processed in its own transaction."""
+    evaluation.state = NixEvaluation.EvaluationState.IN_PROGRESS
+    evaluation.save()
+
+    channels = set(PgpubsubNotification.objects.values_list("channel", flat=True))
+
+    assert NixEvaluationSnapshotChannel.listen_safe_name() in channels
+    assert NixEvaluationUpdateChannel.listen_safe_name() in channels
+
+
+def test_listener_snapshots_completed_evaluation(
+    branch: NixpkgsBranch,
+    make_evaluation: Callable[..., NixEvaluation],
+    make_attr: Callable[..., NixDerivation],
+) -> None:
+    evaluation = make_evaluation()
+    make_attr(evaluation, "foo")
+    in_progress = NixEvaluation(state=NixEvaluation.EvaluationState.IN_PROGRESS)
+
+    with transaction.atomic():
+        snapshot_after_evaluation(old=evaluation, new=evaluation)
+    assert not BranchPackage.objects.exists()
+
+    with transaction.atomic():
+        snapshot_after_evaluation(old=in_progress, new=evaluation)
+    branch.refresh_from_db()
+    assert branch.current_evaluation == evaluation
+    assert BranchPackage.objects.filter(attrpath="foo").exists()
+
+
+def test_clustering_after_snapshot_fills_package(
+    evaluation: NixEvaluation,
+    make_attr: Callable[..., NixDerivation],
+) -> None:
+    make_attr(evaluation, "foo")
+    in_progress = NixEvaluation(state=NixEvaluation.EvaluationState.IN_PROGRESS)
+    with transaction.atomic():
+        snapshot_after_evaluation(old=in_progress, new=evaluation)
+    assert BranchPackage.objects.get(attrpath="foo").package is None
+
+    with mock.patch("shared.listeners.package_clustering.pgpubsub.notify"):
+        with transaction.atomic():
+            cluster_after_evaluation(old=in_progress, new=evaluation)
+
+    assert (
+        BranchPackage.objects.get(attrpath="foo").package
+        == PackageAttrpath.objects.get(attrpath="foo").package
+    )

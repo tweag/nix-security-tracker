@@ -9,6 +9,7 @@ from shared.listeners.automatic_linkage import refresh_suggestion_derivation_lin
 from shared.models import NixDerivation, NixEvaluation
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.package_clustering import cluster_packages
+from shared.snapshot import fill_package_groups
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,8 @@ def cluster_after_evaluation(old: NixEvaluation, new: NixEvaluation) -> None:
         f"updated {result.packages_updated}, created {result.packages_created} packages, "
         f"updated {result.attrpaths_updated}, created {result.attrpaths_created} attrpaths."
     )
+    # The snapshot may have run first, before the new attributes had a package.
+    fill_package_groups(list(new.on_branches.all()))
 
     # Schedule a refresh of derivation links and suggestion caches for every suggestion affected by this evaluation's clustering.
     def _run_after_commit() -> None:

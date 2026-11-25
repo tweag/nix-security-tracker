@@ -555,6 +555,7 @@ in
                 --processes ${toString cfg.suggestionRefreshProcesses} \
                 --channels \
                   shared.channels.NixEvaluationUpdateChannel \
+                  shared.channels.NixEvaluationSnapshotChannel \
                   shared.channels.SuggestionRefreshChannel \
             '';
           };

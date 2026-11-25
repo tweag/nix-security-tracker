@@ -1,5 +1,6 @@
 import shared.listeners.nix_evaluation  # noqa
 import shared.listeners.package_clustering  # noqa
+import shared.listeners.snapshot  # noqa
 import shared.listeners.automatic_linkage  # noqa
 import shared.listeners.cache_and_notify  # noqa
 import shared.listeners.github_teams  # noqa

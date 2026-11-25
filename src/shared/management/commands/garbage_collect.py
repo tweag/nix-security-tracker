@@ -13,7 +13,12 @@ from django.utils import timezone
 from pgpubsub.models import Notification
 from prometheus_client import CollectorRegistry, Gauge
 
-from shared.channels import NixEvaluationUpdateChannel, SuggestionRefreshChannel
+from shared.channels import (
+    BranchSnapshotChannel,
+    NixEvaluationSnapshotChannel,
+    NixEvaluationUpdateChannel,
+    SuggestionRefreshChannel,
+)
 from shared.metrics import write_metrics_textfile
 from shared.models import (  # type: ignore
     CVEDerivationClusterProposalStatusEvent,
@@ -254,7 +259,12 @@ class Command(BaseCommand):
         Reclaim rematching trigger notifications that the listener never drained.
         Anything older than a day cannot represent live work, since a healthy live listener drains within seconds and the next evaluation would re-emit fresh triggers for anything still relevant.
         """
-        channels = [SuggestionRefreshChannel, NixEvaluationUpdateChannel]
+        channels = [
+            SuggestionRefreshChannel,
+            NixEvaluationUpdateChannel,
+            NixEvaluationSnapshotChannel,
+            BranchSnapshotChannel,
+        ]
         # The producer-side of each channel type records the channel identifier under a different convention.
         # Both spellings need to be matched to reach all orphaned rows.
         names = [n for c in channels for n in (c.name(), c.listen_safe_name())]
