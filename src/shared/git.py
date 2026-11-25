@@ -31,6 +31,26 @@ def get_head_sha1(url: AnyUrl, branch: str) -> str:
     return line.split()[0]
 
 
+def get_head_sha1s(url: AnyUrl | str, branches: list[str]) -> dict[str, str]:
+    """Heads of several branches in one `git ls-remote`; branches that do not exist are left out."""
+    if not branches:
+        return {}
+    result = subprocess.run(
+        ["git", "ls-remote", "--", str(url), *(f"refs/heads/{b}" for b in branches)],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=settings.NETWORK_REQUEST_TIMEOUT,
+    )
+    heads = {}
+    for line in result.stdout.splitlines():
+        sha, _, ref = line.partition("\t")
+        name = ref.removeprefix("refs/heads/")
+        if name in branches:
+            heads[name] = sha
+    return heads
+
+
 @dataclass
 class Worktree:
     path: pathlib.Path
