@@ -19,6 +19,7 @@ from requests import get
 
 from shared import models
 from shared.channels import CveUpdateChannel
+from shared.identity.keys import persist_product_keys
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +218,7 @@ def make_affected_product(data: dict[str, Any]) -> models.AffectedProduct:
     obj.modules.set(map(make_module, data.get("modules", [])))
     obj.program_files.set(map(make_program_file, data.get("programFiles", [])))
     obj.program_routines.set(map(make_program_routine, data.get("programRoutines", [])))
+    persist_product_keys([obj])
 
     return obj
 

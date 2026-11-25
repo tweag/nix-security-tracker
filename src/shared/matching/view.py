@@ -52,6 +52,28 @@ class KeySpec(NamedTuple):
     vendor: str
     product: str
 
+    def capped(self) -> "KeySpec":
+        """
+        Cut vendor and product to a byte length the unique B-tree index on (kind, vendor,
+        product) can hold (an index row is at most about 2.7 kB); real names are far shorter.
+        """
+        return KeySpec(
+            self.kind,
+            _cap(self.vendor, KEY_VENDOR_BYTES),
+            _cap(self.product, KEY_PRODUCT_BYTES),
+        )
+
+
+KEY_VENDOR_BYTES = 512
+KEY_PRODUCT_BYTES = 1024
+
+
+def _cap(value: str, limit: int) -> str:
+    encoded = value.encode()
+    if len(encoded) <= limit:
+        return value
+    return encoded[:limit].decode(errors="ignore").rstrip()
+
 
 @dataclass(frozen=True)
 class ProductFields:
@@ -121,7 +143,7 @@ def product_keys(fields: ProductFields) -> frozenset[KeySpec]:
         owner, _, name = repo.rpartition("/")
         if owner and name:
             keys.add(KeySpec(ProductKey.Kind.REPO, owner, name))
-    return frozenset(keys)
+    return frozenset(key.capped() for key in keys)
 
 
 def repositories(fields: ProductFields) -> tuple[str, ...]:
@@ -248,6 +270,8 @@ def view_from_containers(cve_id: str, containers: Sequence[Container]) -> CveVie
     ordered = sorted(
         containers, key=lambda c: (c._type != Container.Type.CNA, c.pk or 0)
     )
+    # Persisted keys per merged product; None once a merged row has none, then they are derived.
+    persisted: dict[tuple[str, ...], set[KeySpec] | None] = {}
     for container in ordered:
         tags.update(tag.value for tag in container.tags.all())
         for affected in sorted(container.affected.all(), key=lambda a: a.pk):
@@ -259,11 +283,16 @@ def view_from_containers(cve_id: str, containers: Sequence[Container]) -> CveVie
                 merged[key] = (replace(first, cpes=cpes), sources)
             else:
                 merged[key] = (fields, [])
+                persisted[key] = set()
             merged[key][1].append((affected.pk, container._type))
+            stored = _stored_keys(affected)
+            known = persisted[key]
+            persisted[key] = known | stored if known is not None and stored else None
 
     products = []
-    for fields, sources in merged.values():
+    for dedup, (fields, sources) in merged.items():
         parsed = [parse_cpe(name) for name in fields.cpes]
+        keys = persisted[dedup]
         products.append(
             ViewProduct(
                 fields=fields,
@@ -272,7 +301,7 @@ def view_from_containers(cve_id: str, containers: Sequence[Container]) -> CveVie
                     pair for p in parsed if not p.is_hardware for pair in p.pairs
                 ),
                 hardware_only=bool(parsed) and all(p.is_hardware for p in parsed),
-                keys=product_keys(fields),
+                keys=frozenset(keys) if keys else product_keys(fields),
                 names=name_terms(fields),
                 repos=repositories(fields),
             )
@@ -285,6 +314,14 @@ def view_from_containers(cve_id: str, containers: Sequence[Container]) -> CveVie
     )
 
 
+def _stored_keys(affected: AffectedProduct) -> set[KeySpec]:
+    """Persisted keys of a row, through the prefetch cache when there is one."""
+    return {
+        KeySpec(key.kind, key.vendor, key.product)
+        for key in affected.product_keys.all()
+    }
+
+
 def _containers_prefetch() -> Prefetch:
     return Prefetch(
         "container",
@@ -293,7 +330,7 @@ def _containers_prefetch() -> Prefetch:
                 "affected",
                 queryset=AffectedProduct.objects.defer(
                     "search_vector"
-                ).prefetch_related("cpes"),
+                ).prefetch_related("cpes", "product_keys"),
             ),
             Prefetch("tags", queryset=Tag.objects.all()),
         ),
@@ -301,7 +338,7 @@ def _containers_prefetch() -> Prefetch:
 
 
 def build_cve_views(cves: QuerySet[CveRecord] | Iterable[str]) -> dict[str, CveView]:
-    """Views of many CVEs, by CVE id, in a constant number of queries (five)."""
+    """Views of many CVEs, by CVE id, in a constant number of queries (six)."""
     queryset = (
         cves
         if isinstance(cves, QuerySet)
@@ -319,6 +356,6 @@ def build_cve_views(cves: QuerySet[CveRecord] | Iterable[str]) -> dict[str, CveV
 
 
 def build_cve_view(cve: CveRecord | str) -> CveView:
-    """View of one CVE, in five queries."""
+    """View of one CVE, in six queries."""
     cve_id = cve if isinstance(cve, str) else cve.cve_id
     return build_cve_views([cve_id]).get(cve_id) or CveView(cve_id=cve_id, products=())
