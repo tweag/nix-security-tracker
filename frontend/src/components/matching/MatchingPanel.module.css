@@ -1,0 +1,73 @@
+.scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.table th {
+  text-align: left;
+  font-weight: bold;
+  padding: var(--space-xs);
+  border-bottom: var(--border-thin) solid var(--gray);
+}
+
+.table td {
+  padding: var(--space-xs);
+  vertical-align: top;
+  border-bottom: var(--border-thin) solid var(--light-gray);
+}
+
+.rank {
+  width: 3em;
+  text-align: right;
+}
+
+.branch {
+  width: 12em;
+  overflow-wrap: anywhere;
+}
+
+.attrpath {
+  overflow-wrap: anywhere;
+}
+
+.version {
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.decided {
+  border-width: var(--border-thick);
+}
+
+.retracted {
+  text-decoration: line-through;
+}
+
+.evidence {
+  margin: 0;
+  padding-left: var(--space-m);
+  font-size: var(--text-s);
+}
+
+.evidence li {
+  overflow-wrap: anywhere;
+}
+
+.details {
+  max-width: 30em;
+}
+
+.plainList {
+  margin: 0;
+  padding-left: var(--space-m);
+}
+
+.reminder {
+  padding: 0;
+}

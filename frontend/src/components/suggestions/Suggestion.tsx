@@ -2,6 +2,7 @@ import { ShieldIcon } from "lucide-preact";
 import { useState } from "preact/hooks";
 import { Link } from "wouter-preact";
 import type { Suggestion as SuggestionType } from "@/api/generated/models";
+import { MatchingSection } from "@/components/matching/MatchingSection";
 import { ExternalLink } from "@/components/ui/ExternalLink";
 import { InlineIcon } from "@/components/ui/InlineIcon";
 import { LegendCard } from "@/components/ui/LegendCard";
@@ -128,6 +129,12 @@ export function Suggestion({
             </summary>
             {description && <p>{description}</p>}
           </details>
+
+          <MatchingSection
+            suggestionId={id}
+            derivedState={suggestion.derived_state}
+            userCanEdit={userCanEdit}
+          />
         </div>
 
         {viewMode === "compact" && (
