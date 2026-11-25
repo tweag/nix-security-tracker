@@ -593,6 +593,10 @@ SPECTACULAR_SETTINGS = {
         "GithubPullRequestStateEnum": "api.issues.serializers.GITHUB_PULL_REQUEST_STATES",
         "DerivedStateEnum": "api.unified.serializers.DERIVED_STATE_CHOICES",
         "VerdictKindEnum": "shared.models.matching.Verdict.Kind",
+        "ObservedStatusEnum": "shared.models.matching.Exposure.Observed",
+        "ExposureReasonEnum": "shared.models.matching.Exposure.Reason",
+        "TrackerEventKindEnum": "shared.models.matching.TrackerEvent.Kind",
+        "TrackerEventCauseEnum": "shared.models.matching.TrackerEvent.Cause",
     },
 }
 
