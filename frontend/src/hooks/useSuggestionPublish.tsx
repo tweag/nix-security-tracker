@@ -7,7 +7,7 @@ import {
 import type { Issue } from "@/api/generated/models";
 import { IssuePublishedToast } from "@/components/issues/IssuePublishedToast";
 import { getApiErrorMessage } from "@/utils/apiError";
-import { setCachedSuggestion, staleQuietly } from "@/utils/suggestionCache";
+import { invalidateMatching, setCachedSuggestion, staleQuietly } from "@/utils/suggestionCache";
 import { toaster } from "@/utils/toaster";
 
 /** Publish a single accepted suggestion as its own GitHub issue. */
@@ -23,6 +23,7 @@ export function useSuggestionPublishMutation(suggestionId: number) {
           issue_code: issue.code,
           in_issue_draft: false,
         }));
+        invalidateMatching(queryClient, suggestionId);
         staleQuietly(queryClient, getListSuggestionsQueryKey());
         staleQuietly(queryClient, getListIssuesQueryKey());
         toaster.success({

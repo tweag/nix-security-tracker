@@ -9,6 +9,7 @@ import { IssuePublishedToast } from "@/components/issues/IssuePublishedToast";
 import { getApiErrorMessage } from "@/utils/apiError";
 import {
   clearCachedIssueDraftLists,
+  invalidateMatching,
   patchCachedSuggestionsMatching,
   staleQuietly,
 } from "@/utils/suggestionCache";
@@ -27,6 +28,7 @@ export function useIssueDraftPublishMutation() {
           (s) => ({ ...s, in_issue_draft: false, status: "published", issue_code: issue.code }),
         );
         clearCachedIssueDraftLists(queryClient);
+        invalidateMatching(queryClient);
         staleQuietly(queryClient, getListSuggestionsQueryKey());
         staleQuietly(queryClient, getListIssuesQueryKey());
         toaster.success({

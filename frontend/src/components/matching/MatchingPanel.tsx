@@ -1,11 +1,13 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { ChevronsDownIcon, ChevronsUpIcon, TriangleAlertIcon } from "lucide-preact";
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { useGetSuggestionMatching } from "@/api/generated/endpoints";
 import type { MatchedAttribute, SuggestionMatching } from "@/api/generated/models";
 import { InlineIcon } from "@/components/ui/InlineIcon";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { getApiErrorMessage } from "@/utils/apiError";
 import { cx } from "@/utils/className";
+import { setCachedSuggestion } from "@/utils/suggestionCache";
 import { DerivedStateBadge } from "./DerivedStateBadge";
 import { LOW_CONFIDENCE_SCORE, mappingLabel } from "./labels";
 import styles from "./MatchingPanel.module.css";
@@ -164,9 +166,19 @@ function AttributeTable({
 /** The matching model's view of a suggestion: ranked candidates, their provenance and per-branch status. */
 export function MatchingPanel({ suggestionId, userCanEdit, showState = true }: Props) {
   const [showLow, setShowLow] = useState(false);
+  const queryClient = useQueryClient();
   const { data, isLoading, isError, error } = useGetSuggestionMatching(suggestionId, undefined, {
     query: { staleTime: Infinity },
   });
+
+  // The panel's state is the newest: carry it over to the card's badge.
+  const loadedState = data?.derived.state;
+  useEffect(() => {
+    if (!loadedState) return;
+    setCachedSuggestion(queryClient, suggestionId, (prev) =>
+      prev.derived_state === loadedState ? prev : { ...prev, derived_state: loadedState },
+    );
+  }, [queryClient, suggestionId, loadedState]);
 
   if (isLoading) return <Skeleton width="100%" height="8em" />;
   if (isError || !data) {

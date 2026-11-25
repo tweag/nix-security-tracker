@@ -9,9 +9,12 @@
 import type { QueryClient, QueryFilters, QueryKey } from "@tanstack/react-query";
 import {
   getGetSuggestionActivityLogQueryKey,
+  getGetSuggestionMatchingQueryKey,
   getGetSuggestionQueryKey,
   getListIssuesQueryKey,
   getListNotificationsQueryKey,
+  getListPossiblyFixedBranchesQueryKey,
+  getListPossiblyFixedQueryKey,
   getListSuggestionsQueryKey,
 } from "@/api/generated/endpoints";
 import type {
@@ -102,6 +105,26 @@ export function invalidateCachedSuggestion(queryClient: QueryClient, id: number)
   for (const filters of suggestionQueryFilters(id)) {
     queryClient.invalidateQueries(filters);
   }
+}
+
+const matchingUrlPattern = new RegExp(`^${listQueryKeyPrefix[0]}/\\d+/matching$`);
+
+/**
+ * Refetches the matching model's view of a suggestion (or of every suggestion), after a
+ * mutation that writes verdicts server-side: accept, reject, publish, ignore, restore.
+ * The possibly-fixed queue reads the same verdicts.
+ */
+export function invalidateMatching(queryClient: QueryClient, id?: number): void {
+  queryClient.invalidateQueries(
+    id === undefined
+      ? {
+          predicate: (query) =>
+            typeof query.queryKey[0] === "string" && matchingUrlPattern.test(query.queryKey[0]),
+        }
+      : { queryKey: getGetSuggestionMatchingQueryKey(id) },
+  );
+  queryClient.invalidateQueries({ queryKey: getListPossiblyFixedQueryKey() });
+  queryClient.invalidateQueries({ queryKey: getListPossiblyFixedBranchesQueryKey() });
 }
 
 /** Refetches the activity log of a suggestion, e.g. after a mutation created a new entry server-side. */

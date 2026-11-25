@@ -1,8 +1,6 @@
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import {
   getGetSuggestionMatchingQueryKey,
-  getListPossiblyFixedBranchesQueryKey,
-  getListPossiblyFixedQueryKey,
   useUpdateSuggestionVerdicts,
 } from "@/api/generated/endpoints";
 import type {
@@ -15,7 +13,11 @@ import type {
 } from "@/api/generated/models";
 import { verdictLabel } from "@/components/matching/labels";
 import { getApiErrorMessage } from "@/utils/apiError";
-import { invalidateActivityLog, invalidateCachedSuggestion } from "@/utils/suggestionCache";
+import {
+  invalidateActivityLog,
+  invalidateCachedSuggestion,
+  invalidateMatching,
+} from "@/utils/suggestionCache";
 import { toaster } from "@/utils/toaster";
 
 type MutationVars = { id: number; data: PatchedVerdictUpdate };
@@ -79,11 +81,9 @@ function patchMatching(data: SuggestionMatching, change: Change): SuggestionMatc
 
 /** Everything a verdict can change: the matching view, the derived state, the log and the queue. */
 export function invalidateAfterVerdict(queryClient: QueryClient, suggestionId: number): void {
-  queryClient.invalidateQueries({ queryKey: getGetSuggestionMatchingQueryKey(suggestionId) });
+  invalidateMatching(queryClient, suggestionId);
   invalidateCachedSuggestion(queryClient, suggestionId);
   invalidateActivityLog(queryClient, suggestionId);
-  queryClient.invalidateQueries({ queryKey: getListPossiblyFixedQueryKey() });
-  queryClient.invalidateQueries({ queryKey: getListPossiblyFixedBranchesQueryKey() });
 }
 
 function describe({ data }: MutationVars): string {

@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getListSuggestionsQueryKey, useChangeSuggestionStatus } from "@/api/generated/endpoints";
 import type { SuggestionStatus as SuggestionStatusData } from "@/api/generated/models";
 import { optimisticSuggestionHandlers } from "@/hooks/optimisticSuggestion";
-import { invalidateActivityLog, staleQuietly } from "@/utils/suggestionCache";
+import { invalidateActivityLog, invalidateMatching, staleQuietly } from "@/utils/suggestionCache";
 
 type MutationVars = { id: number; data: SuggestionStatusData };
 
@@ -21,6 +21,7 @@ export function useSuggestionStatusMutation(suggestionId: number) {
       errorTitle: () => "Failed to change status",
       onSuccess: () => {
         invalidateActivityLog(queryClient, suggestionId);
+        invalidateMatching(queryClient, suggestionId);
         staleQuietly(queryClient, getListSuggestionsQueryKey());
       },
     }),

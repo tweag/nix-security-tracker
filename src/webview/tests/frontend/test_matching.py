@@ -279,3 +279,22 @@ def test_possibly_fixed_answer_to_a_stale_row(
     expect(as_committer.get_by_text("Already answered")).to_be_visible()
     expect(row).to_be_hidden()
     assert Verdict.objects.get().author == staff
+
+
+@pytest.mark.django_db
+def test_matching_panel_follows_accept_and_ignore(
+    live_server: LiveServer,
+    as_committer: Page,
+    matched: CVEDerivationClusterProposal,
+) -> None:
+    """Accepting records verdicts and ignoring writes one: the open panel shows both."""
+    open_panel(as_committer, live_server.url, matched)
+    status = as_committer.get_by_test_id("status-foo-master")
+    expect(status).to_have_attribute("aria-label", re.compile(r"\(observed\)"))
+    as_committer.get_by_role("button", name="Accept").click()
+    expect(status).to_have_attribute("aria-label", re.compile(r"affected \(verdict\)"))
+    packages = as_committer.get_by_test_id(f"suggestion-{matched.pk}-packages")
+    packages.get_by_role("button", name="Ignore", exact=True).click()
+    expect(status).to_have_attribute(
+        "aria-label", re.compile(r"irrelevant \(verdict\)")
+    )

@@ -6,7 +6,7 @@ import type {
   SuggestionPackages,
 } from "@/api/generated/models";
 import { optimisticSuggestionHandlers } from "@/hooks/optimisticSuggestion";
-import { invalidateActivityLog, staleQuietly } from "@/utils/suggestionCache";
+import { invalidateActivityLog, invalidateMatching, staleQuietly } from "@/utils/suggestionCache";
 
 type MutationVars = { id: number; data: PatchedSuggestionPackageUpdate };
 
@@ -48,6 +48,7 @@ export function usePackageMutation(suggestionId: number) {
         // A new activity log entry is created server-side.
         // The suggestion cache is correct via the optimistic update.
         invalidateActivityLog(queryClient, suggestionId);
+        invalidateMatching(queryClient, suggestionId);
         // A package moving in/out of `active` can affect the "with package" list filter.
         staleQuietly(queryClient, getListSuggestionsQueryKey());
       },
