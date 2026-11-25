@@ -17,7 +17,7 @@ from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.matching import Exposure, Match, TrackerEvent, Verdict
 from shared.models.nix_evaluation import NixChannel, NixEvaluation, NixpkgsBranch
 from shared.models.remediation import ChannelAdvance, FixLanding, FixLink
-from shared.timeline import Stage, build_timeline, build_timelines
+from shared.timeline import CveTimeline, Stage, build_timeline, build_timelines
 
 Observed = Exposure.Observed
 T0 = datetime(2026, 10, 1, tzinfo=UTC)
@@ -62,7 +62,7 @@ class Life:
             for branch in (self.master, self.release)
         }
 
-    def timeline(self) -> object:
+    def timeline(self) -> CveTimeline:
         return build_timeline(self.suggestion)
 
     def fix(self, branch: str) -> Exposure:
