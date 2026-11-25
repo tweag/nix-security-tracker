@@ -4,6 +4,7 @@ product key -> affected products -> CVEs -> open suggestions -> `reconcile_match
 """
 
 import logging
+import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
@@ -11,7 +12,7 @@ from django.contrib.auth.models import User
 from django.db.models import QuerySet
 
 from shared.matching.base import Universe
-from shared.matching.reconcile import ReconcileResult, reconcile_matches
+from shared.matching.reconcile import ReconcileResult
 from shared.matching.view import build_cve_views
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.matching import ProductMapping, TrackerEvent
@@ -64,7 +65,13 @@ def reconcile_suggestions(
     actor: User | None = None,
     cause: TrackerEvent.Cause = TrackerEvent.Cause.MAPPING,
 ) -> dict[int, ReconcileResult]:
-    """Reconcile these suggestions with one universe and views built in batches."""
+    """
+    Reconcile these suggestions with one universe and views built in batches, through the
+    pipeline (`shared.pipeline.rematch`), so exposures, links, status and cache follow.
+    """
+    from shared.cache_suggestions import cache_new_suggestions
+    from shared.pipeline import rematch
+
     universe = Universe.tracked()
     results: dict[int, ReconcileResult] = {}
     for start in range(0, len(suggestion_ids), VIEW_BATCH):
@@ -77,13 +84,18 @@ def reconcile_suggestions(
         )
         views = build_cve_views({s.cve.cve_id for s in suggestions})
         for suggestion in suggestions:
-            results[suggestion.pk] = reconcile_matches(
+            outcome = rematch(
                 suggestion,
                 cause,
                 matchers,
                 view=views.get(suggestion.cve.cve_id),
                 universe=universe,
                 actor=actor,
+            )
+            if not outcome.frozen:
+                cache_new_suggestions(suggestion)
+            results[suggestion.pk] = outcome.matches or ReconcileResult(
+                batch=uuid.uuid4()
             )
     return results
 

@@ -13,6 +13,7 @@ from django.test import override_settings
 from shared.cache_suggestions import cache_new_suggestions
 from shared.derived_state import DerivedState, derive_states
 from shared.exposure import reconcile_exposures
+from shared.identity.keys import persist_product_keys
 from shared.listeners.snapshot import apply_snapshot_changes, snapshot_after_evaluation
 from shared.matching import matchers as matchers_module
 from shared.models.cached import CachedSuggestions
@@ -440,21 +441,48 @@ def test_attribute_gone_from_every_branch_is_retracted(
     assert pending.status == Status.PENDING
 
 
-def test_new_unreferenced_attribute_goes_to_reverse_matching(
+def test_new_attribute_is_reverse_matched(
     pending: CVEDerivationClusterProposal,
     snapshot: Callable[..., NixEvaluation],
 ) -> None:
-    with mock.patch("shared.pipeline.reverse_match_attributes") as reverse:
+    """An attribute added by an evaluation joins the open suggestion whose CVE names it."""
+    persist_product_keys(list(AffectedProduct.objects.all()))
+    snapshot(
+        {
+            "foo": ("foo", "1.0"),
+            "foo-cli": ("foo", "1.0"),
+            "x": ("x", "1"),
+            "python3Packages.foo": ("python3.13-foo", "1.0"),
+            "unrelated": ("unrelated", "1"),
+        }
+    )
+    assert list(linked(pending)) == ["foo", "foo-cli", "python3Packages.foo"]
+    causes = set(
+        TrackerEvent.objects.filter(
+            kind=TrackerEvent.Kind.MATCH_ADDED, attrpath="python3Packages.foo"
+        ).values_list("cause", flat=True)
+    )
+    assert causes == {TrackerEvent.Cause.EVALUATION}
+
+
+def test_reverse_selection_gets_every_added_or_changed_attribute(
+    pending: CVEDerivationClusterProposal,
+    snapshot: Callable[..., NixEvaluation],
+) -> None:
+    with mock.patch(
+        "shared.pipeline.reverse_match_attributes", return_value={}
+    ) as reverse:
         snapshot(
             {
-                "foo": ("foo", "1.0"),
+                "foo": ("foo", "1.0", {"cpe_vendor": "foo", "cpe_product": "foo"}),
                 "foo-cli": ("foo", "1.0"),
-                "x": ("x", "1"),
+                "x": ("x", "2"),
                 "new": ("new", "1"),
             }
         )
     (attrpaths, *_), _ = reverse.call_args
-    assert attrpaths == ["new"]
+    # `foo` changed CPE metadata (already matched), `new` was added; a version bump is not a change.
+    assert attrpaths == ["foo", "new"]
 
 
 @override_settings(MATCHING_MAX_ATTRIBUTES=50)
@@ -596,3 +624,24 @@ def test_untracked_branch_is_not_matched(
     suggestion = CVEDerivationClusterProposal.objects.get()
     assert suggestion.rejection_reason == Reason.NO_MATCHES
     assert not suggestion.derivations.exists()
+
+
+def test_mapping_change_reaches_links_and_cache(
+    pending: CVEDerivationClusterProposal,
+    make_product_key: Callable[..., Any],
+) -> None:
+    """Mapping-driven reconciliation goes through the pipeline: links and cache follow."""
+    from shared.identity.reconcile import reconcile_mapping_change
+    from shared.models.matching import ProductMapping
+
+    persist_product_keys(list(AffectedProduct.objects.all()))
+    mapping = ProductMapping.objects.create(
+        product_key=make_product_key("foo", "", "cna"),
+        relation=ProductMapping.Relation.SAME,
+        attrpath="x",
+        source=ProductMapping.Source.CURATED,
+    )
+    reconcile_mapping_change(mapping)
+    pending.refresh_from_db()
+    assert "x" in linked(pending)
+    assert "x" in pending.cached.payload["packages"]

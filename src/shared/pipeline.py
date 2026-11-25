@@ -9,7 +9,7 @@ Entry points:
 - `apply_evaluation(evaluation, branch)`: a branch's snapshot advanced to `evaluation`.
 - `refresh_suggestion(suggestion)`: re-run stale matchers (deploy-time re-match), then
   projection and cache; also what the evaluation path fans out for suggestions it did not touch.
-- `reverse_match_attributes(attrpaths, ...)`: seam for matching new attributes against open CVEs.
+- `reverse_match_attributes(attrpaths, ...)`: open suggestions new or changed attributes may belong to.
 
 Status rules (F3, F4): the stored status is decided once, at creation: pending if there is
 something to show, rejected `no_matches` if not, rejected `known_vulnerability` if nixpkgs
@@ -25,6 +25,7 @@ from typing import Any
 
 import pghistory
 import pgpubsub
+from django.contrib.auth.models import User
 from django.db import connection, transaction
 from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
@@ -38,7 +39,7 @@ from shared.exposure import (
     reconcile_exposures,
     tracked_branches,
 )
-from shared.matching.base import MatcherResult
+from shared.matching.base import MatcherResult, Universe
 from shared.matching.matchers import collect_candidates
 from shared.matching.reconcile import ReconcileResult, reconcile_matches
 from shared.matching.selection import (
@@ -48,7 +49,7 @@ from shared.matching.selection import (
     enabled_matchers,
     select_attributes,
 )
-from shared.matching.view import build_cve_view
+from shared.matching.view import CveView, build_cve_view
 from shared.models.cve import Container, CveRecord
 from shared.models.linkage import (
     MACHINE_REOPENABLE_REJECTIONS,
@@ -286,6 +287,9 @@ def rematch(
     *,
     evaluation: NixEvaluation | None = None,
     exposures: bool = True,
+    view: CveView | None = None,
+    universe: Universe | None = None,
+    actor: User | None = None,
 ) -> RematchResult:
     """
     Reconcile the given matchers (default: all enabled), then exposures, then the projection.
@@ -305,7 +309,13 @@ def rematch(
         )
         if not result.frozen and matchers:
             result.matches = reconcile_matches(
-                suggestion, cause, matchers, evaluation=evaluation
+                suggestion,
+                cause,
+                matchers,
+                evaluation=evaluation,
+                view=view,
+                universe=universe,
+                actor=actor,
             )
             update: dict[str, Any] = {
                 "matcher_versions": {
@@ -394,12 +404,16 @@ def reverse_match_attributes(
     attrpaths: Sequence[str],
     evaluation: NixEvaluation,
     branch: NixpkgsBranch,
-) -> None:
+) -> dict[int, set[str]]:
     """
-    Seam for reverse matching: which open CVEs are these new or changed attributes the product
-    of? Called with attributes that were added or changed metadata and that no suggestion
-    references. Intentionally does nothing yet (built on branch `um/identity`).
+    Reverse matching: the open suggestions whose CVE these new or changed attributes might be
+    the product of (`identity.reverse.select_suggestions`: by name, CPE, repository, mapping
+    and knownVulnerabilities through the CVE-side product key index). The caller re-matches
+    them together with the suggestions found forward, so none is reconciled twice.
     """
+    from shared.identity.reverse import select_suggestions
+
+    return select_suggestions(branch, attrpaths)
 
 
 @dataclass
@@ -409,6 +423,8 @@ class EvaluationOutcome:
     projected: list[int] = field(default_factory=list)
     dispatched: list[int] = field(default_factory=list)
     reverse_candidates: list[str] = field(default_factory=list)
+    # Suggestions selected by reverse matching, with the attributes that pointed at them.
+    reverse_selected: dict[int, set[str]] = field(default_factory=dict)
     gone: list[str] = field(default_factory=list)
 
 
@@ -449,10 +465,10 @@ def apply_evaluation(
     One evaluation step of one branch, from its `BranchPackageChange` rows:
     1. exposures of referenced attributes (`apply_branch_changes`);
     2. matches of suggestions that have `Match` rows on attributes that were added, changed
-       metadata, or are now gone from every tracked branch (a removal is acted on only then);
-    3. reverse matching of added or changed attributes no suggestion has a match on (seam);
-    4. projection and cache of every suggestion touched by 1 or 2;
-    5. fan-out of the remaining suggestions whose links point at an older evaluation of this
+       metadata, or are now gone from every tracked branch (a removal is acted on only then),
+       and of the open suggestions reverse matching selects for the added or changed ones;
+    3. projection and cache of every suggestion touched by 1 or 2;
+    4. fan-out of the remaining suggestions whose links point at an older evaluation of this
        branch, so their links move to the current one (`refresh_suggestion`, after commit).
     """
     exposure_result = apply_branch_changes(evaluation, branch)
@@ -479,16 +495,23 @@ def apply_evaluation(
         .values_list("suggestion_id", "attrpath")
         .distinct()
     )
-    referenced_attrs = set(
-        Match.objects.filter(attrpath__in=changed).values_list("attrpath", flat=True)
-    )
-    outcome.reverse_candidates = sorted(
-        set(exposure_result.unreferenced_added) | (changed - referenced_attrs)
-    )
+    # Every added or changed attribute, also those some suggestion already matches: the change
+    # can make it the product of another CVE.
+    outcome.reverse_candidates = sorted(changed)
     if outcome.reverse_candidates:
-        reverse_match_attributes(outcome.reverse_candidates, evaluation, branch)
+        outcome.reverse_selected = reverse_match_attributes(
+            outcome.reverse_candidates, evaluation, branch
+        )
+    selected = set(outcome.reverse_selected) - {sid for sid, _ in referencing}
+    if selected:
+        # Reverse selection reads pending and accepted suggestions only.
+        selected &= set(
+            CVEDerivationClusterProposal.objects.filter(pk__in=selected)
+            .filter(open_for_projection_q())
+            .values_list("pk", flat=True)
+        )
 
-    rematch_ids = sorted({sid for sid, _ in referencing})
+    rematch_ids = sorted({sid for sid, _ in referencing} | selected)
     for suggestion in CVEDerivationClusterProposal.objects.filter(pk__in=rematch_ids):
         rematch(suggestion, Cause.EVALUATION, evaluation=evaluation)
         cache_new_suggestions(suggestion)
