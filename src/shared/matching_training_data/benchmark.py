@@ -17,7 +17,7 @@ from django.db.models import Q, QuerySet
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, field_serializer
 
 from shared.evaluation import DerivationKey, derivation_as_key
-from shared.listeners.automatic_linkage import (
+from shared.legacy_matching import (
     LinkageOutcome,
     resolve_linkage_candidates,
 )

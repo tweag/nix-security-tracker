@@ -5,7 +5,9 @@ from django.db import transaction
 
 from shared.cache_suggestions import cache_new_suggestions
 from shared.channels import NixEvaluationUpdateChannel, SuggestionRefreshChannel
-from shared.listeners.automatic_linkage import refresh_suggestion_derivation_links
+from shared.legacy_matching import (
+    legacy_refresh_suggestion_derivation_links as refresh_suggestion_derivation_links,
+)
 from shared.models import NixDerivation, NixEvaluation
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.package_clustering import cluster_packages

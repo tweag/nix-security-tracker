@@ -7,7 +7,7 @@ the two agree as long as no term occurs only in a version; the data set below is
 
 from collections.abc import Callable
 
-from shared.listeners.automatic_linkage import resolve_linkage_candidates
+from shared.legacy_matching import resolve_linkage_candidates
 from shared.matching.matchers import collect_candidates
 from shared.matching.view import build_cve_view
 from shared.models.cve import AffectedProduct, Container, Cpe

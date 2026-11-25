@@ -4,7 +4,7 @@ from typing import Any, cast
 import pytest
 from rest_framework.exceptions import ValidationError
 
-from shared.listeners.automatic_linkage import resolve_linkage_candidates
+from shared.legacy_matching import resolve_linkage_candidates
 from shared.matching_training_data import serializers
 from shared.matching_training_data.serializers import (
     BENCHMARK_RELEASE_BRANCH,

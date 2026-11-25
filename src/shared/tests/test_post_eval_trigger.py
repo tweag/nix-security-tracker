@@ -5,7 +5,9 @@ import pytest
 from django.db import transaction
 
 from shared.cache_suggestions import cache_new_suggestions
-from shared.listeners.automatic_linkage import refresh_suggestion_derivation_links
+from shared.legacy_matching import (
+    legacy_refresh_suggestion_derivation_links as refresh_suggestion_derivation_links,
+)
 from shared.listeners.package_clustering import (
     cluster_after_evaluation,
     refresh_and_cache_suggestion,

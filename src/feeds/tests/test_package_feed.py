@@ -7,7 +7,9 @@ from django.urls import reverse
 from django.utils import timezone
 from freezegun import freeze_time
 
-from shared.listeners.automatic_linkage import refresh_suggestion_derivation_links
+from shared.legacy_matching import (
+    legacy_refresh_suggestion_derivation_links as refresh_suggestion_derivation_links,
+)
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
     PackageOverlay,

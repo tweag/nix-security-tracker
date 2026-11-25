@@ -3,7 +3,9 @@ from collections.abc import Callable
 from rest_framework.reverse import reverse
 from rest_framework.test import APIClient
 
-from shared.listeners.automatic_linkage import refresh_suggestion_derivation_links
+from shared.legacy_matching import (
+    legacy_refresh_suggestion_derivation_links as refresh_suggestion_derivation_links,
+)
 from shared.models.issue import NixpkgsIssue
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.nix_evaluation import NixEvaluation

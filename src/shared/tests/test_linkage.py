@@ -6,9 +6,11 @@ import pytest
 from django.test import override_settings
 
 from shared.cache_suggestions import cache_new_suggestions
-from shared.listeners.automatic_linkage import (
-    build_new_links,
-    refresh_suggestion_derivation_links,
+from shared.legacy_matching import (
+    legacy_build_new_links as build_new_links,
+)
+from shared.legacy_matching import (
+    legacy_refresh_suggestion_derivation_links as refresh_suggestion_derivation_links,
 )
 from shared.logs.events import RawRematchEvent
 from shared.logs.fetchers import fetch_suggestion_events
