@@ -135,8 +135,33 @@ class Item:
 
 
 @dataclass
+class ConnectedEvent:
+    created_at: datetime
+    subject: "PullRequest"
+
+
+@dataclass
+class DisconnectedEvent:
+    created_at: datetime
+    subject: "PullRequest"
+
+
+@dataclass
+class CrossReferencedEvent:
+    created_at: datetime
+    source: "PullRequest"
+    will_close_target: bool = False
+
+
+@dataclass
 class Issue(Item):
-    timeline: list[ClosedEvent | ReopenedEvent] = field(default_factory=list)
+    timeline: list[
+        ClosedEvent
+        | ReopenedEvent
+        | ConnectedEvent
+        | DisconnectedEvent
+        | CrossReferencedEvent
+    ] = field(default_factory=list)
     closed_by: list["PullRequest"] = field(default_factory=list)
 
     def timeline_items(
@@ -155,9 +180,22 @@ class Issue(Item):
 
 @dataclass
 class PullRequest(Item):
-    timeline: list[ClosedEvent | ReopenedEvent | MergedEvent] = field(
-        default_factory=list
+    timeline: list[ClosedEvent | ReopenedEvent | MergedEvent | CrossReferencedEvent] = (
+        field(default_factory=list)
     )
+    title: str = ""
+    base_ref_name: str = "master"
+    merge_commit_oid: str | None = None
+    label_names: list[str] = field(default_factory=list)
+
+    @property
+    def merge_commit(self) -> dict[str, Any] | None:
+        if self.merge_commit_oid is None:
+            return None
+        return {"oid": self.merge_commit_oid}
+
+    def labels(self, _info: GraphQLResolveInfo, **args: Any) -> dict[str, Any]:
+        return page([{"name": name} for name in self.label_names], **args)
 
     def timeline_items(
         self,
@@ -211,6 +249,7 @@ def resolve_field(source: Any, info: GraphQLResolveInfo, **args: Any) -> Any:
 class FakeGitHub:
     def __init__(self) -> None:
         self.items: list[Issue | PullRequest] = []
+        self.requests = 0
 
     def repository(
         self, _info: GraphQLResolveInfo, owner: str, name: str, **_: Any
@@ -236,6 +275,7 @@ class FakeGitHub:
     def handle(self, request: PreparedRequest) -> tuple[int, dict[str, str], str]:
         assert isinstance(request.body, str | bytes)
         body = json.loads(request.body)
+        self.requests += 1
         if (nodes := node_count(parse(body["query"]))) > MAX_NODES:
             error = {
                 "type": "MAX_NODE_LIMIT_EXCEEDED",

@@ -6,6 +6,7 @@ from typing import Any
 from urllib.parse import urljoin
 
 from django.contrib.auth.models import User
+from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 from django.db.models.functions import Coalesce
@@ -16,7 +17,7 @@ from django.utils.functional import classproperty
 from django.utils.translation import gettext_lazy as _
 
 from shared.models.linkage import CVEDerivationClusterProposal
-from shared.models.nix_evaluation import TimeStampMixin
+from shared.models.nix_evaluation import SHA1_COMMIT_REGEX, TimeStampMixin
 
 logger = logging.getLogger(__name__)
 
@@ -71,11 +72,28 @@ class GitHubItem(models.Model):
     number = models.PositiveIntegerField()
     kind = models.CharField(max_length=64, choices=Kind.choices)
 
+    # Pull requests only, as of the last sync.
+    title = models.CharField(max_length=1024, blank=True, default="")
+    labels = ArrayField(models.CharField(max_length=255), default=list, blank=True)
+    # Branch the pull request targets, e.g. `master`, `staging-26.05`, `release-26.05`.
+    base_ref = models.CharField(max_length=255, null=True)
+    # Set once merged.
+    merge_commit = models.CharField(max_length=40, null=True)
+    # For a backport: the number of the pull request it backports, in the same repository.
+    # (A number rather than a foreign key to `self`: the admin's autocomplete setup recurses
+    # on self-referencing relations.)
+    backport_of = models.PositiveIntegerField(null=True)
+
     class Meta:  # type: ignore[override]
         constraints = [
             models.UniqueConstraint(
                 fields=["owner", "repository", "number"],
                 name="githubitem_unique",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(merge_commit__isnull=True)
+                | models.Q(merge_commit__regex=SHA1_COMMIT_REGEX),
+                name="githubitem_merge_commit_valid",
             ),
         ]
 

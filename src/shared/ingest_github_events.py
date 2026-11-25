@@ -10,7 +10,7 @@ import github_graphql as schema
 from github import Github, GithubException
 from sgqlc.operation import Operation
 
-from shared.github_events import Repository, TruncatedError
+from shared.github_events import Pager, PullRequest, Repository, TruncatedError
 from shared.models.issue import (
     EventType,
     GitHubClosingReference,
@@ -22,6 +22,30 @@ logger = logging.getLogger(__name__)
 
 # Large enough to save requests, small enough to stay clear of GitHub's query timeouts.
 BATCH_SIZE = 200
+
+
+def record_pull_request(
+    owner: str, name: str, data: PullRequest, events: list | None = None
+) -> GitHubItem:
+    """Create or update the item of a pull request with its fields and events."""
+    fields = {
+        "title": data.title,
+        "base_ref": data.base_ref,
+        "merge_commit": data.merge_commit,
+        "labels": sorted(data.labels()),
+    }
+    item, created = GitHubItem.objects.get_or_create(
+        owner=owner,
+        repository=name,
+        number=data.number,
+        defaults={"kind": GitHubItem.Kind.PULL_REQUEST, **fields},
+    )
+    if not created and any(getattr(item, k) != v for k, v in fields.items()):
+        for k, v in fields.items():
+            setattr(item, k, v)
+        item.save(update_fields=list(fields))
+    item.add_events(events if events is not None else data.events())
+    return item
 
 
 def sync_github_events(github: Github) -> None:
@@ -50,6 +74,7 @@ def sync_github_events(github: Github) -> None:
         items, key=lambda item: (item.owner, item.repository)
     ):
         by_number = {item.number: item for item in group}
+        pager = Pager(github, owner, name)
         logger.info(
             f"{owner}/{name}: Syncing GitHub events for {len(by_number)} issues..."
         )
@@ -83,15 +108,24 @@ def sync_github_events(github: Github) -> None:
             data = operation + response
             found = []
             events = 0
-            for issue in Repository(data.repository).issues(batch):
+            for issue in Repository(data.repository, pager).issues(batch):
                 item = by_number[issue.number]
                 try:
                     issue_events = list(issue.events())
                     closing_pull_requests = [
-                        (closing_pr, list(closing_pr.events()))
+                        (closing_pr, list(closing_pr.events()), closing_pr.labels())
                         for closing_pr in issue.closing_pull_requests()
                         if closing_pr.repository == f"{owner}/{name}"
                     ]
+                except GithubException as e:
+                    message = f"Fetching further pages failed: {e}"
+                    logger.error(f"Skipping {owner}/{name}#{issue.number}: {message}")
+                    GitHubSyncError.objects.update_or_create(
+                        item=item,
+                        error_type="PAGINATION",
+                        defaults={"message": message},
+                    )
+                    continue
                 except TruncatedError as e:
                     message = f"Query result has more items than could be fetched in one page: {e.what} of {owner}/{name}#{e.number}"
                     logger.error(f"Skipping {owner}/{name}#{issue.number}: {message}")
@@ -114,15 +148,10 @@ def sync_github_events(github: Github) -> None:
                 item.add_events(issue_events)
                 events += len(issue_events)
                 pull_requests = []
-                for closing_pr, pr_events in closing_pull_requests:
-                    pull_request, _ = GitHubItem.objects.get_or_create(
-                        owner=owner,
-                        repository=name,
-                        number=closing_pr.number,
-                        defaults={"kind": GitHubItem.Kind.PULL_REQUEST},
+                for closing_pr, pr_events, _ in closing_pull_requests:
+                    pull_requests.append(
+                        record_pull_request(owner, name, closing_pr, pr_events)
                     )
-                    pull_request.add_events(pr_events)
-                    pull_requests.append(pull_request)
                 GitHubClosingReference.objects.filter(issue=item).exclude(
                     pull_request__in=pull_requests
                 ).delete()

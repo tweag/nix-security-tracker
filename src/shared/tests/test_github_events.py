@@ -185,7 +185,7 @@ def test_full_batch_stays_within_node_limit(
     assert GitHubEvent.objects.count() == len(numbers)
 
 
-def test_truncated_timeline_skips_issue(
+def test_long_timeline_is_paginated(
     issue: NixpkgsIssue, fake_github: FakeGitHub
 ) -> None:
     for number in (1, 2):
@@ -209,7 +209,7 @@ def test_truncated_timeline_skips_issue(
                 else ReopenedEvent(
                     created_at=datetime(2026, 10, 1) + timedelta(hours=n)
                 )
-                for n in range(1, 102)
+                for n in range(1, 252)
             ],
         ),
         Issue("NixOS/nixpkgs", 2, created_at=datetime(2026, 10, 1)),
@@ -217,11 +217,11 @@ def test_truncated_timeline_skips_issue(
 
     sync_github_events(Github())
 
-    assert set(GitHubEvent.objects.values_list("item__number", flat=True)) == {2}
-    assert set(GitHubSyncError.objects.values_list("item__number", "error_type")) == {
-        (1, "TRUNCATED")
-    }
-    assert "timeline of NixOS/nixpkgs#1" in GitHubSyncError.objects.get().message
+    # Opened, then 251 closes and reopens: the first page of 20 and three of 100.
+    assert GitHubEvent.objects.filter(item__number=1).count() == 252
+    assert GitHubEvent.objects.filter(item__number=2).count() == 1
+    assert not GitHubSyncError.objects.exists()
+    assert fake_github.requests == 1 + 3
 
 
 def test_reappearing_issue_clears_error(
@@ -385,44 +385,8 @@ def test_failed_issue_keeps_closing_pull_requests(
     }
 
 
-@pytest.mark.parametrize(
-    ("closed_by", "where"),
-    [
-        (
-            [
-                PullRequest("NixOS/nixpkgs", n, created_at=datetime(2026, 10, 2))
-                for n in range(2, 103)
-            ],
-            "closing pull requests of NixOS/nixpkgs#1",
-        ),
-        (
-            [
-                PullRequest(
-                    "NixOS/nixpkgs",
-                    2,
-                    created_at=datetime(2026, 10, 2),
-                    timeline=[
-                        ClosedEvent(
-                            created_at=datetime(2026, 10, 2) + timedelta(hours=n),
-                            state_reason="COMPLETED",
-                        )
-                        if n % 2
-                        else ReopenedEvent(
-                            created_at=datetime(2026, 10, 2) + timedelta(hours=n)
-                        )
-                        for n in range(1, 102)
-                    ],
-                )
-            ],
-            "timeline of NixOS/nixpkgs#2",
-        ),
-    ],
-)
-def test_truncated_closing_data_skips_issue(
-    issue: NixpkgsIssue,
-    fake_github: FakeGitHub,
-    closed_by: list[PullRequest],
-    where: str,
+def test_long_closing_data_is_paginated(
+    issue: NixpkgsIssue, fake_github: FakeGitHub
 ) -> None:
     item = GitHubItem.objects.create(
         owner="NixOS",
@@ -431,19 +395,75 @@ def test_truncated_closing_data_skips_issue(
         kind=GitHubItem.Kind.ISSUE,
     )
     item.nixpkgs_issues.add(issue)
+    closed_by = [
+        PullRequest("NixOS/nixpkgs", n, created_at=datetime(2026, 10, 2))
+        for n in range(3, 104)
+    ]
+    long_history = PullRequest(
+        "NixOS/nixpkgs",
+        2,
+        created_at=datetime(2026, 10, 2),
+        timeline=[
+            ClosedEvent(
+                created_at=datetime(2026, 10, 2) + timedelta(hours=n),
+                state_reason="COMPLETED",
+            )
+            if n % 2
+            else ReopenedEvent(created_at=datetime(2026, 10, 2) + timedelta(hours=n))
+            for n in range(1, 102)
+        ],
+        label_names=[f"label {n}" for n in range(30)],
+    )
     fake_github.items = [
         Issue(
             "NixOS/nixpkgs",
             1,
             created_at=datetime(2026, 10, 1),
-            closed_by=closed_by,
+            closed_by=[long_history, *closed_by],
         ),
+        long_history,
         *closed_by,
     ]
 
     sync_github_events(Github())
 
-    assert not item.closed_by.exists()
-    error = GitHubSyncError.objects.get(item=item)
-    assert error.error_type == "TRUNCATED"
-    assert where in error.message
+    assert item.closed_by.count() == 102
+    assert GitHubEvent.objects.filter(item__number=2).count() == 102
+    assert len(GitHubItem.objects.get(number=2).labels) == 30
+    assert not GitHubSyncError.objects.exists()
+
+
+def test_pull_request_fields_are_stored(
+    issue: NixpkgsIssue, fake_github: FakeGitHub
+) -> None:
+    GitHubItem.objects.create(
+        owner="NixOS", repository="nixpkgs", number=1, kind=GitHubItem.Kind.ISSUE
+    ).nixpkgs_issues.add(issue)
+    pull_request = PullRequest(
+        "NixOS/nixpkgs",
+        2,
+        created_at=datetime(2026, 10, 2),
+        title="foo: 1.0 -> 1.1",
+        base_ref_name="staging",
+        merge_commit_oid="a" * 40,
+        label_names=["backport release-26.05", "1.severity: security"],
+        timeline=[MergedEvent(created_at=datetime(2026, 10, 3))],
+    )
+    github_issue = Issue(
+        "NixOS/nixpkgs", 1, created_at=datetime(2026, 10, 1), closed_by=[pull_request]
+    )
+    fake_github.items = [github_issue, pull_request]
+
+    sync_github_events(Github())
+
+    item = GitHubItem.objects.get(number=2)
+    assert (item.title, item.base_ref, item.merge_commit, item.labels) == (
+        "foo: 1.0 -> 1.1",
+        "staging",
+        "a" * 40,
+        ["1.severity: security", "backport release-26.05"],
+    )
+
+    pull_request.title = "foo: 1.0 -> 1.2"
+    sync_github_events(Github())
+    assert GitHubItem.objects.get(number=2).title == "foo: 1.0 -> 1.2"
