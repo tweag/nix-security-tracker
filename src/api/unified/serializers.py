@@ -357,6 +357,11 @@ class PossiblyFixedSerializer(serializers.Serializer):
     compare_url = serializers.URLField(allow_null=True)
 
 
+class PossiblyFixedBranchSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    count = serializers.IntegerField(help_text="Rows in the queue on this branch.")
+
+
 class ConfirmFixedSerializer(serializers.Serializer):
     fix_commit = FixCommitField(
         required=False,

@@ -149,3 +149,14 @@ def test_action_validation(committer_client: APIClient, fixed: World) -> None:
     response = committer_client.post(action_url(row_id(fixed) + 1, "confirm_fixed"))
     assert response.status_code == 404
     assert not Verdict.objects.exists()
+
+
+def test_branches(
+    anonymous_client: APIClient,
+    fixed: World,
+    make_branch: Callable[..., NixpkgsBranch],
+) -> None:
+    make_branch("staging")
+    response = anonymous_client.get(reverse("possibly-fixed-branches"))
+    assert response.status_code == 200
+    assert response.json() == [{"name": "master", "count": 1}]

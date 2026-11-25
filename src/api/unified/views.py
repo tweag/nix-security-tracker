@@ -1,3 +1,4 @@
+from collections import Counter
 from typing import Any, cast
 
 from django.contrib.auth.models import User
@@ -13,10 +14,12 @@ from api.serializers import ErrorDetailSerializer
 from api.suggestions.views import CanEditSuggestion, SuggestionPagination
 from api.unified.serializers import (
     ConfirmFixedSerializer,
+    PossiblyFixedBranchSerializer,
     PossiblyFixedSerializer,
     StillAffectedSerializer,
 )
 from shared.derived_state import PossiblyFixed, possibly_fixed_queue, set_verdict
+from shared.exposure import tracked_branches
 from shared.models.matching import Exposure, Verdict
 
 
@@ -82,6 +85,19 @@ class PossiblyFixedViewSet(viewsets.GenericViewSet):
         return self.get_paginated_response(
             PossiblyFixedSerializer(page, many=True).data
         )
+
+    @extend_schema(
+        operation_id="listPossiblyFixedBranches",
+        description="Tracked branches, and any other branch with rows in the queue, with the number of rows on each.",
+        responses={200: PossiblyFixedBranchSerializer(many=True)},
+    )
+    @action(detail=False, methods=["get"], url_path="branches", pagination_class=None)
+    def branches(self, request: Request) -> Response:
+        counts = Counter(p.branch_id for p in possibly_fixed_queue())
+        names = [b.name for b in tracked_branches()]
+        names += sorted(set(counts) - set(names))
+        data = [{"name": n, "count": counts.get(n, 0)} for n in names]
+        return Response(PossiblyFixedBranchSerializer(data, many=True).data)
 
     def _answer(self, pk: int, verdict: str, data: dict, user: User) -> Response:
         exposure = get_object_or_404(
