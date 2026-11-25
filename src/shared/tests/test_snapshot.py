@@ -1,9 +1,11 @@
 from collections.abc import Callable
 from datetime import timedelta
+from io import StringIO
 from typing import Any
 from unittest import mock
 
 import pytest
+from django.core.management import call_command
 from django.db import transaction
 from pgpubsub.models import Notification as PgpubsubNotification
 
@@ -559,3 +561,36 @@ def test_clustering_after_snapshot_fills_package(
         BranchPackage.objects.get(attrpath="foo").package
         == PackageAttrpath.objects.get(attrpath="foo").package
     )
+
+
+def test_backfill_command(
+    branch: NixpkgsBranch,
+    make_branch: Callable[..., NixpkgsBranch],
+    make_channel: Callable[..., NixChannel],
+    make_evaluation: Callable[..., NixEvaluation],
+    make_attr: Callable[..., NixDerivation],
+) -> None:
+    older = make_evaluation(age=timedelta(days=1))
+    make_attr(older, "foo", version="1.0")
+    latest = make_evaluation()
+    make_attr(latest, "foo", version="2.0")
+    eol = make_branch("release-20.03")
+    eol_channel = make_channel(
+        channel_branch="nixos-20.03",
+        release_branch=eol,
+        state=NixChannel.ChannelState.END_OF_LIFE,
+    )
+    make_attr(make_evaluation(channel=eol_channel), "foo")
+
+    out = StringIO()
+    call_command("backfill_branch_packages", stdout=out)
+
+    assert "master: initialised" in out.getvalue()
+    branch.refresh_from_db()
+    assert branch.current_evaluation == latest
+    assert BranchPackage.objects.get().version == "2.0"
+    assert not BranchPackageChange.objects.exists()
+
+    out = StringIO()
+    call_command("backfill_branch_packages", stdout=out)
+    assert "master: already_current" in out.getvalue()
