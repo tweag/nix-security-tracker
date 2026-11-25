@@ -176,6 +176,7 @@ class PullRequest:
         self.data = data
         self.pager = pager
         self._labels: list[str] | None = None
+        self.cross_reference_count = 0
 
     def _more(
         self, field: str, select: Select, **args: Any
@@ -225,9 +226,13 @@ class PullRequest:
         return self._labels
 
     def references(self) -> list["PullRequest"]:
-        """Pull requests mentioning this one, from `with_references`."""
-        return [
-            PullRequest(node.source, self.pager)
+        """
+        Pull requests mentioning this one, from `with_references`. `cross_reference_count`
+        is then the number of cross-reference events of any source (GitHub shows none to
+        some tokens).
+        """
+        nodes = [
+            node
             for node in collect(
                 self.data.references,
                 self._more(
@@ -239,7 +244,12 @@ class PullRequest:
                 "references",
             )
             if isinstance(node, schema.CrossReferencedEvent)
-            and isinstance(node.source, schema.PullRequest)
+        ]
+        self.cross_reference_count = len(nodes)
+        return [
+            PullRequest(node.source, self.pager)
+            for node in nodes
+            if isinstance(node.source, schema.PullRequest)
         ]
 
     def events(self) -> Iterator[GitHubEvent]:
@@ -396,6 +406,8 @@ class Issue:
     def __init__(self, data: schema.Issue, pager: Pager | None = None) -> None:
         self.data = data
         self.pager = pager
+        # Cross-reference events seen by `references` (GitHub shows none to some tokens).
+        self.cross_reference_count = 0
 
     def _more(
         self, field: str, select: Select, **args: Any
@@ -479,6 +491,7 @@ class Issue:
             self.number,
             "references",
         )
+        self.cross_reference_count = 0
         connected: dict[int, PullRequest] = {}
         mentioned: dict[int, PullRequest] = {}
         for node in nodes:
@@ -493,10 +506,12 @@ class Issue:
                     node.subject, schema.PullRequest
                 ):
                     connected.pop(node.subject.number, None)
-                case schema.CrossReferencedEvent() if isinstance(
-                    node.source, schema.PullRequest
-                ):
-                    mentioned[node.source.number] = PullRequest(node.source, self.pager)
+                case schema.CrossReferencedEvent():
+                    self.cross_reference_count += 1
+                    if isinstance(node.source, schema.PullRequest):
+                        mentioned[node.source.number] = PullRequest(
+                            node.source, self.pager
+                        )
         return [Reference(pr, "connected") for pr in connected.values()] + [
             Reference(pr, "cross_reference")
             for number, pr in mentioned.items()

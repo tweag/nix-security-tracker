@@ -8,13 +8,15 @@ from shared.channel_history import (
     history_branches,
     poll_channel_heads,
 )
+from shared.fix_links import confirm_fix_links
 from shared.history import CachedAncestry, HistoryClone
 
 
 class Command(BaseCommand):
     help = (
-        "Record channel head advances (one git ls-remote), fetch the history clone, and record "
-        "which fixes landed in which channel. Cheap; meant to run hourly."
+        "Record channel head advances (one git ls-remote), fetch the history clone, confirm fix "
+        "commits of merged linked pull requests, and record which fixes landed in which "
+        "channel. Cheap; meant to run hourly."
     )
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
@@ -41,6 +43,9 @@ class Command(BaseCommand):
             seconds = clone.fetch(history_branches())
             self.stdout.write(f"Fetched history in {seconds:.1f}s")
         ancestry = CachedAncestry(clone)
+        # Exact fix commits first: they land earlier than the fix evaluation's commit.
+        confirmed = confirm_fix_links(ancestry)
+        self.stdout.write(f"{confirmed.confirmed} fix commit(s) confirmed")
         result = compute_landings(ancestry)
         self.stdout.write(
             self.style.SUCCESS(

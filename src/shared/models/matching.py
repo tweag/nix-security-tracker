@@ -343,6 +343,9 @@ class TrackerEvent(models.Model):
         VERDICT_CHANGED = "verdict_changed", _("verdict changed")
         VERDICT_REMOVED = "verdict_removed", _("verdict removed")
         FIX_LANDED = "fix_landed", _("fix landed in a channel")
+        FIX_LINK_ADDED = "fix_link_added", _("fix pull request linked")
+        FIX_LINK_RETRACTED = "fix_link_retracted", _("fix pull request unlinked")
+        EXPOSURE_FIX_COMMIT_SET = "exposure_fix_commit_set", _("fix commit recorded")
 
     class Cause(models.TextChoices):
         EVALUATION = "evaluation", _("evaluation")
@@ -352,6 +355,7 @@ class TrackerEvent(models.Model):
         USER = "user", _("user")
         BACKFILL = "backfill", _("backfill")
         CHANNEL = "channel", _("channel advance")
+        GITHUB = "github", _("GitHub")
 
     # Covered by the index on (suggestion, created_at).
     suggestion = models.ForeignKey(

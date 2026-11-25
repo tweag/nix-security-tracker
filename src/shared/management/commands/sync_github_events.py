@@ -10,4 +10,7 @@ class Command(BaseCommand):
     help = "Record what happened on GitHub to the issues we published"
 
     def handle(self, *args: Any, **options: Any) -> None:
-        sync_github_events(get_gh())
+        links = sync_github_events(get_gh())
+        self.stdout.write(
+            f"fix links: {links.added} added, {links.retracted} retracted; {links.visibility()}"
+        )

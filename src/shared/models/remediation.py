@@ -5,9 +5,12 @@ moved, and when a fix reached a channel.
 
 from django.db import models
 from django.db.models import Q
+from django.utils.translation import gettext_lazy as _
 
+from shared.models.issue import GitHubItem
+from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.matching import Exposure
-from shared.models.nix_evaluation import SHA1_COMMIT_REGEX, NixChannel
+from shared.models.nix_evaluation import SHA1_COMMIT_REGEX, NixChannel, NixpkgsBranch
 
 
 class ChannelAdvance(models.Model):
@@ -85,3 +88,63 @@ class FixLanding(models.Model):
     def __str__(self) -> str:
         retracted = " (retracted)" if self.retracted_at else ""
         return f"{self.exposure_id} in {self.channel_id} at {self.landed_at:%Y-%m-%d %H:%M}{retracted}"
+
+
+class FixLinkQuerySet(models.QuerySet):
+    def live(self) -> "FixLinkQuerySet":
+        return self.filter(retracted_at__isnull=True)
+
+
+class FixLink(models.Model):
+    """
+    A pull request claimed to fix the CVE of a suggestion, on a branch (resolved from its base
+    ref, `staging*` mapped to the release branch it feeds) and optionally for one attribute.
+    A claim until `confirmed`: merged, and the exposure on that branch observed fixed after
+    the merge, which also sets `Exposure.fix_commit`. Retracted when its source disappears.
+    `GitHubClosingReference` stays as the issue-level record; this is the per-suggestion one.
+    """
+
+    objects = FixLinkQuerySet.as_manager()
+
+    class Source(models.TextChoices):
+        # GitHub's closing references of the published issue.
+        CLOSING_REFERENCE = "closing_reference", _("closing reference")
+        # Connected to the published issue (development sidebar or closing keyword).
+        CONNECTED = "connected", _("connected")
+        # Mentions the published issue.
+        CROSS_REFERENCE = "cross_reference", _("cross-reference")
+        # A pull request into a release branch mentioning a linked pull request.
+        BACKPORT = "backport", _("backport")
+        # A `backport <branch>` label on a linked pull request: intent, the item is the original.
+        BACKPORT_LABEL = "backport_label", _("backport label")
+        MANUAL = "manual", _("manual")
+
+    suggestion = models.ForeignKey(
+        CVEDerivationClusterProposal,
+        on_delete=models.CASCADE,
+        related_name="fix_links",
+        db_index=False,
+    )
+    attrpath = models.CharField(max_length=255, null=True)
+    branch = models.ForeignKey(
+        NixpkgsBranch, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    item = models.ForeignKey(
+        GitHubItem, on_delete=models.CASCADE, related_name="fix_links"
+    )
+    source = models.CharField(max_length=32, choices=Source.choices)
+    confirmed = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    retracted_at = models.DateTimeField(null=True)
+
+    class Meta:  # type: ignore[override]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["suggestion", "item", "source", "branch"],
+                nulls_distinct=False,
+                name="fixlink_unique",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.suggestion_id}: #{self.item_id} -> {self.branch_id or '?'} ({self.source})"
