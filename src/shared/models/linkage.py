@@ -52,6 +52,17 @@ STATUS_TRANSITIONS: list[tuple[str, str]] = [
     (SuggestionStatus.ACCEPTED, SuggestionStatus.PUBLISHED),
 ]
 
+# Rejections the matcher makes by itself, as opposed to a human or a CVE-level screen.
+# A suggestion rejected for one of these reasons is reopened when a later re-match finds
+# something to show (`TRACKER_TRANSITIONS`).
+MACHINE_REOPENABLE_REJECTIONS: list[str] = ["no_matches", "max_matches_exceeded"]
+
+# Transitions only the tracker makes, never offered to users (see `check_change_status`).
+# The database allows them for `MACHINE_REOPENABLE_REJECTIONS` only (`reopen_machine_rejection_only`).
+TRACKER_TRANSITIONS: list[tuple[str, str]] = [
+    (SuggestionStatus.REJECTED, SuggestionStatus.PENDING),
+]
+
 
 class BulkValidationError(Exception):
     """
@@ -543,6 +554,10 @@ class CVEDerivationClusterProposal(TimeStampMixin):
         help_text=_("Version of the matching algorithm that generated this proposal"),
     )
 
+    # Version of each matcher last run on this suggestion, by slug, also when it found nothing.
+    # A matcher whose current version is not recorded here is stale for this suggestion.
+    matcher_versions = models.JSONField(default=dict, blank=True)
+
     @property
     def is_frozen(self) -> bool:
         return self.status not in [
@@ -1017,7 +1032,21 @@ class CVEDerivationClusterProposal(TimeStampMixin):
             pgtrigger.FSM(
                 name="status_fsm",
                 field="status",
-                transitions=STATUS_TRANSITIONS,
+                transitions=STATUS_TRANSITIONS + TRACKER_TRANSITIONS,
+            ),
+            pgtrigger.Protect(
+                name="reopen_machine_rejection_only",
+                operation=pgtrigger.Update,
+                condition=pgtrigger.Q(
+                    old__status=SuggestionStatus.REJECTED,
+                    new__status=SuggestionStatus.PENDING,
+                )
+                & (
+                    pgtrigger.Q(old__rejection_reason__isnull=True)
+                    | ~pgtrigger.Q(
+                        old__rejection_reason__in=MACHINE_REOPENABLE_REJECTIONS
+                    )
+                ),
             ),
         ]
 
@@ -1220,6 +1249,9 @@ class ProvenanceFlags(IntFlag, boundary=STRICT):
     # Whether the hardware constraint is matched for this derivation.
     HARDWARE_CONSTRAINT_INRANGE = 1 << 4
     KERNEL_CONSTRAINT_INRANGE = 1 << 5
+    # Kept on the suggestion although no active match produces the attribute any more
+    # (a human acted on the suggestion, or the re-match found nothing at all).
+    NO_LONGER_MATCHED = 1 << 8
 
 
 class DerivationClusterProposalLink(models.Model):
