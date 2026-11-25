@@ -143,6 +143,12 @@ class Hit(NamedTuple):
         )
 
 
+def _product_order(hit: Hit) -> tuple[bool, int]:
+    """Claimed affected products first, by pk; then hits with no affected product pk."""
+    pk = hit.product.affected_product if hit.product else None
+    return (pk is None, pk or 0)
+
+
 def aggregate(
     hits: Iterable[Hit], limit: int, ceiling_hit: bool = False
 ) -> MatcherResult:
@@ -159,7 +165,7 @@ def aggregate(
         attr_hits.sort(
             key=lambda h: (
                 -h.score,
-                h.product.affected_product if h.product else 0,
+                *_product_order(h),
                 h.cve_field,
                 h.cve_value,
                 h.pkg_field,
