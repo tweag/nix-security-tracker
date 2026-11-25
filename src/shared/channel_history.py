@@ -48,6 +48,14 @@ def tracked_channels() -> list[NixChannel]:
     )
 
 
+def history_branches() -> list[str]:
+    """Refs the history clone needs: tracked channels and the branches they follow."""
+    names = set()
+    for channel in tracked_channels():
+        names |= {channel.channel_branch, channel.release_branch_id}
+    return sorted(names)
+
+
 def record_advance(
     channel: NixChannel, commit: str, observed_at: datetime
 ) -> ChannelAdvance | None:

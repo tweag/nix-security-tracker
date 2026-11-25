@@ -1,10 +1,17 @@
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from io import StringIO
 from pathlib import Path
+from typing import Any
 
 import pytest
+from django.core.management import call_command
 
-from shared.channel_history import poll_channel_heads, record_advance
+from shared.channel_history import (
+    history_branches,
+    poll_channel_heads,
+    record_advance,
+)
 from shared.git import get_head_sha1s
 from shared.models.nix_evaluation import NixChannel, NixpkgsBranch
 from shared.models.remediation import ChannelAdvance
@@ -76,3 +83,38 @@ def test_poll_skips_missing_channel_branch(
 ) -> None:
     make_channel("nixos-unstable")
     assert poll_channel_heads(repo.url, now=T0) == []
+
+
+def test_track_channels_command(
+    repo: LocalRepo,
+    tmp_path: Path,
+    settings: Any,
+    make_channel: Callable[..., NixChannel],
+    make_branch: Callable[..., NixpkgsBranch],
+) -> None:
+    make_channel("nixos-unstable", release_branch=make_branch("master"))
+    head = repo.commit("nixos-unstable", "channel")
+    settings.GIT_CLONE_URL = repo.url
+    settings.NIXPKGS_HISTORY_CHECKOUT = tmp_path / "history.git"
+    settings.NIXPKGS_HISTORY_FILTER = "tree:0"
+    out = StringIO()
+
+    call_command("track_channels", stdout=out)
+
+    assert ChannelAdvance.objects.get().commit == head
+    assert "0 landing(s) recorded" in out.getvalue()
+    assert (tmp_path / "history.git" / "refs" / "heads" / "nixos-unstable").exists()
+    assert history_branches() == ["master", "nixos-unstable"]
+
+
+def test_track_channels_without_history_clone(
+    repo: LocalRepo, settings: Any, make_channel: Callable[..., NixChannel]
+) -> None:
+    make_channel("nixos-unstable")
+    repo.commit("nixos-unstable", "channel")
+    settings.GIT_CLONE_URL = repo.url
+    settings.NIXPKGS_HISTORY_CHECKOUT = None
+    out = StringIO()
+    call_command("track_channels", stdout=out)
+    assert ChannelAdvance.objects.count() == 1
+    assert "no landings computed" in out.getvalue()

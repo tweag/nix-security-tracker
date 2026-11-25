@@ -242,6 +242,7 @@ in
         CSRF_TRUSTED_ORIGINS = mkDefault [ "https://${cfg.domain}" ];
         EVALUATION_LOGS_DIRECTORY = mkDefault "/var/log/nix-security-tracker/evaluation";
         LOCAL_NIXPKGS_CHECKOUT = mkDefault "/var/lib/nix-security-tracker/nixpkgs-repo";
+        NIXPKGS_HISTORY_CHECKOUT = mkDefault "/var/lib/nix-security-tracker/nixpkgs-history.git";
         CVE_CACHE_DIR = mkDefault "/var/lib/nix-security-tracker/cve-cache";
         ACCOUNT_DEFAULT_HTTP_PROTOCOL = mkDefault (with cfg; if production then "https" else "http");
         BASE_URL = mkDefault (with cfg; "http${optionalString production "s"}://${domain}");
@@ -687,6 +688,29 @@ in
             '';
 
             startAt = "*-*-* 05:00:00";
+          };
+
+          nix-security-tracker-channels = {
+            description = "Web security tracker - record channel advances and fix landings";
+            after = [
+              "network.target"
+              "postgresql.service"
+              "nix-security-tracker-migrations.service"
+            ];
+            requires = [
+              "postgresql.service"
+              "nix-security-tracker-migrations.service"
+            ];
+            wantedBy = [ ];
+            serviceConfig.Type = "oneshot";
+
+            # One `git ls-remote` for the heads, an incremental fetch of the history-only
+            # clone (created on the first run), local ancestry tests for pending fixes.
+            script = ''
+              ${manage.name} track_channels
+            '';
+
+            startAt = "hourly";
           };
 
           nix-security-tracker-github-teams = {
