@@ -2,7 +2,7 @@ import secrets
 from collections import defaultdict
 from collections.abc import Callable
 from datetime import timedelta
-from typing import ParamSpec
+from typing import Any, ParamSpec
 
 import pytest
 from allauth.socialaccount.models import SocialAccount
@@ -33,6 +33,7 @@ from shared.models.linkage import (
     PackageClusterProposalLink,
     ProvenanceFlags,
 )
+from shared.models.matching import Exposure, Match, ProductKey, Verdict
 from shared.models.nix_evaluation import (
     NixChannel,
     NixDerivation,
@@ -42,6 +43,7 @@ from shared.models.nix_evaluation import (
     NixpkgsBranch,
 )
 from shared.models.package import Package, PackageAttrpath, PackageDerivation
+from shared.models.snapshot import BranchPackage
 from shared.notify_users import create_package_subscription_notifications
 from shared.package_clustering import cluster_packages
 from webview.models import SuggestionNotification as Notification
@@ -604,6 +606,131 @@ def make_token(db: None) -> Callable[..., tuple[AuthToken, str]]:
     def wrapped(user: User) -> tuple[AuthToken, str]:
         return AuthToken.objects.create(  # type: ignore[return-value]
             user=user, expiry=settings.REST_KNOX["TOKEN_TTL"]
+        )
+
+    return wrapped
+
+
+@pytest.fixture
+def make_branch_package(
+    branch: NixpkgsBranch,
+    evaluation: NixEvaluation,
+) -> Callable[..., BranchPackage]:
+    """Snapshot row; defaults describe the `drv` fixture (`foo-1.0`)."""
+
+    def wrapped(
+        attrpath: str = "foo",
+        pname: str = "foo",
+        version: str = "1.0",
+        branch: NixpkgsBranch = branch,
+        evaluation: NixEvaluation = evaluation,
+        **fields: Any,
+    ) -> BranchPackage:
+        name = f"{pname}-{version}" if version else pname
+        fields.setdefault("systems", ["x86_64-linux"])
+        fields.setdefault("drv_digest", secrets.token_hex(32))
+        return BranchPackage.objects.create(
+            branch=branch,
+            attrpath=attrpath,
+            evaluation=evaluation,
+            name=name,
+            pname=pname,
+            version=version,
+            **fields,
+        )
+
+    return wrapped
+
+
+@pytest.fixture
+def make_product_key(db: None) -> Callable[..., ProductKey]:
+    def wrapped(
+        product: str = "foo",
+        vendor: str = "",
+        kind: ProductKey.Kind = ProductKey.Kind.CPE,
+    ) -> ProductKey:
+        key, _ = ProductKey.objects.get_or_create(
+            kind=kind,
+            vendor=ProductKey.normalise(vendor),
+            product=ProductKey.normalise(product),
+        )
+        return key
+
+    return wrapped
+
+
+@pytest.fixture
+def make_match(
+    suggestion: CVEDerivationClusterProposal,
+) -> Callable[..., Match]:
+    def wrapped(
+        attrpath: str = "foo",
+        matcher: str = "test",
+        score: float = 1.0,
+        suggestion: CVEDerivationClusterProposal = suggestion,
+        **fields: Any,
+    ) -> Match:
+        fields.setdefault("matcher_version", 1)
+        return Match.objects.create(
+            suggestion=suggestion,
+            attrpath=attrpath,
+            matcher=matcher,
+            score=score,
+            **fields,
+        )
+
+    return wrapped
+
+
+@pytest.fixture
+def make_exposure(
+    suggestion: CVEDerivationClusterProposal,
+    branch: NixpkgsBranch,
+    evaluation: NixEvaluation,
+) -> Callable[..., Exposure]:
+    def wrapped(
+        attrpath: str = "foo",
+        observed: Exposure.Observed = Exposure.Observed.AFFECTED,
+        reason: Exposure.Reason = Exposure.Reason.VERSION_RANGE,
+        version: str | None = "1.0",
+        suggestion: CVEDerivationClusterProposal = suggestion,
+        branch: NixpkgsBranch = branch,
+        evaluation: NixEvaluation | None = evaluation,
+        **fields: Any,
+    ) -> Exposure:
+        return Exposure.objects.create(
+            suggestion=suggestion,
+            attrpath=attrpath,
+            branch=branch,
+            version=version,
+            observed=observed,
+            reason=reason,
+            evaluation=evaluation,
+            **fields,
+        )
+
+    return wrapped
+
+
+@pytest.fixture
+def make_verdict(
+    suggestion: CVEDerivationClusterProposal,
+) -> Callable[..., Verdict]:
+    def wrapped(
+        attrpath: str = "foo",
+        verdict: Verdict.Kind = Verdict.Kind.AFFECTED,
+        branch: NixpkgsBranch | None = None,
+        author: User | None = None,
+        suggestion: CVEDerivationClusterProposal = suggestion,
+        **fields: Any,
+    ) -> Verdict:
+        return Verdict.objects.create(
+            suggestion=suggestion,
+            attrpath=attrpath,
+            branch=branch,
+            verdict=verdict,
+            author=author,
+            **fields,
         )
 
     return wrapped
