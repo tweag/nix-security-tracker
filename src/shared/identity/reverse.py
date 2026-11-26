@@ -159,7 +159,10 @@ def _keys_by_mapping(attrpaths: set[str]) -> dict[int, set[str]]:
             found[key_id].add(attrpath)
         elif glob:
             regex = re.compile(glob_regex(glob))
-            found[key_id] |= {a for a in attrpaths if regex.match(a)}
+            # Only keys whose glob names a changed attribute: an empty entry would select
+            # every suggestion of the key (all kernel CVEs for `linuxKernel.kernels.*`).
+            if matching := {a for a in attrpaths if regex.match(a)}:
+                found[key_id] |= matching
     return found
 
 
