@@ -3,8 +3,8 @@ import type { ComponentChildren } from "preact";
 import type { SuggestionStatusEnum, Suggestion as SuggestionType } from "@/api/generated/models";
 import { AffectedProductsTree } from "./AffectedProductsTree";
 import { CategorizedMaintainersList } from "./CategorizedMaintainersList";
-import { CategorizedPackagesList } from "./CategorizedPackagesList";
 import { CategorizedReferencesList } from "./CategorizedReferencesList";
+import { MatchingInNixpkgs } from "./MatchingInNixpkgs";
 import { SUGGESTION_SECTION_HEADINGS, type SuggestionSectionId } from "./SuggestionSectionHeadings";
 
 export type SuggestionSection = {
@@ -32,16 +32,8 @@ export function suggestionSections(
   suggestion: SuggestionType,
   userCanEdit: boolean,
 ): SuggestionSection[] {
-  const {
-    id,
-    status,
-    affected_products,
-    packages,
-    original_packages,
-    ignored_packages,
-    categorized_maintainers,
-    categorized_url_references,
-  } = suggestion;
+  const { id, status, affected_products, categorized_maintainers, categorized_url_references } =
+    suggestion;
 
   const editable = userCanEdit && isSuggestionEditable(status);
 
@@ -57,17 +49,11 @@ export function suggestionSections(
       ),
     affected_products.length > 0 &&
       section("affected-products", <AffectedProductsTree affectedProducts={affected_products} />),
-    Object.keys(packages).length + Object.keys(ignored_packages).length > 0 &&
-      section(
-        "packages",
-        <CategorizedPackagesList
-          suggestionId={id}
-          original={original_packages}
-          active={packages}
-          ignored={ignored_packages}
-          editable={editable}
-        />,
-      ),
+    // Always: the matching model may list packages the cached payload does not.
+    section(
+      "packages",
+      <MatchingInNixpkgs suggestion={suggestion} editable={editable} userCanEdit={userCanEdit} />,
+    ),
     categorized_maintainers.original.length > 0 &&
       section(
         "maintainers",

@@ -59,6 +59,8 @@ type Props<T> = {
   items: readonly T[];
   /** Title in the top-left border */
   label: ComponentChildren;
+  /** Set in the border next to the title, but not part of it, e.g. a status badge. */
+  labelExtra?: ComponentChildren;
   /** Top-right border legend, e.g. a view toggle. */
   viewToggle?: ComponentChildren;
   overflow?: CollectionOverflow;
@@ -102,6 +104,7 @@ function ShowMoreButton({ expanded, controls, hiddenCount, onToggle }: ShowMoreB
 export function CollectionCard<T>({
   items,
   label,
+  labelExtra,
   viewToggle,
   overflow = { mode: "hybrid" },
   containsCards = false,
@@ -135,9 +138,18 @@ export function CollectionCard<T>({
       alignSlotsWithNested={containsCards}
       labelledBy={titleId}
       topLeft={
-        <FrameLegend as="h2" id={titleId}>
-          {label}
-        </FrameLegend>
+        labelExtra ? (
+          <span className="row gap-small centered">
+            <FrameLegend as="h2" id={titleId}>
+              {label}
+            </FrameLegend>
+            {labelExtra}
+          </span>
+        ) : (
+          <FrameLegend as="h2" id={titleId}>
+            {label}
+          </FrameLegend>
+        )
       }
       topRight={viewToggle}
       bottomLeft={

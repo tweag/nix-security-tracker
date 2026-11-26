@@ -10,7 +10,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { cx } from "@/utils/className";
 import { formatTime } from "@/utils/date";
 import { reasonLabel, shortSha, statusInfo, verdictLabel } from "./labels";
-import styles from "./MatchingPanel.module.css";
+import styles from "./Matching.module.css";
 
 type Props = {
   attribute: MatchedAttribute;

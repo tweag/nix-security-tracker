@@ -1,5 +1,6 @@
 import { Fragment } from "preact";
 import type { Suggestion as SuggestionType } from "@/api/generated/models";
+import { MatchingInNixpkgsLine } from "./MatchingInNixpkgs";
 import { SuggestionFooter } from "./SuggestionFooter";
 import type { SuggestionSectionId } from "./SuggestionSectionHeadings";
 import { suggestionSections } from "./SuggestionSections";
@@ -22,6 +23,7 @@ export function SuggestionCompactBody({ suggestion, userCanEdit }: Props) {
         {sections.map((section) => (
           <Fragment key={section.value}>{section.content}</Fragment>
         ))}
+        <MatchingInNixpkgsLine suggestion={suggestion} />
       </div>
 
       <SuggestionFooter suggestion={suggestion} userCanEdit={userCanEdit} compact />

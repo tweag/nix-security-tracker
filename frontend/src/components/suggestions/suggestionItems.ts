@@ -2,9 +2,6 @@ import type {
   Maintainer,
   SuggestionCategorizedMaintainers,
   SuggestionCategorizedUrlReferences,
-  SuggestionOriginalPackages,
-  SuggestionPackage,
-  SuggestionPackages,
   SuggestionUrlReference,
 } from "@/api/generated/models";
 
@@ -48,25 +45,6 @@ export function referenceRows({
       { state: "ignored", items: ignored },
     ],
     (reference) => reference.url,
-  );
-}
-
-export type PackageEntry = { attribute: string; pkg: SuggestionPackage };
-
-export function packageRows(
-  original: SuggestionOriginalPackages,
-  active: SuggestionPackages,
-  ignored: SuggestionPackages,
-): ItemRow<PackageEntry>[] {
-  const entries = (packages: SuggestionPackages) =>
-    Object.entries(packages).map(([attribute, pkg]) => ({ attribute, pkg }));
-  return inOriginalOrder(
-    Object.keys(original),
-    [
-      { state: "active", items: entries(active) },
-      { state: "ignored", items: entries(ignored) },
-    ],
-    (entry) => entry.attribute,
   );
 }
 

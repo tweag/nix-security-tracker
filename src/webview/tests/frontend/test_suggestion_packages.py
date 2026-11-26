@@ -187,14 +187,14 @@ def test_package_ignore_removes_solo_maintainer_from_active_list(
     expect(maintainers.get_by_text(f"@{solo_maintainer.github}")).to_be_visible()
     expect(maintainers.get_by_text(f"@{other_maintainer.github}")).to_be_visible()
 
-    package1_item = packages.get_by_role("listitem").filter(has_text=PACKAGE_ATTRIBUTE)
+    package1_item = packages.get_by_test_id(f"package-row-{PACKAGE_ATTRIBUTE}")
     package1_item.get_by_role("button", name="Ignore", exact=True).click()
 
     expect(maintainers.get_by_text(f"@{solo_maintainer.github}")).to_be_hidden()
     expect(maintainers.get_by_text(f"@{other_maintainer.github}")).to_be_visible()
 
     packages.get_by_role("button", name="Ignored (").click()
-    package1_item = packages.get_by_role("listitem").filter(has_text=PACKAGE_ATTRIBUTE)
+    package1_item = packages.get_by_test_id(f"package-row-{PACKAGE_ATTRIBUTE}")
     package1_item.get_by_role("button", name="Restore").click()
 
     expect(maintainers.get_by_text(f"@{solo_maintainer.github}")).to_be_visible()
@@ -233,24 +233,24 @@ def test_package_restore_brings_back_maintainer_in_ignored_section_if_it_was_ign
     ).to_be_visible()
 
     # Ignore both of its packages, making it an orphan: it disappears entirely.
-    package1_item = packages.get_by_role("listitem").filter(has_text=PACKAGE_ATTRIBUTE)
+    package1_item = packages.get_by_test_id(f"package-row-{PACKAGE_ATTRIBUTE}")
     package1_item.get_by_role("button", name="Ignore", exact=True).click()
     expect(
         packages.get_by_role("button", name="Ignored (1)", exact=True)
     ).to_be_visible()
     packages.get_by_role("button", name="Ignored (").click()
     expect(
-        packages.get_by_role("listitem")
-        .filter(has_text=PACKAGE_ATTRIBUTE)
-        .get_by_role("button", name="Restore")
+        packages.get_by_test_id(f"package-row-{PACKAGE_ATTRIBUTE}").get_by_role(
+            "button", name="Restore"
+        )
     ).to_be_visible()
 
-    package2_item = packages.get_by_role("listitem").filter(has_text="package2")
+    package2_item = packages.get_by_test_id("package-row-package2")
     package2_item.get_by_role("button", name="Ignore", exact=True).click()
     expect(
-        packages.get_by_role("listitem")
-        .filter(has_text="package2")
-        .get_by_role("button", name="Restore")
+        packages.get_by_test_id("package-row-package2").get_by_role(
+            "button", name="Restore"
+        )
     ).to_be_visible()
 
     # Both packages ignored: the maintainer is orphan, hidden from both the
@@ -262,9 +262,7 @@ def test_package_restore_brings_back_maintainer_in_ignored_section_if_it_was_ign
     ).to_be_visible()
 
     # Restore one of the packages: the maintainer must reappear as ignored.
-    ignored_package1_item = packages.get_by_role("listitem").filter(
-        has_text=PACKAGE_ATTRIBUTE
-    )
+    ignored_package1_item = packages.get_by_test_id(f"package-row-{PACKAGE_ATTRIBUTE}")
     ignored_package1_item.get_by_role("button", name="Restore").click()
 
     expect(

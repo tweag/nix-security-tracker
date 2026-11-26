@@ -4,7 +4,7 @@ import type { Match, SuggestionMatchingAffectedProducts } from "@/api/generated/
 import { InlineIcon } from "@/components/ui/InlineIcon";
 import { cx } from "@/utils/className";
 import { cveFieldLabel, mappingLabel, matcherLabel, pkgFieldLabel } from "./labels";
-import styles from "./MatchingPanel.module.css";
+import styles from "./Matching.module.css";
 
 type Props = {
   attrpath: string;

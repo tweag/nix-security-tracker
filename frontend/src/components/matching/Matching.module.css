@@ -22,6 +22,10 @@
   border-bottom: var(--border-thin) solid var(--light-gray);
 }
 
+.action {
+  width: 7.5em;
+}
+
 .rank {
   width: 3em;
   text-align: right;

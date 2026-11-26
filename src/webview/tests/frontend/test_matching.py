@@ -79,9 +79,11 @@ def answered(page: Page, path: str) -> Any:
 
 
 def open_panel(page: Page, url: str, suggestion: CVEDerivationClusterProposal) -> None:
+    """The suggestion's page, once its packages section has loaded the matching model."""
     page.goto(url + SUGGESTION_DETAIL + f"/{suggestion.pk}")
-    page.get_by_test_id(f"suggestion-{suggestion.pk}-matching-toggle").click()
-    expect(page.get_by_test_id(f"suggestion-{suggestion.pk}-matching")).to_be_visible()
+    expect(
+        page.get_by_test_id(f"suggestion-{suggestion.pk}-packages-summary")
+    ).to_be_visible()
 
 
 @pytest.mark.django_db
@@ -91,15 +93,15 @@ def test_matching_panel_shows_candidates_and_evidence(
     matched: CVEDerivationClusterProposal,
 ) -> None:
     open_panel(page, live_server.url, matched)
-    row = page.get_by_test_id("matching-attribute-foo")
+    row = page.get_by_test_id("package-row-foo")
     expect(row).to_be_visible()
     expect(page.get_by_test_id("status-foo-master")).to_have_text(
         re.compile("affected")
     )
     # The low-confidence candidate is folded away.
-    expect(page.get_by_test_id("matching-attribute-bar")).to_be_hidden()
-    page.get_by_test_id(f"suggestion-{matched.pk}-matching-low-toggle").click()
-    expect(page.get_by_test_id("matching-attribute-bar")).to_be_visible()
+    expect(page.get_by_test_id("package-row-bar")).to_be_hidden()
+    page.get_by_test_id(f"suggestion-{matched.pk}-packages-more-toggle").click()
+    expect(page.get_by_test_id("package-row-bar")).to_be_visible()
     # Evidence expands from the provenance chip.
     page.get_by_test_id("provenance-foo-name-exact").click()
     evidence = page.get_by_test_id("evidence-foo")
@@ -123,7 +125,7 @@ def test_committer_sets_and_clears_a_verdict(
     status = as_committer.get_by_test_id("status-foo-master")
     expect(status).to_have_text(re.compile("not affected"))
     expect(status).to_have_attribute("aria-label", re.compile(r"\(verdict\)"))
-    expect(as_committer.get_by_test_id("matching-attribute-foo")).to_contain_text(
+    expect(as_committer.get_by_test_id("package-row-foo")).to_contain_text(
         "observed affected"
     )
     verdict = Verdict.objects.get()
@@ -324,6 +326,36 @@ def test_matching_panel_follows_accept_and_ignore(
     expect(status).to_have_attribute("aria-label", re.compile(r"affected \(verdict\)"))
     packages = as_committer.get_by_test_id(f"suggestion-{matched.pk}-packages")
     packages.get_by_role("button", name="Ignore", exact=True).click()
+    # An ignored package leaves the list, and is shown again with the ignored ones.
+    expect(as_committer.get_by_test_id("package-row-foo")).to_be_hidden()
+    packages.get_by_test_id(f"suggestion-{matched.pk}-packages-ignored-toggle").click()
     expect(status).to_have_attribute(
         "aria-label", re.compile(r"irrelevant \(verdict\)")
     )
+
+
+@pytest.mark.django_db
+def test_one_version_per_package_and_branch_from_the_exposure(
+    live_server: LiveServer,
+    page: Page,
+    matched: CVEDerivationClusterProposal,
+) -> None:
+    """
+    The cached payload links `foo` at version 1.0, the exposure observes 1.2.3 on master:
+    the section shows only the exposure's version, once, with its status.
+    """
+    assert (
+        matched.cached.payload["packages"]["foo"]["branches"]["master"]["version"]
+        == "1.0"
+    )
+    open_panel(page, live_server.url, matched)
+    section = page.get_by_test_id(f"suggestion-{matched.pk}-packages")
+    row = section.get_by_test_id("package-row-foo")
+    expect(row.get_by_text("1.2.3", exact=True)).to_have_count(1)
+    expect(section.get_by_text("1.0", exact=True)).to_have_count(0)
+    expect(page.get_by_test_id("status-foo-master")).to_have_text(
+        re.compile("affected")
+    )
+    # Nowhere else on the card does a package version appear.
+    card = page.get_by_test_id(f"suggestion-{matched.pk}")
+    expect(card.get_by_text("1.2.3", exact=True)).to_have_count(1)

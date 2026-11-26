@@ -20,9 +20,6 @@ import type {
   VerdictKindEnum,
 } from "@/api/generated/models";
 
-/** Below this noisy-OR score, a candidate is folded away as low-confidence. */
-export const LOW_CONFIDENCE_SCORE = 0.5;
-
 const MATCHER_LABELS: Record<string, string> = {
   "nixpkgs-cpe": "CPE",
   "known-vuln": "known vulnerability",
