@@ -335,7 +335,7 @@ def test_query_count_and_size(
         anonymous_client.get(url(small.pk))
     with django_assert_num_queries(len(ctx.captured_queries)):
         response = anonymous_client.get(url(large.pk))
-    assert len(ctx.captured_queries) <= 22
+    assert len(ctx.captured_queries) <= 23
     data = response.json()
     assert len(data["attributes"]) == 50
     assert all(len(a["branches"]) == 3 for a in data["attributes"])
@@ -379,3 +379,26 @@ def test_patched_exposure_names_its_commit(
     (foo,) = anonymous_client.get(url(suggestion.pk)).json()["attributes"]
     exposure = foo["branches"][0]["exposure"]
     assert (exposure["reason"], exposure["detail"]["patch_commit"]) == ("patch", sha)
+
+
+def test_rows_say_whether_shown_and_ignored(
+    anonymous_client: APIClient,
+    committer_client: APIClient,
+    cached_suggestion: CVEDerivationClusterProposal,
+    make_match: Callable[..., Match],
+) -> None:
+    """What the package list needs to sort its rows: shown to triagers, and ignored."""
+    s = cached_suggestion
+    make_match("foo", "name-exact", 1.0, suggestion=s)
+    make_match("faint", "name-substring", 0.3, suggestion=s)
+    response = committer_client.patch(
+        reverse("cvederivationclusterproposal-packages", kwargs={"pk": s.pk}),
+        {"package_attributes": ["foo"], "ignored": True},
+        format="json",
+    )
+    assert response.status_code == 204
+    rows = {
+        a["attrpath"]: a for a in anonymous_client.get(url(s.pk)).json()["attributes"]
+    }
+    assert (rows["foo"]["shown"], rows["foo"]["ignored"]) == (True, True)
+    assert (rows["faint"]["shown"], rows["faint"]["ignored"]) == (False, False)

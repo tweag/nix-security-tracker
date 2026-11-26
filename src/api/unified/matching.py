@@ -24,7 +24,7 @@ from shared.identity.keys import stored_or_derived_keys
 from shared.identity.mappings import load_mappings
 from shared.matching.scoring import rank_matches, weight_of
 from shared.models.cve import AffectedProduct
-from shared.models.linkage import CVEDerivationClusterProposal
+from shared.models.linkage import CVEDerivationClusterProposal, PackageOverlay
 from shared.models.matching import Exposure, Match, Verdict
 from shared.models.nix_evaluation import NixEvaluation
 
@@ -170,6 +170,17 @@ def build_matching_view(
     for e in facts.exposures:
         exposures_by_attr[e.attrpath][e.branch_id] = e
 
+    # Ignored as the package list has it: the overlay, kept in step with an all-branches
+    # `irrelevant` verdict by both the packages and the verdicts endpoints.
+    ignored = set(
+        PackageOverlay.objects.filter(
+            suggestion_id=sid, type=PackageOverlay.Type.IGNORED
+        ).values_list("package_attribute", flat=True)
+    ) | {
+        v.attrpath
+        for v in facts.verdicts
+        if v.branch_id is None and v.verdict == Verdict.Kind.IRRELEVANT
+    }
     branches = tracked_branches()
     tracked = [b.name for b in branches]
     active_matches = [
@@ -244,6 +255,8 @@ def build_matching_view(
         attributes.append(
             {
                 "attrpath": attr,
+                "shown": attr in facts.shown,
+                "ignored": attr in ignored,
                 "score": scores.get(attr, 0.0) if active else None,
                 "rank": rank if active else None,
                 "has_active_match": bool(active),

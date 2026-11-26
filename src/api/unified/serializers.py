@@ -210,6 +210,12 @@ class AttributeBranchSerializer(serializers.Serializer):
 
 class MatchedAttributeSerializer(serializers.Serializer):
     attrpath = serializers.CharField()
+    shown = serializers.BooleanField(
+        help_text="Shown to triagers: a match above the score threshold and within the cap, or decided on by a human."
+    )
+    ignored = serializers.BooleanField(
+        help_text="Ignored in the package list (an all-branches `irrelevant` verdict)."
+    )
     score = serializers.FloatField(
         allow_null=True,
         help_text="Noisy-OR over active matches; null without an active match.",
