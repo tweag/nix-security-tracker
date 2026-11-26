@@ -156,6 +156,19 @@ class Command(BaseCommand):
         write_metrics_textfile("garbage_collection", registry)
 
     def _delete_stale_matches(self, cutoff: Any, batch_size: int) -> dict[str, int]:
+        """
+        Delete old pending suggestions nobody touched, with everything that hangs off them.
+
+        This hard-deletes their `Match`, `Exposure`, `TrackerEvent` and derived-state rows
+        (cascade), which invariant 2 ("automatic processes never hard-delete `Match` or
+        `Exposure`, they retract and write an event") does not literally allow. Decision: kept
+        on purpose. Invariant 2 protects the history of a suggestion that goes on existing, so
+        that a re-match cannot silently rewrite what users saw; here the suggestion itself is
+        removed, the facts have no subject left, and an event about the deletion would be
+        deleted with it. What must survive is excluded below: anything a human touched
+        (overlays, verdicts, any status but pending). A CVE update or reverse match can create
+        the suggestion again from scratch, as for a new CVE.
+        """
         candidates = (
             CVEDerivationClusterProposal.objects.filter(
                 Q(created_at__lt=cutoff)

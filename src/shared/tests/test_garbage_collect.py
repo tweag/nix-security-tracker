@@ -15,6 +15,7 @@ from shared.channels import (
     CveUpdateChannel,
     NixEvaluationUpdateChannel,
     SuggestionRefreshChannel,
+    SuggestionRematchChannel,
 )
 from shared.management.commands.garbage_collect import DEFAULT_CUTOFF_DAYS, Command
 from shared.models.cve import Container, CveRecord
@@ -560,7 +561,13 @@ def test_gc_deletes_stale_rematching_notifications(channel_name: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "channel", [BranchSnapshotChannel, CveUpdateChannel, CvePresentationChannel]
+    "channel",
+    [
+        BranchSnapshotChannel,
+        CveUpdateChannel,
+        CvePresentationChannel,
+        SuggestionRematchChannel,
+    ],
 )
 @pytest.mark.django_db
 def test_gc_keeps_notifications_nothing_re_emits(channel: type) -> None:
