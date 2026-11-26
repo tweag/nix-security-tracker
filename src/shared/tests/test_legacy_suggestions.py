@@ -102,6 +102,16 @@ SHAPES: dict[str, dict[str, Any]] = {
         "status": Status.REJECTED,
         "rejection_reason": Reason.NOT_IN_NIXPKGS,
     },
+    "rejected_known_vulnerability": {
+        "status": Status.REJECTED,
+        "rejection_reason": Reason.KNOWN_VULNERABILITY,
+    },
+    # The legacy matcher rejected it without links; the new one finds `foo`.
+    "rejected_max_matches": {
+        "status": Status.REJECTED,
+        "rejection_reason": Reason.MAX_MATCHES_EXCEEDED,
+        "linked": False,
+    },
 }
 
 
@@ -114,16 +124,27 @@ def test_write_path_on_legacy_suggestion(
     make_evaluation: Callable[..., NixEvaluation],
     make_drv: Callable[..., NixDerivation],
 ) -> None:
-    fields = SHAPES[shape]
+    fields = dict(SHAPES[shape])
+    has_links = fields.pop("linked", True)
     suggestion = make_legacy_suggestion(**fields)
+    if not has_links:
+        suggestion.derivations.clear()
     status = suggestion.status
     ENTRY_POINTS[entry](suggestion, make_evaluation=make_evaluation, make_drv=make_drv)
     suggestion.refresh_from_db()
 
-    # Never rejects (F4), never reopens a human decision.
+    # Never rejects (F4), never reopens a human decision. A machine rejection outside the
+    # reopen window (no publication date here) is reopened when a CVE update or a dispatched
+    # refresh re-matches it; evaluations and mappings select it only within the window.
+    if shape == "rejected_max_matches" and entry in ("cve_update", "deploy_refresh"):
+        assert suggestion.status == Status.PENDING
+        assert "foo" in linked(suggestion)
+        return
     assert suggestion.status == status
     attrs = linked(suggestion)
-    if status in (Status.ACCEPTED, Status.PUBLISHED, Status.REJECTED):
+    if not has_links:
+        assert attrs == set()
+    elif status in (Status.ACCEPTED, Status.PUBLISHED, Status.REJECTED):
         # What a human decided on stays exactly.
         assert attrs == {"foo", "foobar"}
     else:
