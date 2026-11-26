@@ -453,6 +453,35 @@ def test_attribute_gone_from_every_branch_is_retracted(
     assert pending.status == Status.PENDING
 
 
+def test_stale_exposure_of_a_frozen_suggestion_does_not_block_retraction(
+    pending: CVEDerivationClusterProposal,
+    make_container: Callable[..., Container],
+    snapshot: Callable[..., NixEvaluation],
+) -> None:
+    """
+    `foo-cli` disappears. Another suggestion's exposure of it stays `absent` without reason
+    `removed` forever, because that suggestion was dismissed and is no longer kept current;
+    the pending suggestion's match on `foo-cli` must still be retracted.
+    """
+    assert build_new_links(make_container(cve_id="CVE-2025-0002", package_name="foo"))
+    dismissed = CVEDerivationClusterProposal.objects.get(cve__cve_id="CVE-2025-0002")
+    snapshot({"foo": ("foo", "1.0"), "x": ("x", "1")})
+    stale = Exposure.objects.get(suggestion=dismissed, attrpath="foo-cli")
+    assert stale.observed == Exposure.Observed.ABSENT
+    dismissed.change_status(Status.REJECTED, rejection_reason=Reason.NOT_IN_NIXPKGS)
+    for _ in range(3):
+        snapshot({"foo": ("foo", "1.0"), "x": ("x", "1")})
+
+    stale.refresh_from_db()
+    assert stale.reason != Exposure.Reason.REMOVED  # frozen: never updated again
+    assert (
+        not Match.objects.active()
+        .filter(suggestion=pending, attrpath="foo-cli")
+        .exists()
+    )
+    assert list(linked(pending)) == ["foo"]
+
+
 def test_new_attribute_is_reverse_matched(
     pending: CVEDerivationClusterProposal,
     snapshot: Callable[..., NixEvaluation],

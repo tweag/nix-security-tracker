@@ -42,7 +42,6 @@ from shared.exposure import (
     apply_branch_changes,
     dismissed_q,
     reconcile_exposures,
-    tracked_branches,
 )
 from shared.legacy_backfill import ensure_backfilled
 from shared.locking import lock_for_write
@@ -63,7 +62,7 @@ from shared.models.linkage import (
     CVEDerivationClusterProposal,
     DerivationClusterProposalLink,
 )
-from shared.models.matching import Exposure, Match, TrackerEvent
+from shared.models.matching import Match, TrackerEvent
 from shared.models.nix_evaluation import NixEvaluation, NixpkgsBranch
 from shared.models.snapshot import BranchPackage, BranchPackageChange
 from shared.projection import ProjectionResult, is_frozen_for_projection, project_links
@@ -450,34 +449,40 @@ class EvaluationOutcome:
     gone: list[str] = field(default_factory=list)
 
 
-def _gone_attributes(
-    evaluation: NixEvaluation, branch: NixpkgsBranch, changes: Iterable[str]
-) -> set[str]:
+def _gone_attributes(branch: NixpkgsBranch) -> set[str]:
     """
-    Attributes that just became gone from every tracked branch: no present snapshot row, and
-    every absent exposure of them already called `removed` (`REMOVAL_AFTER_EVALUATIONS`).
-    A single evaluation missing an attribute does not make it gone.
+    Attributes with active matches that the matchers no longer see on any tracked branch:
+    missing from this branch for at least `REMOVAL_AFTER_EVALUATIONS` completed evaluations
+    and not in the matchers' universe (`Universe.packages`: present, or absent for fewer
+    evaluations) on any other tracked branch. A single evaluation missing an attribute does
+    not make it gone.
+
+    Decided from `BranchPackage` and the evaluation count alone, the same rule the matcher
+    universe applies, not from `Exposure` rows: exposures of suggestions that are no longer
+    kept current (dismissed, or the attribute no longer a candidate) stay `absent` without
+    reason `removed` forever, and one of them must not block the retraction for every other
+    suggestion. Self-healing: an attribute missed at its step is picked up at the next one,
+    as long as some active match still refers to it.
     """
-    candidates = set(changes) | set(
-        Exposure.objects.filter(
-            branch=branch, reason=Exposure.Reason.REMOVED, evaluation=evaluation
-        ).values_list("attrpath", flat=True)
+    universe = Universe.tracked()
+    window = dict(universe.absent_since).get(branch.name, ())
+    long_absent = BranchPackage.objects.filter(branch=branch, present=False).exclude(
+        evaluation_id__in=window
+    )
+    candidates = set(
+        Match.objects.active()
+        .filter(attrpath__in=long_absent.values("attrpath"))
+        .values_list("attrpath", flat=True)
+        .distinct()
     )
     if not candidates:
         return set()
-    present = set(
-        BranchPackage.objects.present()
-        .filter(attrpath__in=candidates, branch__in=tracked_branches())
+    seen = set(
+        universe.packages()
+        .filter(attrpath__in=candidates)
         .values_list("attrpath", flat=True)
     )
-    waiting = set(
-        Exposure.objects.filter(
-            attrpath__in=candidates, observed=Exposure.Observed.ABSENT
-        )
-        .exclude(reason=Exposure.Reason.REMOVED)
-        .values_list("attrpath", flat=True)
-    )
-    return candidates - present - waiting
+    return candidates - seen
 
 
 # Snapshot fields a matcher reads (`shared.snapshot.META_FIELDS` without `position`); the
@@ -612,11 +617,6 @@ def apply_evaluation(
     selection = rematch_selection(evaluation, branch)
     reverse_candidates = selection.changed
     reverse_selected = selection.reverse_selected
-    removed = list(
-        BranchPackageChange.objects.filter(
-            new_evaluation=evaluation, branch=branch, kind=Change.REMOVED
-        ).values_list("attrpath", flat=True)
-    )
     behind = set(
         CVEDerivationClusterProposal.objects.filter(open_for_projection_q())
         .filter(
@@ -636,7 +636,7 @@ def apply_evaluation(
         reverse_candidates=reverse_candidates,
         reverse_selected=reverse_selected,
     )
-    gone = _gone_attributes(evaluation, branch, removed)
+    gone = _gone_attributes(branch)
     outcome.gone = sorted(gone)
     referencing = selection.referencing | {
         sid
