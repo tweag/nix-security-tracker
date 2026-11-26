@@ -30,6 +30,16 @@ function Evidence({
 }) {
   const { evidence } = match;
   const product = productName(affectedProducts, evidence.affected_product);
+  // The same hit through further products, named only where the name differs: the
+  // kernel's git and semver products are both "linux/linux" and add nothing to read.
+  const alsoFrom = [
+    ...new Set(
+      evidence.affected_products
+        .filter((id) => id !== evidence.affected_product)
+        .map((id) => productName(affectedProducts, id))
+        .filter((name) => name && name !== product),
+    ),
+  ];
   return (
     <li className={cx((match.retracted || match.vetoed) && "text-gray")}>
       <strong>{matcherLabel(match.matcher, evidence)}</strong>{" "}
@@ -85,6 +95,7 @@ function Evidence({
       {evidence.similarity != null && <>, similarity {evidence.similarity.toFixed(2)}</>}
       {evidence.branches.length > 0 && <>, on {evidence.branches.join(", ")}</>}
       {evidence.other_hits > 0 && <> (+{evidence.other_hits} other reasons)</>}
+      {alsoFrom.length > 0 && <>, also through {alsoFrom.join(", ")}</>}
       {match.retracted && <> — retracted</>}
       {match.vetoed && <> — vetoed by a mapping, does not count</>}
     </li>

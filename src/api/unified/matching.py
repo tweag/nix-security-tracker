@@ -55,6 +55,9 @@ def evidence_of(raw: dict[str, Any]) -> dict[str, Any]:
         "mapping": mapping_of(raw.get("mapping")),
         "provenance_flags": raw.get("provenance_flags"),
         "cve_fields": list(raw.get("cve_fields", [])),
+        "affected_products": [
+            pk for pk in raw.get("affected_products", []) if isinstance(pk, int)
+        ],
     }
 
 
@@ -236,6 +239,7 @@ def build_matching_view(
         for m in matches:
             if isinstance(m.evidence.get("affected_product"), int):
                 product_ids.add(m.evidence["affected_product"])
+            product_ids.update(evidence_of(m.evidence)["affected_products"])
         attributes.append(
             {
                 "attrpath": attr,

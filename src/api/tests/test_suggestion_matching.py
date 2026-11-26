@@ -117,7 +117,16 @@ def test_shape(
     committer: User,
 ) -> None:
     product = AffectedProduct.objects.create(vendor="acme", product="foo")
-    make_match("foo", "name-exact", 1.0, evidence=evidence(product, other_hits=2))
+    # The kernel's case: one match found through two products (git and semver ranges).
+    other = AffectedProduct.objects.create(vendor="acme", product="foo-git")
+    make_match(
+        "foo",
+        "name-exact",
+        1.0,
+        evidence=evidence(
+            product, other_hits=2, affected_products=[product.pk, other.pk]
+        ),
+    )
     make_match("foo", "name-trigram", 0.8, evidence=evidence(similarity=0.8))
     make_match("bar", "name-substring", 0.5, evidence=evidence())
     make_exposure(
@@ -171,6 +180,7 @@ def test_shape(
         "mapping": None,
         "provenance_flags": None,
         "cve_fields": [],
+        "affected_products": [product.pk, other.pk],
     }
     assert exact["vetoed"] is False and foo["vetoed_by"] == []
     assert exact["weight"] == 0.8 and exact["contribution"] == 0.8
@@ -181,7 +191,13 @@ def test_shape(
             "product": "foo",
             "package_name": None,
             "repo": None,
-        }
+        },
+        str(other.pk): {
+            "vendor": "acme",
+            "product": "foo-git",
+            "package_name": None,
+            "repo": None,
+        },
     }
 
     master, rel = foo["branches"]

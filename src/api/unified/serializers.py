@@ -97,6 +97,10 @@ class MatchEvidenceSerializer(serializers.Serializer):
         child=serializers.CharField(),
         help_text="For `legacy-v2`: every CVE field the old matcher matched on.",
     )
+    affected_products = serializers.ListField(
+        child=serializers.IntegerField(),
+        help_text="Every affected product the hit came from (keys of `affected_products`), `affected_product` first; several for the kernel's git and semver products.",
+    )
 
 
 class MatchSerializer(serializers.Serializer):
