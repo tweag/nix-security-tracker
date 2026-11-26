@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 import pytest
 from django.contrib.auth.models import User
+from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework.reverse import reverse
 from rest_framework.test import APIClient
@@ -84,7 +85,9 @@ def test_pagination(
     for i in range(12):
         world.apply(world.package("2.0", attrpath=f"foo{i}"))
     assert len(possibly_fixed_queue()) == 12
-    # The queue query, then the facts of its suggestions: constant in the row count.
+    # The tracked branches and the queue's exposures (2); the facts of their suggestions
+    # without exposure rows (9: suggestions, matches, 4 for the shown candidates, tracked
+    # branches, verdicts, events); the page's rows (1). Constant in the number of rows.
     with django_assert_max_num_queries(12):
         first = anonymous_client.get(list_url()).json()
     assert (first["count"], len(first["results"])) == (12, 10)
@@ -209,3 +212,41 @@ def test_second_answer_to_a_row_is_a_conflict(
     assert second.status_code == 409
     assert "detail" in second.data
     assert Verdict.objects.get().verdict == V.AFFECTED
+
+
+def test_list_cost_does_not_depend_on_the_queue_length(
+    anonymous_client: APIClient,
+    make_suggestion: Callable[..., object],
+    make_container: Callable[..., object],
+    make_match: Callable[..., object],
+    make_exposure: Callable[..., Exposure],
+    make_evaluation: Callable[..., object],
+) -> None:
+    """A page costs a fixed number of queries, however many suggestions have rows."""
+    fixed = make_evaluation()
+
+    def add(n: int) -> None:
+        for i in range(n):
+            s = make_suggestion(
+                container=make_container(
+                    cve_id=f"CVE-2025-7{Exposure.objects.count():04}"
+                )
+            )
+            make_match(suggestion=s)
+            make_exposure(
+                suggestion=s,
+                observed=Exposure.Observed.UNAFFECTED,
+                first_affected_evaluation=fixed,
+                fixed_evaluation=fixed,
+            )
+
+    add(3)
+    with CaptureQueriesContext(connection) as few:
+        assert anonymous_client.get(list_url()).data["count"] == 3
+    add(30)
+    with CaptureQueriesContext(connection) as many:
+        response = anonymous_client.get(list_url())
+    assert response.data["count"] == 33 and len(response.data["results"]) == 10
+    assert len(many) == len(few)
+    branches = anonymous_client.get(reverse("possibly-fixed-branches")).json()
+    assert branches == [{"name": "master", "count": 33}]
