@@ -32,6 +32,7 @@ from typing import Any
 from django.db import connection, transaction
 from django.db.models import F, Q
 
+from shared.candidates import candidates
 from shared.models.cve import AffectedProduct
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.matching import Exposure, Match, TrackerEvent, Verdict
@@ -514,7 +515,9 @@ def reconcile_exposures(
             result.skipped_dismissed.append(suggestion.pk)
             return result
         ctx = _load_context([suggestion.pk])
-        attrs = {a for s, a in ctx.relevant if s == suggestion.pk}
+        attrs = {a for s, a in ctx.relevant if s == suggestion.pk} & (
+            candidates([suggestion.pk])[suggestion.pk].attributes
+        )
         packages = {
             (p.branch_id, p.attrpath): p
             for p in BranchPackage.objects.filter(
@@ -620,7 +623,11 @@ def apply_branch_changes(
         .values_list("pk", flat=True)
     )
     result.skipped_dismissed = sorted(dismissed)
-    suggestion_ids = sorted(set(work) - dismissed)
+    # Only candidates (`shared.candidates`): a hidden match keeps no exposure current.
+    shown = candidates(set(work) - dismissed)
+    for sid in list(work):
+        work[sid] &= shown[sid].attributes if sid in shown else set()
+    suggestion_ids = sorted(sid for sid in set(work) - dismissed if work[sid])
     if not suggestion_ids:
         return result
 

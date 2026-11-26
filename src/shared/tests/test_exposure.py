@@ -93,11 +93,13 @@ class World:
         self.evaluations.append(evaluation)
         return evaluation
 
-    def match(self, attrpath: str = "foo", **evidence: Any) -> Match:
+    def match(
+        self, attrpath: str = "foo", matcher: str = "name-exact", **evidence: Any
+    ) -> Match:
         return Match.objects.create(
             suggestion=self.suggestion,
             attrpath=attrpath,
-            matcher="test",
+            matcher=matcher,
             matcher_version=1,
             score=1.0,
             evidence=evidence,
@@ -487,7 +489,10 @@ def test_retracted_matches_freeze_rows(world: World) -> None:
 def test_which_suggestions_take_part(
     world: World, status: str, reason: str | None, updated: bool
 ) -> None:
-    world.match()
+    # A `known_vulnerability` rejection shows (and keeps current) only what `known-vuln` found.
+    world.match(
+        matcher="known-vuln" if reason == "known_vulnerability" else "name-exact"
+    )
     world.package("1.5")
     world.reconcile()
     paths: dict[str, list[str]] = {

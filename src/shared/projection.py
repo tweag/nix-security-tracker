@@ -30,20 +30,18 @@ from typing import Any
 
 from django.db import transaction
 
+from shared.candidates import candidates
 from shared.exposure import is_dismissed
 from shared.matching.selection import (
-    KNOWN_VULNERABILITY_MATCHER,
     LEGACY_MATCHER,
     counted_matchers,
-    select_attributes,
 )
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
     DerivationClusterProposalLink,
-    PackageOverlay,
     ProvenanceFlags,
 )
-from shared.models.matching import Match, Verdict
+from shared.models.matching import Match
 from shared.models.nix_evaluation import NixChannel, NixDerivation, NixEvaluation
 
 logger = logging.getLogger(__name__)
@@ -99,29 +97,14 @@ def shown_attributes(
         .filter(suggestion=suggestion, matcher__in=counted_matchers())
         .values_list("attrpath", "matcher", "score", "evidence")
     )
-    decided = set(
-        Verdict.objects.filter(suggestion=suggestion).values_list("attrpath", flat=True)
-    ) | set(
-        PackageOverlay.objects.filter(
-            suggestion=suggestion, type=PackageOverlay.Type.IGNORED
-        ).values_list("package_attribute", flat=True)
+    # The shared definition (`shared.candidates`), also used by exposures and derived state.
+    found = candidates([suggestion.pk])[suggestion.pk]
+    decided = found.decided
+    result = Shown(
+        matched=found.matched,
+        below_threshold=found.below_threshold,
+        beyond_cap=found.beyond_cap,
     )
-
-    result = Shown()
-    if (
-        suggestion.status == Status.REJECTED
-        and suggestion.rejection_reason == Rejection.KNOWN_VULNERABILITY
-    ):
-        result.matched = {
-            a for a, m, _, _ in matches if m == KNOWN_VULNERABILITY_MATCHER
-        }
-    else:
-        selection = select_attributes(
-            ((a, m, s) for a, m, s, _ in matches), exclude=decided
-        )
-        result.matched = selection.attributes
-        result.below_threshold = selection.below_threshold
-        result.beyond_cap = selection.beyond_cap
 
     shown = result.matched | decided
     if not result.matched:

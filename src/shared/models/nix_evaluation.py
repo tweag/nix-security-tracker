@@ -1,5 +1,6 @@
 import re
 
+import pgtrigger
 from django.conf import settings
 from django.contrib.postgres import fields
 from django.contrib.postgres.indexes import BTreeIndex, GinIndex
@@ -217,6 +218,30 @@ class NixChannel(TimeStampMixin):
                 check=models.Q(head_sha1_commit__regex=SHA1_COMMIT_REGEX),
                 name="nixchannel_head_sha1_commit_valid",
             )
+        ]
+        triggers = [
+            # A branch becoming tracked or untracked (a channel going end of life) changes
+            # which exposures the derived state reads (`shared.derived_state.load_facts`):
+            # mark the suggestions with exposures on the branch stale. `fetch_all_channels`
+            # flushes them after writing the channels.
+            pgtrigger.Trigger(
+                name="derived_state_stale_on_channel_state",
+                when=pgtrigger.After,
+                operation=pgtrigger.Update,
+                condition=pgtrigger.Q(old__state__df=pgtrigger.F("new__state"))
+                | pgtrigger.Q(
+                    old__release_branch_id__df=pgtrigger.F("new__release_branch_id")
+                ),
+                func="""
+                    INSERT INTO shared_suggestionderivedstate
+                        (suggestion_id, state, stale, updated_at)
+                    SELECT DISTINCT suggestion_id, '', true, now()
+                    FROM shared_exposure
+                    WHERE branch_id IN (OLD.release_branch_id, NEW.release_branch_id)
+                    ON CONFLICT (suggestion_id) DO UPDATE SET stale = true;
+                    RETURN NULL;
+                """,
+            ),
         ]
 
     def __str__(self) -> str:

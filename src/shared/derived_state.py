@@ -27,11 +27,16 @@ from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
-from shared.exposure import dismissed_q, is_dismissed, lock_suggestions
+from shared.candidates import candidates
+from shared.exposure import (
+    dismissed_q,
+    is_dismissed,
+    lock_suggestions,
+    tracked_branches,
+)
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.matching import (
     Exposure,
-    Match,
     SuggestionDerivedState,
     TrackerEvent,
     Verdict,
@@ -308,6 +313,8 @@ class SuggestionFacts:
     became_affected: dict[tuple[str, str], datetime] = field(default_factory=dict)
     # Last time each (attribute, branch) was observed to become unaffected after affected.
     became_unaffected: dict[tuple[str, str], datetime] = field(default_factory=dict)
+    # Attributes with exposures only on branches no longer tracked.
+    untracked_only: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -337,7 +344,8 @@ def derive_state(facts: SuggestionFacts) -> Derived:
     - `resolved`: everything else, i.e. every (attribute, branch) is settled by a verdict or
       was never observed affected. The report's table lists only the first; candidates that
       the classifier never saw affected (every branch outside the ranges) also land here.
-    Exposures of attributes that are no longer candidates are ignored.
+    Exposures of attributes that are no longer candidates, and of branches no longer tracked,
+    are ignored; a candidate seen only on untracked branches does not count.
     """
     if is_dismissed(facts.status, facts.rejection_reason):
         return Derived(DerivedState.DISMISSED)
@@ -351,6 +359,11 @@ def derive_state(facts: SuggestionFacts) -> Derived:
         if e.attrpath in candidates:
             by_attr[e.attrpath].append(e)
 
+    # A candidate seen only on branches no longer tracked (a channel went end of life) has
+    # nothing left to triage or track.
+    candidates = {a for a in candidates if by_attr[a] or a not in facts.untracked_only}
+    if not candidates:
+        return Derived(DerivedState.NO_CANDIDATES)
     result = Derived(DerivedState.RESOLVED, candidates=sorted(candidates))
     for attr in sorted(candidates):
         keys: list[tuple[str | None, Exposure | None]] = [
@@ -440,20 +453,29 @@ def load_facts(
         ).values_list("pk", "status", "rejection_reason")
     }
     ids = list(facts)
-    for sid, attr in (
-        Match.objects.active()
-        .filter(suggestion_id__in=ids)
-        .values_list("suggestion_id", "attrpath")
-        .distinct()
-    ):
-        facts[sid].matched.add(attr)
+    # Candidates only (`shared.candidates`): shown matches and decided attributes.
+    for sid, found in candidates(ids).items():
+        facts[sid].matched = found.attributes
+    tracked = [b.name for b in tracked_branches()]
     for sid, attr, branch_id, verdict, updated_at in Verdict.objects.filter(
         suggestion_id__in=ids
     ).values_list("suggestion_id", "attrpath", "branch_id", "verdict", "updated_at"):
         facts[sid].verdicts.append(VerdictFact(attr, branch_id, verdict, updated_at))
     if exposures:
-        for e in Exposure.objects.filter(suggestion_id__in=ids):
+        # Exposures of branches no longer tracked are frozen: they say nothing any more.
+        for e in Exposure.objects.filter(suggestion_id__in=ids, branch_id__in=tracked):
             facts[e.suggestion_id].exposures.append(e)
+        seen = {
+            (e.suggestion_id, e.attrpath) for f in facts.values() for e in f.exposures
+        }
+        for sid, attr in (
+            Exposure.objects.filter(suggestion_id__in=ids)
+            .exclude(branch_id__in=tracked)
+            .values_list("suggestion_id", "attrpath")
+            .distinct()
+        ):
+            if (sid, attr) not in seen:
+                facts[sid].untracked_only.add(attr)
     for sid, attr, branch_id, kind, at in (
         TrackerEvent.objects.filter(
             suggestion_id__in=ids,
@@ -552,7 +574,9 @@ def possibly_fixed_keys(
     """
     rows = (
         Exposure.objects.filter(
-            fixed_evaluation__isnull=False, observed=Observed.UNAFFECTED
+            fixed_evaluation__isnull=False,
+            observed=Observed.UNAFFECTED,
+            branch_id__in=[b.name for b in tracked_branches()],
         )
         .exclude(dismissed_q("suggestion__"))
         .order_by("fixed_evaluation__created_at", "pk")

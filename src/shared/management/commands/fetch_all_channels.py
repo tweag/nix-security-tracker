@@ -118,3 +118,9 @@ class Command(BaseCommand):
                 stream = StringIO()
                 pprint(monitored.__dict__, stream=stream)
                 self.stdout.write(stream.getvalue())
+
+        # A channel that changed state (e.g. went end of life) marked derived states stale.
+        from shared.derived_state import flush_derived_states
+
+        while flush_derived_states(limit=2000):
+            pass

@@ -666,7 +666,7 @@ def make_match(
 ) -> Callable[..., Match]:
     def wrapped(
         attrpath: str = "foo",
-        matcher: str = "test",
+        matcher: str = "name-exact",
         score: float = 1.0,
         suggestion: CVEDerivationClusterProposal = suggestion,
         **fields: Any,

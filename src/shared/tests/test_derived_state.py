@@ -461,6 +461,6 @@ def test_derive_states_query_count(
         make_match(suggestion=s)
         make_exposure(suggestion=s)
         ids.append(s.pk)
-    with django_assert_max_num_queries(6):
+    with django_assert_max_num_queries(10):
         states = derive_states(ids)
     assert {d.state for d in states.values()} == {DerivedState.NEEDS_TRIAGE}
