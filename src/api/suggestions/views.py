@@ -121,7 +121,7 @@ class SuggestionFilterSet(filters.FilterSet):
 
     `affected_product_version` requires `affected_product`, and selects suggestions where that same affected product carries the version.
 
-    `derived_state` accepts repeated query params and is combined with OR. It reads the stored derived state.
+    `derived_state` accepts repeated query params and is combined with OR. It reads the stored derived state. While many states are being recomputed, the result may miss suggestions; the list response then carries the header `X-Derived-State-Backlog: true`, and bulk operations refuse the selection.
     """
 
     status = filters.MultipleChoiceFilter(
@@ -186,7 +186,11 @@ class SuggestionFilterSet(filters.FilterSet):
     ) -> QuerySet:
         if not value:
             return queryset
-        return filter_by_derived_state(queryset, value)
+        filtered, backlog = filter_by_derived_state(queryset, value)
+        if backlog and self.request is not None:
+            # Read by `list` to tell the client the result may be incomplete.
+            self.request.derived_state_backlog = True  # pyright: ignore[reportAttributeAccessIssue]
+        return filtered
 
     def filter_affected_product_version(
         self, queryset: QuerySet, name: str, value: str
@@ -203,6 +207,9 @@ class SuggestionFilterSet(filters.FilterSet):
 
 # The list filters, as they appear on the bulk operations.
 # drf-spectacular only documents filter backends on list endpoints, and bulk operations do not return a list, so they declare their selection parameters explicitly.
+# Set on a list response whose `derived_state` filter could not take stale rows into account.
+DERIVED_STATE_BACKLOG_HEADER = "X-Derived-State-Backlog"
+
 BULK_FILTER_PARAMETERS = [
     OpenApiParameter(
         name="status",
@@ -322,6 +329,12 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
                 }
             )
         queryset = self.filter_queryset(self.get_queryset())
+        if getattr(self.request, "derived_state_backlog", False):
+            raise DRFValidationError(
+                {
+                    "detail": "Derived states are being recomputed, so selecting by derived state may miss suggestions. Try again later."
+                }
+            )
         count = queryset.count()
         if count > settings.API_BULK_MAX_AFFECTED:
             raise DRFValidationError(
@@ -410,9 +423,14 @@ class SuggestionViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericView
         context["derived_states"] = derived_state_map(objects)
 
         serializer = self.get_serializer_class()(objects, many=True, context=context)
-        if page is not None:
-            return self.get_paginated_response(serializer.data)
-        return Response(serializer.data)
+        response = (
+            self.get_paginated_response(serializer.data)
+            if page is not None
+            else Response(serializer.data)
+        )
+        if getattr(request, "derived_state_backlog", False):
+            response[DERIVED_STATE_BACKLOG_HEADER] = "true"
+        return response
 
     @extend_schema(
         operation_id="getSuggestion",

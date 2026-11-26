@@ -223,3 +223,45 @@ def test_order_by_relevance(
         none.pk,
     ]
     assert anonymous_client.get(url(), {"ordering": "nope"}).status_code == 400
+
+
+def test_filter_bounds_the_live_computation(
+    anonymous_client: APIClient,
+    states: dict[str, CVEDerivationClusterProposal],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A backlog of stale rows (after the migration, before `recompute_derived_state`) must not
+    turn a filtered list into a computation over the whole table: beyond the limit, stale
+    rows are filtered by their stored value, and the backlog is reported.
+    """
+    import api.unified.states
+
+    SuggestionDerivedState.objects.update(stale=True)
+    triage = states["needs_triage"].pk
+    monkeypatch.setattr(api.unified.states, "STALE_LIVE_LIMIT", 10)
+    ids = [
+        r["id"]
+        for r in anonymous_client.get(url(), {"derived_state": "needs_triage"}).data[
+            "results"
+        ]
+    ]
+    assert ids == [triage]
+
+    monkeypatch.setattr(api.unified.states, "STALE_LIVE_LIMIT", 2)
+    SuggestionDerivedState.objects.update(state="")
+    with CaptureQueriesContext(connection) as ctx:
+        response = anonymous_client.get(url(), {"derived_state": "needs_triage"})
+    assert response.data["results"] == []
+    assert not any("shared_exposure" in q["sql"] for q in ctx.captured_queries)
+    assert response.headers["X-Derived-State-Backlog"] == "true"
+    # A bulk operation does not act on a selection that may be incomplete.
+    shared = anonymous_client.get(
+        reverse("cvederivationclusterproposal-bulk-shared-state"),
+        {"derived_state": "needs_triage"},
+    )
+    assert shared.status_code == 400
+    # The page itself still shows live states.
+    response = anonymous_client.get(url())
+    by_id = {r["id"]: r["derived_state"] for r in response.data["results"]}
+    assert by_id[triage] == "needs_triage"

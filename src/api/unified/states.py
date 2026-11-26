@@ -6,6 +6,7 @@ not committed yet, or a row nobody flushed (a bug or a backlog `recompute_derive
 --stale-only` clears). Those few are computed live here, so lists stay correct either way.
 """
 
+import logging
 from collections.abc import Collection, Iterable
 
 from django.db.models import Q, QuerySet
@@ -13,6 +14,11 @@ from django.db.models import Q, QuerySet
 from shared.derived_state import derive_states
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.matching import SuggestionDerivedState
+
+logger = logging.getLogger(__name__)
+
+# Stale rows of a filtered selection computed live; beyond this, the stored value is used.
+STALE_LIVE_LIMIT = 200
 
 
 def _stale_q(prefix: str = "") -> Q:
@@ -57,17 +63,36 @@ def derived_state_map(
 
 def filter_by_derived_state(
     queryset: QuerySet[CVEDerivationClusterProposal], states: Collection[str]
-) -> QuerySet[CVEDerivationClusterProposal]:
+) -> tuple[QuerySet[CVEDerivationClusterProposal], bool]:
     """
     Narrow a selection to suggestions in any of these derived states: an indexed condition on
     the stored state, plus the stale rows of the selection computed live (one query when
     there are none).
+
+    A backlog of more than `STALE_LIVE_LIMIT` stale rows in the selection (right after the
+    migration, before `recompute_derived_state` has run, or if writers stop flushing) is not
+    computed live: those rows are filtered by their stored value, which is "" (matching
+    nothing) for rows never computed. Returns whether that happened, so the caller can say
+    the result may be incomplete.
     """
     wanted = list(states)
     stale = list(
-        queryset.filter(_stale_q()).order_by().values_list("pk", flat=True).distinct()
+        queryset.filter(_stale_q())
+        .order_by()
+        .values_list("pk", flat=True)
+        .distinct()[: STALE_LIVE_LIMIT + 1]
     )
+    if len(stale) > STALE_LIVE_LIMIT:
+        logger.warning(
+            "More than %d stale derived states in a filtered list; "
+            "run `recompute_derived_state --stale-only`",
+            STALE_LIVE_LIMIT,
+        )
+        return queryset.filter(derived__state__in=wanted), True
     live = [sid for sid, state in live_states(stale).items() if state in wanted]
-    return queryset.filter(
-        Q(derived__state__in=wanted, derived__stale=False) | Q(pk__in=live)
+    return (
+        queryset.filter(
+            Q(derived__state__in=wanted, derived__stale=False) | Q(pk__in=live)
+        ),
+        False,
     )
