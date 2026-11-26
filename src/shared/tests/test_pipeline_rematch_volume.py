@@ -69,6 +69,22 @@ def suggest(
     return wrapped
 
 
+def test_version_only_change_rematches_nothing(
+    evaluate: Callable[[Packages], EvaluationOutcome],
+    suggest: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    old = {"position": "/tmp/x/pkgs/by-name/fo/foo/package.nix:1"}
+    evaluate({"foo": ("foo", "1.0", old), "foo-cli": ("foo", "1.0")})
+    suggestion = suggest("CVE-2025-1001", package_name="foo")
+    assert Match.objects.active().filter(suggestion=suggestion).exists()
+
+    # The version, and the file the package is defined in, change: nothing a matcher reads.
+    new = {"position": "/tmp/x/pkgs/by-name/fo/foo/v2.nix:1"}
+    outcome = evaluate({"foo": ("foo", "1.1", new), "foo-cli": ("foo", "1.1")})
+    assert outcome.rematched == []
+    assert outcome.reverse_candidates == []
+
+
 def test_unrelated_change_does_not_select_suggestions_of_a_rule(
     evaluate: Callable[[Packages], EvaluationOutcome],
     suggest: Callable[..., CVEDerivationClusterProposal],
@@ -96,3 +112,23 @@ def test_unrelated_change_does_not_select_suggestions_of_a_rule(
         }
     )
     assert outcome.rematched == [kernel.pk]
+
+
+def test_new_attribute_rematches_only_suggestions_not_already_matching_it(
+    evaluate: Callable[[Packages], EvaluationOutcome],
+    suggest: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    evaluate({"foo": ("foo", "1.0")})
+    first = suggest("CVE-2025-1001", package_name="foo")
+    second = suggest("CVE-2025-1002", package_name="foo")
+    # `second` already has `foo-utils`, e.g. found on another branch.
+    Match.objects.create(
+        suggestion=second,
+        attrpath="foo-utils",
+        matcher="name-prefix",
+        matcher_version=1,
+        score=0.5,
+    )
+
+    outcome = evaluate({"foo": ("foo", "1.0"), "foo-utils": ("foo-utils", "1.0")})
+    assert outcome.rematched == [first.pk]

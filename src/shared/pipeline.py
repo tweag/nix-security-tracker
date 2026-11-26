@@ -476,15 +476,103 @@ def _gone_attributes(
     return candidates - present - waiting
 
 
+# Snapshot fields a matcher reads (`shared.snapshot.META_FIELDS` without `position`); the
+# generated match keys derive from `pname` and `homepage`.
+MATCHING_FIELDS = (
+    "pname",
+    "cpe_vendor",
+    "cpe_product",
+    "known_vulnerabilities",
+    "homepage",
+)
+
+
+@dataclass
+class RematchSelection:
+    # Attributes whose matching data changed on the branch: added, or a `MATCHING_FIELDS` change.
+    changed: list[str]
+    # Suggestions reverse matching selects, with the attributes that point at each; without
+    # those pointed at only by new attributes they already match.
+    reverse_selected: dict[int, set[str]]
+    # Open suggestions with an active match on a changed attribute (not a new one).
+    referencing: set[int]
+
+
+def _redundant_additions(branch: NixpkgsBranch, added: set[str]) -> set[str]:
+    """
+    Attributes new on `branch` that another tracked branch already has with the same matching
+    fields: the matchers' universe gains nothing but a branch name in evidence.
+    """
+    if not added:
+        return set()
+    here = {
+        row[0]: row[1:]
+        for row in BranchPackage.objects.filter(
+            branch=branch, attrpath__in=added
+        ).values_list("attrpath", *MATCHING_FIELDS)
+    }
+    elsewhere = (
+        Universe.tracked()
+        .packages()
+        .exclude(branch=branch)
+        .filter(attrpath__in=added)
+        .values_list("attrpath", *MATCHING_FIELDS)
+    )
+    return {row[0] for row in elsewhere if here.get(row[0]) == row[1:]}
+
+
+def rematch_selection(
+    evaluation: NixEvaluation, branch: NixpkgsBranch
+) -> RematchSelection:
+    """
+    Which open suggestions an evaluation step can change the candidates of (read only):
+    - an attribute whose matching data changed: suggestions actively matching it (they may
+      lose or change it) and those reverse matching selects for it (they may gain it);
+    - a new attribute: only the suggestions reverse matching selects that do not match it yet.
+    A version change, a rebuild, or a moved file change nothing a matcher reads.
+    """
+    changes = BranchPackageChange.objects.filter(
+        new_evaluation=evaluation, branch=branch
+    )
+    added = set(changes.filter(kind=Change.ADDED).values_list("attrpath", flat=True))
+    added -= _redundant_additions(branch, added)
+    modified = set(
+        changes.filter(
+            kind__in=[Change.META_CHANGED, Change.VERSION_CHANGED],
+            changed_fields__overlap=list(MATCHING_FIELDS),
+        ).values_list("attrpath", flat=True)
+    )
+    changed = sorted(added | modified)
+    selected = reverse_match_attributes(changed, evaluation, branch) if changed else {}
+    already = set(
+        Match.objects.active()
+        .filter(attrpath__in=added, suggestion__in=list(selected))
+        .values_list("suggestion_id", "attrpath")
+    )
+    reverse_selected = {
+        pk: remaining
+        for pk, attrs in selected.items()
+        if (remaining := {a for a in attrs if (pk, a) not in already})
+    }
+    referencing = set(
+        Match.objects.active()
+        .filter(attrpath__in=modified)
+        .filter(open_for_projection_q("suggestion__"))
+        .values_list("suggestion_id", flat=True)
+        .distinct()
+    )
+    return RematchSelection(changed, reverse_selected, referencing)
+
+
 def apply_evaluation(
     evaluation: NixEvaluation, branch: NixpkgsBranch
 ) -> EvaluationOutcome:
     """
     One evaluation step of one branch, in the listener's transaction, holding as little as
     possible for as short as possible (see `shared.locking`):
-    1. read the change set: added or changed attributes, the suggestions with `Match` rows on
-       them, those reverse matching selects, and those whose links point at an older
-       evaluation of this branch (no locks);
+    1. read the change set (`rematch_selection`): attributes whose matching data changed, the
+       suggestions actively matching them, those reverse matching selects, and those whose
+       links point at an older evaluation of this branch (no locks);
     2. exposures of referenced attributes (`apply_branch_changes`: exposure locks, ascending),
        attributes now gone from every tracked branch, and the stored derived state of the
        suggestions whose exposures changed;
@@ -493,25 +581,13 @@ def apply_evaluation(
        whose exposures changed or whose links are behind (links, cache). Each is idempotent and
        runs in its own transaction with its own locks.
     """
-    changes = BranchPackageChange.objects.filter(
-        new_evaluation=evaluation, branch=branch
-    )
-    changed = set(
-        changes.filter(
-            Q(kind__in=[Change.ADDED, Change.META_CHANGED])
-            | (Q(kind=Change.VERSION_CHANGED) & ~Q(changed_fields=[]))
-        ).values_list("attrpath", flat=True)
-    )
+    selection = rematch_selection(evaluation, branch)
+    reverse_candidates = selection.changed
+    reverse_selected = selection.reverse_selected
     removed = list(
-        changes.filter(kind=Change.REMOVED).values_list("attrpath", flat=True)
-    )
-    # Every added or changed attribute, also those some suggestion already matches: the change
-    # can make it the product of another CVE.
-    reverse_candidates = sorted(changed)
-    reverse_selected = (
-        reverse_match_attributes(reverse_candidates, evaluation, branch)
-        if reverse_candidates
-        else {}
+        BranchPackageChange.objects.filter(
+            new_evaluation=evaluation, branch=branch, kind=Change.REMOVED
+        ).values_list("attrpath", flat=True)
     )
     behind = set(
         CVEDerivationClusterProposal.objects.filter(open_for_projection_q())
@@ -534,9 +610,10 @@ def apply_evaluation(
     )
     gone = _gone_attributes(evaluation, branch, removed)
     outcome.gone = sorted(gone)
-    referencing = {
+    referencing = selection.referencing | {
         sid
-        for sid in Match.objects.filter(attrpath__in=changed | gone)
+        for sid in Match.objects.active()
+        .filter(attrpath__in=gone)
         .filter(open_for_projection_q("suggestion__"))
         .values_list("suggestion_id", flat=True)
         .distinct()
