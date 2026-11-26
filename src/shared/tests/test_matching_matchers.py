@@ -363,3 +363,46 @@ def test_name_substring_skips_short_and_meaningless_terms(
     make_branch_package(attrpath="pinentry", pname="pinentry")
     container = make_container(package_name=None, product=term)
     assert found(container, "name-substring") == {}
+
+
+def substring_candidates(container: Container) -> list[str]:
+    result = collect_candidates(build_cve_view(container.cve), ["name-substring"])
+    return [c.attrpath for c in result["name-substring"].candidates]
+
+
+def test_one_more_package_does_not_reshuffle_capped_candidates(
+    make_container: MakeContainer,
+    make_branch_package: MakePackage,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from shared.matching.matchers import NameSubstring
+
+    monkeypatch.setattr(NameSubstring, "limit", 3)
+    for attrpath in ("foo-d", "foo-b", "foo-a", "foo-c", "foo-e"):
+        make_branch_package(attrpath=attrpath, pname=attrpath)
+    container = make_container(package_name="foo", product=None)
+    before = substring_candidates(container)
+    assert before == ["foo-a", "foo-b", "foo-c"]
+
+    # A worse candidate changes nothing; an equally good one replaces exactly the last.
+    make_branch_package(attrpath="a-foo-long-name", pname="a-foo-long-name")
+    assert substring_candidates(container) == before
+    make_branch_package(attrpath="foo-0", pname="foo-0")
+    assert substring_candidates(container) == ["foo-0", "foo-a", "foo-b"]
+
+
+def test_row_ceiling_keeps_the_best_scored_substring_rows(
+    make_container: MakeContainer,
+    make_branch_package: MakePackage,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from shared.matching import base
+
+    monkeypatch.setattr(base, "ROW_CEILING", 3)
+    for attrpath in ("foo-a", "foo-bb", "foo-ccc"):
+        make_branch_package(attrpath=attrpath, pname=attrpath)
+    container = make_container(package_name="foo", product=None)
+    before = substring_candidates(container)
+    # Alphabetically first, but the worst score: it must not push a better row out.
+    make_branch_package(attrpath="a-foo-very-long-name", pname="a-foo-very-long-name")
+    assert substring_candidates(container) == before

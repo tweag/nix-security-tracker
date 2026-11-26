@@ -11,7 +11,7 @@ from django.contrib.postgres.lookups import TrigramSimilar
 from django.contrib.postgres.search import TrigramSimilarity
 from django.db import connection, transaction
 from django.db.models import Expression, F, Func, Q, TextField, Value
-from django.db.models.functions import Lower
+from django.db.models.functions import Length, Lower
 
 from shared.matching.base import (
     REGISTRY,
@@ -317,7 +317,8 @@ class NameSubstring(Matcher):
 
     slug = "name-substring"
     # 2: terms shorter than `MIN_TERM_LENGTH` or meaningless ("n/a", "all") are skipped.
-    version = 2
+    # 3: the best-scored rows are kept at the row ceiling.
+    version = 3
     # Today's `MAX_MATCHES` of 1000 derivations is about 125 to 250 attributes.
     limit = 200
     # One- and two-letter products ("i", "MQ", "v6") are inside thousands of names; the real
@@ -344,7 +345,13 @@ class NameSubstring(Matcher):
         if condition is None:
             return
         rows = self._fetch(
-            universe.packages().filter(condition), "attrpath", "branch_id", "pname"
+            # The score falls with the pname's length: at the row ceiling the best rows stay.
+            universe.packages()
+            .filter(condition)
+            .order_by(Length("pname"), "attrpath", "branch_id"),
+            "attrpath",
+            "branch_id",
+            "pname",
         )
         for attrpath, branch, pname in rows:
             lowered = pname.lower()
