@@ -62,6 +62,11 @@ function StatusDetails({ attribute, cell, evaluations }: Props) {
           ({reasonLabel(exposure.reason)}
           {exposure.detail.inferred && ", inferred: no default status, outside every range"})
           {exposure.detail.detail && <div className="monospace">{exposure.detail.detail}</div>}
+          {exposure.detail.patch_commit && (
+            <div>
+              patched by <span className="monospace">{shortSha(exposure.detail.patch_commit)}</span>
+            </div>
+          )}
           <ul className={styles.plainList}>
             {exposure.detail.last_affected_version &&
               exposure.observed !== "affected" &&
@@ -133,6 +138,7 @@ export function StatusChip({ attribute, cell, evaluations }: Props) {
           <InlineIcon icon={icon} />
           {label}
           {effective.source === "observed" && exposure?.detail.inferred && " (inferred)"}
+          {effective.source === "observed" && exposure?.reason === "patch" && " (patched)"}
         </button>
       </Tooltip>
       {effective.regression && (

@@ -361,3 +361,21 @@ def test_offset_limit(
     assert page["derived"] == full["derived"]
     response = anonymous_client.get(url(suggestion.pk), {"limit": 0})
     assert response.status_code == 400
+
+
+def test_patched_exposure_names_its_commit(
+    anonymous_client: APIClient,
+    suggestion: CVEDerivationClusterProposal,
+    make_match: Callable[..., Match],
+    make_exposure: Callable[..., Exposure],
+) -> None:
+    sha = "c" * 40
+    make_match()
+    make_exposure(
+        observed=Observed.UNAFFECTED,
+        reason=Exposure.Reason.PATCH,
+        detail={"detail": f"{sha[:12]} mentions CVE-2025-0001", "patch_commit": sha},
+    )
+    (foo,) = anonymous_client.get(url(suggestion.pk)).json()["attributes"]
+    exposure = foo["branches"][0]["exposure"]
+    assert (exposure["reason"], exposure["detail"]["patch_commit"]) == ("patch", sha)

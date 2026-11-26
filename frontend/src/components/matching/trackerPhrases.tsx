@@ -113,6 +113,12 @@ export function phraseChange(c: TrackerChange): ComponentChildren {
         <>
           {attr}
           {where(c)}: {versions(c)}, {outcome(c)}
+          {c.new_reason === "patch" && c.fix_commit && (
+            <>
+              {" "}
+              by <code>{shortSha(c.fix_commit)}</code>
+            </>
+          )}
           {c.regression && ", a regression after a fix"}
         </>
       );

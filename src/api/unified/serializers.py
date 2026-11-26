@@ -142,6 +142,10 @@ class ExposureDetailSerializer(serializers.Serializer):
         allow_null=True,
         help_text="For absent attributes: the last evaluation that had it.",
     )
+    patch_commit = serializers.CharField(
+        allow_null=True,
+        help_text="For reason `patch`: the commit whose patch fixes the CVE in a version still in range.",
+    )
 
 
 class ExposureSerializer(serializers.Serializer):

@@ -37,6 +37,7 @@ EXPOSURE_DETAIL_KEYS = (
     "affected_product",
     "last_affected_version",
     "last_seen_evaluation",
+    "patch_commit",
 )
 
 
