@@ -324,3 +324,90 @@ def test_vetoed_retraction_names_the_mapping(
         "source": "curated",
         "target": "foo",
     }
+
+
+def test_fix_events_in_activity_log(
+    anonymous_client: APIClient,
+    suggestion: CVEDerivationClusterProposal,
+    branch: Any,
+) -> None:
+    """The remediation layer's events, with the data its writers record, as typed changes."""
+    batch = uuid.uuid4()
+    pr = {
+        "pull_request": 4242,
+        "repository": "NixOS/nixpkgs",
+        "source": "closing_reference",
+        "base_ref": "master",
+        "title": "foo: 1.2.3 -> 1.2.5",
+    }
+    TrackerEvent.objects.create(
+        suggestion=suggestion,
+        kind=TrackerEvent.Kind.FIX_LINK_ADDED,
+        attrpath="foo",
+        branch=branch,
+        cause=TrackerEvent.Cause.GITHUB,
+        data=pr,
+        batch=batch,
+    )
+    TrackerEvent.objects.create(
+        suggestion=suggestion,
+        kind=TrackerEvent.Kind.EXPOSURE_FIX_COMMIT_SET,
+        attrpath="foo",
+        branch=branch,
+        cause=TrackerEvent.Cause.GITHUB,
+        data={
+            "fix_commit": "a" * 40,
+            "pull_request": 4242,
+            "source": "closing_reference",
+            "method": "ancestry",
+        },
+        batch=batch,
+    )
+    TrackerEvent.objects.create(
+        suggestion=suggestion,
+        kind=TrackerEvent.Kind.FIX_LANDED,
+        attrpath="foo",
+        branch=branch,
+        cause=TrackerEvent.Cause.CHANNEL,
+        data={
+            "channel": "nixos-unstable",
+            "commit": "a" * 40,
+            "via": "fix_commit",
+            "channel_commit": "b" * 40,
+            "landed_at": "2026-11-26T10:00:00+00:00",
+        },
+        batch=uuid.uuid4(),
+    )
+    entries = [
+        e
+        for e in _log(anonymous_client, suggestion.pk)
+        if e["action"].startswith("tracker.")
+    ]
+    assert [(e["action"], e["cause"]) for e in entries] == [
+        ("tracker.fixes", "github"),
+        ("tracker.fixes", "channel"),
+    ]
+    link, commit = entries[0]["changes"]
+    assert (
+        link["kind"],
+        link["pull_request"],
+        link["repository"],
+        link["base_ref"],
+    ) == (
+        "fix_link_added",
+        4242,
+        "NixOS/nixpkgs",
+        "master",
+    )
+    assert (link["title"], link["source"]) == (
+        "foo: 1.2.3 -> 1.2.5",
+        "closing_reference",
+    )
+    assert (commit["fix_commit"], commit["method"]) == ("a" * 40, "ancestry")
+    (landed,) = entries[1]["changes"]
+    assert (landed["channel"], landed["commit"], landed["channel_commit"]) == (
+        "nixos-unstable",
+        "a" * 40,
+        "b" * 40,
+    )
+    assert landed["landed_at"].startswith("2026-11-26T10:00:00")

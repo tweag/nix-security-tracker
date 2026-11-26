@@ -277,13 +277,47 @@ class TrackerChangeSerializer(serializers.Serializer):
     )
     via = serializers.CharField(
         allow_null=True,
-        help_text="For verdicts: the action they came with (accept, ignore, reject).",
+        help_text="For verdicts: the action they came with (accept, publish, reject). For fix_landed: what was tracked (fix_commit, fixed_evaluation).",
+    )
+    pull_request = serializers.IntegerField(
+        allow_null=True,
+        help_text="fix_link_*, exposure_fix_commit_set: the pull request number.",
+    )
+    repository = serializers.CharField(
+        allow_null=True, help_text="fix_link_*: `owner/repository` of the pull request."
+    )
+    base_ref = serializers.CharField(
+        allow_null=True, help_text="fix_link_*: the branch the pull request targets."
+    )
+    title = serializers.CharField(
+        allow_null=True, help_text="fix_link_*: the pull request's title."
+    )
+    source = serializers.CharField(
+        allow_null=True,
+        help_text="fix_link_*, exposure_fix_commit_set: how the pull request was linked.",
+    )
+    method = serializers.CharField(
+        allow_null=True,
+        help_text="exposure_fix_commit_set: how the pull request was confirmed as the fix.",
+    )
+    channel = serializers.CharField(
+        allow_null=True, help_text="fix_landed: the channel the fix reached."
+    )
+    commit = serializers.CharField(
+        allow_null=True, help_text="fix_landed: the commit of the fix."
+    )
+    channel_commit = serializers.CharField(
+        allow_null=True,
+        help_text="fix_landed: the channel commit the fix arrived with.",
+    )
+    landed_at = serializers.DateTimeField(
+        allow_null=True, help_text="fix_landed: when the channel advanced past the fix."
     )
 
 
 class ActivityLogEntrySerializer(serializers.Serializer):
     action = serializers.CharField(
-        help_text="Besides the suggestion's own actions: `tracker.matches`, `tracker.exposures`, `tracker.verdicts` or `tracker.mixed` for a batch of matching-model changes."
+        help_text="Besides the suggestion's own actions: `tracker.matches`, `tracker.exposures`, `tracker.verdicts`, `tracker.fixes` or `tracker.mixed` for a batch of matching-model changes."
     )
     timestamp = serializers.DateTimeField()
     username = serializers.CharField(allow_null=True)

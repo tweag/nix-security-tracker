@@ -5,6 +5,7 @@ import {
   ChevronsDownIcon,
   GavelIcon,
   GitCompareIcon,
+  GitPullRequestIcon,
   InboxIcon,
   LinkIcon,
   type LucideIcon,
@@ -49,7 +50,7 @@ type ObjectItem = { key: string; node: ComponentChildren };
 // Changes of a tracker batch shown at once when it is expanded.
 const SHOWN_CHANGES = 25;
 
-const trackerGroups = ["matches", "exposures", "verdicts", "mixed"] as const;
+const trackerGroups = ["matches", "exposures", "verdicts", "fixes", "mixed"] as const;
 type TrackerGroup = (typeof trackerGroups)[number];
 
 const operations = ["ignore", "restore", "add", "delete"] as const;
@@ -126,6 +127,7 @@ function actionIcon(
           matches: ScaleIcon,
           exposures: GitCompareIcon,
           verdicts: GavelIcon,
+          fixes: GitPullRequestIcon,
           mixed: RefreshCwIcon,
         } satisfies Record<TrackerGroup, LucideIcon>
       )[category.group];
@@ -159,6 +161,7 @@ function actionName(entry: ActivityLogEntry): string {
           matches: "matching changed",
           exposures: "versions changed",
           verdicts: "set verdicts",
+          fixes: "fix progress",
           mixed: "model changed",
         } satisfies Record<TrackerGroup, string>
       )[category.group];

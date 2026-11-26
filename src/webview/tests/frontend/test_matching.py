@@ -263,10 +263,20 @@ def test_tracker_entry_in_activity_log(
         },
         batch=uuid.uuid4(),
     )
+    TrackerEvent.objects.create(
+        suggestion=matched,
+        kind=TrackerEvent.Kind.FIX_LANDED,
+        attrpath="foo",
+        branch_id="master",
+        cause=TrackerEvent.Cause.CHANNEL,
+        data={"channel": "nixos-unstable", "commit": "a" * 40, "via": "fix_commit"},
+        batch=uuid.uuid4(),
+    )
     page.goto(live_server.url + SUGGESTION_DETAIL + f"/{matched.pk}")
     page.get_by_test_id(f"suggestion-{matched.pk}-activity-log-toggle").click()
     log = page.get_by_test_id(f"suggestion-{matched.pk}-activity-log")
     expect(log).to_contain_text("+2 packages via name ≈")
+    expect(log).to_contain_text("fix for foo on master landed in nixos-unstable")
     expect(log).to_contain_text(
         "foo on master: 1.2.3 → 1.2.5, now outside the affected range"
     )

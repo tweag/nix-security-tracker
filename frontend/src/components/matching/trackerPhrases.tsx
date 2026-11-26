@@ -1,6 +1,13 @@
 import type { ComponentChildren } from "preact";
 import type { TrackerChange, TrackerEventCauseEnum } from "@/api/generated/models";
-import { mappingLabel, matcherLabel, reasonLabel, statusInfo, verdictLabel } from "./labels";
+import {
+  mappingLabel,
+  matcherLabel,
+  reasonLabel,
+  shortSha,
+  statusInfo,
+  verdictLabel,
+} from "./labels";
 
 // The action a verdict came with, as the events record it.
 const VIA_LABELS: Record<string, string> = {
@@ -146,13 +153,64 @@ export function phraseChange(c: TrackerChange): ComponentChildren {
           {c.via && VIA_LABELS[c.via] && <>, {VIA_LABELS[c.via]}</>}
         </>
       );
-    default:
+    case "fix_link_added":
       return (
         <>
-          {attr}: {c.kind}
+          linked {pullRequest(c)} as a fix for {attr}
+          {where(c)}
         </>
       );
+    case "fix_link_retracted":
+      return (
+        <>
+          unlinked {pullRequest(c)} as a fix for {attr}
+          {where(c)}
+        </>
+      );
+    case "exposure_fix_commit_set":
+      return (
+        <>
+          {attr}
+          {where(c)}: fix commit set to <code>{c.fix_commit && shortSha(c.fix_commit)}</code>
+          {c.pull_request !== null && <>, from {pullRequest(c)}</>}
+        </>
+      );
+    case "fix_landed":
+      return (
+        <>
+          fix for {attr}
+          {where(c)} landed in <strong>{c.channel}</strong>
+        </>
+      );
+    default: {
+      // Exhaustive over the generated enum, so a new kind fails the type check; an unknown
+      // kind from a newer server still renders.
+      const unknown: never = c.kind;
+      return (
+        <>
+          {attr}: {String(unknown)}
+        </>
+      );
+    }
   }
+}
+
+/** "#4242", linked to the pull request when the repository is known. */
+function pullRequest(c: TrackerChange): ComponentChildren {
+  if (c.pull_request === null) return "a pull request";
+  const label = `#${c.pull_request}`;
+  return c.repository ? (
+    <a
+      href={`https://github.com/${c.repository}/pull/${c.pull_request}`}
+      title={c.title ?? undefined}
+      target="_blank"
+      rel="noreferrer"
+    >
+      {label}
+    </a>
+  ) : (
+    label
+  );
 }
 
 const MATCH_KINDS = new Set(["match_added", "match_retracted", "match_restored", "match_changed"]);
@@ -197,6 +255,8 @@ const CAUSE_LABELS: Record<TrackerEventCauseEnum, string> = {
   mapping: "product mapping",
   user: "user",
   backfill: "backfill",
+  channel: "channel advance",
+  github: "GitHub",
 };
 
 export function causeLabel(cause: TrackerEventCauseEnum): string {

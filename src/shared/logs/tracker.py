@@ -14,8 +14,20 @@ from shared.models.matching import TrackerEvent
 Kind = TrackerEvent.Kind
 
 TrackerAction = Literal[
-    "tracker.matches", "tracker.exposures", "tracker.verdicts", "tracker.mixed"
+    "tracker.matches",
+    "tracker.exposures",
+    "tracker.verdicts",
+    "tracker.fixes",
+    "tracker.mixed",
 ]
+
+# Remediation: pull requests linked as fixes, fix commits found, fixes reaching channels.
+FIX_KINDS = {
+    Kind.FIX_LANDED,
+    Kind.FIX_LINK_ADDED,
+    Kind.FIX_LINK_RETRACTED,
+    Kind.EXPOSURE_FIX_COMMIT_SET,
+}
 
 # Deleted accounts must not be resolvable from the log, as in `fetchers._annotate_username`.
 REDACTED = "REDACTED"
@@ -47,8 +59,23 @@ class TrackerChange(TypedDict):
     comment: str | None
     # The `not_same` mapping a retraction is due to.
     vetoed_by: dict[str, Any] | None
-    # The action a verdict came with ("accept", "ignore", "reject").
+    # How it came about: for a verdict the action it came with ("accept", "publish",
+    # "reject"); for a landing what was tracked ("fix_commit", "fixed_evaluation").
     via: str | None
+    # fix_link_*: the pull request; exposure_fix_commit_set: the one that gave the commit.
+    pull_request: int | None
+    repository: str | None
+    base_ref: str | None
+    title: str | None
+    # How the pull request was linked (closing reference, ...).
+    source: str | None
+    # exposure_fix_commit_set: how the pull request was confirmed as the fix.
+    method: str | None
+    # fix_landed: the channel, the fix's commit, the channel commit it arrived with, when.
+    channel: str | None
+    commit: str | None
+    channel_commit: str | None
+    landed_at: str | None
 
 
 class TrackerEntry(TypedDict):
@@ -62,6 +89,8 @@ class TrackerEntry(TypedDict):
 
 
 def _action(kinds: set[str]) -> TrackerAction:
+    if kinds <= FIX_KINDS:
+        return "tracker.fixes"
     prefixes = {k.split("_", 1)[0] for k in kinds}
     if prefixes == {"match"}:
         return "tracker.matches"
@@ -98,10 +127,21 @@ def _change(e: TrackerEvent) -> TrackerChange:
         "matcher_truncated": d.get("matcher_truncated"),
         "verdict": new.get("verdict"),
         "old_verdict": old.get("verdict"),
-        "fix_commit": new.get("fix_commit"),
+        # A verdict records it in `new`; a fix commit found or patched, at the top.
+        "fix_commit": new.get("fix_commit") or d.get("fix_commit"),
         "comment": new.get("comment"),
         "vetoed_by": d.get("vetoed_by"),
         "via": d.get("via"),
+        "pull_request": d.get("pull_request"),
+        "repository": d.get("repository"),
+        "base_ref": d.get("base_ref"),
+        "title": d.get("title"),
+        "source": d.get("source"),
+        "method": d.get("method"),
+        "channel": d.get("channel"),
+        "commit": d.get("commit"),
+        "channel_commit": d.get("channel_commit"),
+        "landed_at": d.get("landed_at"),
     }
 
 
