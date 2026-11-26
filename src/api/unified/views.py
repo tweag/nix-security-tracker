@@ -29,6 +29,7 @@ from shared.derived_state import (
     possibly_fixed_rows,
 )
 from shared.exposure import tracked_branches
+from shared.legacy_backfill import ensure_backfilled
 from shared.locking import lock_for_write
 from shared.models.matching import Exposure, Verdict
 
@@ -125,6 +126,7 @@ class PossiblyFixedViewSet(viewsets.GenericViewSet):
         )
         with transaction.atomic():
             lock_for_write([exposure.suggestion_id])
+            ensure_backfilled(exposure.suggestion)
             if exposure.branch_id not in {b.name for b in tracked_branches()}:
                 raise DRFValidationError(
                     {"branch": [f"Not a tracked branch: {exposure.branch_id}"]}

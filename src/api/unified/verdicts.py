@@ -12,7 +12,9 @@ from django.db.models import QuerySet
 from django.utils import timezone
 
 from shared.derived_state import flush_derived_states
-from shared.exposure import lock_suggestions, tracked_branches
+from shared.exposure import tracked_branches
+from shared.legacy_backfill import ensure_backfilled
+from shared.locking import lock_for_write
 from shared.models.linkage import (
     BulkValidationError,
     CVEDerivationClusterProposal,
@@ -97,9 +99,15 @@ def apply_verdicts(
     batch: uuid.UUID | None = None,
     check: bool = True,
 ) -> None:
-    """Check and apply the change in one transaction, with one event batch."""
+    """
+    Check and apply the change in one transaction, with one event batch. Takes the
+    suggestion's lock before reading anything (`shared.locking`), and backfills a suggestion
+    the legacy matcher made first, so a verdict is never its first new-model row.
+    """
     batch = batch or uuid.uuid4()
     with transaction.atomic():
+        lock_for_write([suggestion.pk])
+        ensure_backfilled(suggestion)
         if check:
             check_verdicts(suggestion, change)
         write_verdicts(suggestion, change, author, batch)
@@ -123,7 +131,7 @@ def write_verdicts(
     same `verdict_*` events, in a fixed number of queries: one lock, one read, one write per
     kind of change, one event insert, one derived-state flush.
     """
-    lock_suggestions([suggestion.pk])
+    lock_for_write([suggestion.pk])
     existing = {
         v.attrpath: v
         for v in Verdict.objects.filter(
@@ -260,7 +268,11 @@ def bulk_apply_verdicts(
 ) -> int:
     """Apply the change to every selected suggestion, or to none if any refuses it."""
     with transaction.atomic():
-        suggestions = list(queryset)
+        suggestions = list(queryset.order_by("pk"))
+        # Every lock, ascending, before anything is read to be written.
+        lock_for_write([s.pk for s in suggestions])
+        for suggestion in suggestions:
+            ensure_backfilled(suggestion)
         tracked = [b.name for b in tracked_branches()]
         errors = {}
         for suggestion in suggestions:

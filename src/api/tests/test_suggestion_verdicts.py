@@ -285,3 +285,71 @@ def test_changing_a_verdict_keeps_its_comment(
     )
     v = patch(verdict="wontfix", comment="")
     assert v.comment == ""
+
+
+def test_verdict_on_a_legacy_suggestion_backfills_it_first(
+    committer_client: APIClient,
+    make_legacy_suggestion: Callable[..., CVEDerivationClusterProposal],
+    committer: User,
+) -> None:
+    """
+    A suggestion the legacy matcher made has no new-model rows yet: the verdict must not be
+    the first, or acceptance (still only in the links) would be lost to the next re-match.
+    """
+    s = make_legacy_suggestion(status=CVEDerivationClusterProposal.Status.ACCEPTED)
+    response = committer_client.patch(
+        url(s.pk),
+        body(package_attributes=["foo"], verdict="wontfix"),
+        format="json",
+    )
+    assert response.status_code == 204, response.data
+    assert Match.objects.filter(suggestion=s, matcher="legacy-v2").exists()
+    assert set(Verdict.objects.values_list("attrpath", "verdict")) == {
+        ("foo", V.WONTFIX),
+        ("foobar", V.AFFECTED),
+    }
+
+
+def test_lock_comes_before_reading(
+    committer_client: APIClient,
+    make_suggestion: Callable[..., CVEDerivationClusterProposal],
+    make_container: Callable[..., Any],
+    make_match: Callable[..., Match],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`shared.locking`: the advisory locks of every suggestion written, ascending, first."""
+    import api.unified.verdicts as verdicts
+
+    suggestions = []
+    for i in range(3):
+        s = make_suggestion(container=make_container(cve_id=f"CVE-2025-800{i}"))
+        cache_new_suggestions(s)
+        make_match("foo", suggestion=s)
+        suggestions.append(s)
+    calls: list[tuple[str, object]] = []
+    lock, check = verdicts.lock_for_write, verdicts.check_verdicts
+
+    def recording_lock(ids: Any) -> None:
+        calls.append(("lock", sorted(ids)))
+        lock(ids)
+
+    def recording_check(s: CVEDerivationClusterProposal, *args: Any) -> None:
+        calls.append(("check", s.pk))
+        check(s, *args)
+
+    monkeypatch.setattr(verdicts, "lock_for_write", recording_lock)
+    monkeypatch.setattr(verdicts, "check_verdicts", recording_check)
+    response = committer_client.patch(
+        url(suggestions[0].pk), body(package_attributes=["foo"]), format="json"
+    )
+    assert response.status_code == 204
+    assert calls[0] == ("lock", [suggestions[0].pk])
+
+    calls.clear()
+    response = committer_client.patch(
+        reverse("cvederivationclusterproposal-bulk-verdicts") + "?status=pending",
+        body(package_attributes=["foo"], verdict="affected"),
+        format="json",
+    )
+    assert response.status_code == 200, response.data
+    assert calls[0] == ("lock", sorted(s.pk for s in suggestions))
