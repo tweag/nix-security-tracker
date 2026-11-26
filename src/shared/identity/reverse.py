@@ -18,9 +18,10 @@ from dataclasses import dataclass, field
 from django.db import connection, transaction
 from django.db.models import Q
 
-from shared.identity.mappings import glob_regex
+from shared.identity.keys import stored_or_derived_keys
+from shared.identity.mappings import glob_regex, load_mappings
 from shared.identity.reconcile import OPEN_STATUSES, reconcile_suggestions
-from shared.matching.matchers import NameTrigram
+from shared.matching.matchers import NamePrefix, NameTrigram
 from shared.matching.names import normalise_repo, registry_package_names
 from shared.matching.reconcile import ReconcileResult
 from shared.matching.selection import reopen_cutoff, reopenable_q
@@ -61,7 +62,8 @@ def name_terms(row: BranchPackage) -> set[str]:
     """
     terms = {row.match_pname, row.match_attr}
     parts = row.match_pname.split("-")
-    terms |= {"-".join(parts[:i]) for i in range(1, len(parts))}
+    prefixes = {"-".join(parts[:i]) for i in range(1, len(parts))}
+    terms |= {t for t in prefixes if len(t) >= NamePrefix.MIN_TERM_LENGTH}
     terms |= registry_package_names(row.homepage)
     return {t for t in terms if t}
 
@@ -103,8 +105,9 @@ def _names(
             SELECT n.id, t.term
             FROM unnest(%s::text[]) AS t(term)
             JOIN {ProductName._meta.db_table} n ON n.term %% t.term
+            WHERE length(n.term) >= %s
             """,
-            [sorted(similar)],
+            [sorted(similar), NameTrigram.MIN_TERM_LENGTH],
         )
         for pk, term in cursor.fetchall():
             found[pk] |= similar[term]
@@ -166,27 +169,63 @@ def _keys_by_mapping(attrpaths: set[str]) -> dict[int, set[str]]:
     return found
 
 
-def _open_suggestions(
-    names: dict[int, set[str]],
-    keys: dict[int, set[str]],
-    containers: dict[int, set[str]],
+def _affected(
+    names: dict[int, set[str]], keys: dict[int, set[str]]
 ) -> dict[int, set[str]]:
-    """Open suggestion pk -> attributes, from names, keys and containers, in one query."""
-    if not (names or keys or containers):
+    """Affected products carrying these names or keys, with the attributes they point at."""
+    found: dict[int, set[str]] = defaultdict(set)
+    if not (names or keys):
+        return found
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT affectedproduct_id, 'n', productname_id
+            FROM shared_affectedproduct_product_names WHERE productname_id = ANY(%s)
+            UNION ALL
+            SELECT affectedproduct_id, 'k', productkey_id
+            FROM shared_affectedproduct_product_keys WHERE productkey_id = ANY(%s)
+            """,
+            [sorted(names), sorted(keys)],
+        )
+        sources = {"n": names, "k": keys}
+        for affected, via, pk in cursor.fetchall():
+            found[affected] |= sources[via][pk]
+    return found
+
+
+def _without_vetoes(affected: dict[int, set[str]]) -> dict[int, set[str]]:
+    """
+    Drop the attributes a `ProductMapping` vetoes for the product, as `Matcher.run` does
+    forward: the kernel rule (`not_same *`) keeps `linux-firmware` from selecting every
+    kernel CVE by its name.
+    """
+    if not affected:
+        return affected
+    keys_of = stored_or_derived_keys(affected)
+    mappings = load_mappings(k for keys in keys_of.values() for k in keys)
+    if not mappings:
+        return affected
+    kept: dict[int, set[str]] = {}
+    for pk, attrs in affected.items():
+        keys = keys_of.get(pk, frozenset())
+        if remaining := {a for a in attrs if mappings.veto(keys, a) is None}:
+            kept[pk] = remaining
+    return kept
+
+
+def _open_suggestions(
+    affected: dict[int, set[str]], containers: dict[int, set[str]]
+) -> dict[int, set[str]]:
+    """Open suggestion pk -> attributes, from affected products and containers, in one query."""
+    if not (affected or containers):
         return {}
     cutoff = reopen_cutoff()
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            WITH hits(affected, via, id) AS (
-                SELECT affectedproduct_id, 'n', productname_id
-                FROM shared_affectedproduct_product_names WHERE productname_id = ANY(%s)
-                UNION ALL
-                SELECT affectedproduct_id, 'k', productkey_id
-                FROM shared_affectedproduct_product_keys WHERE productkey_id = ANY(%s)
-            ), found(container, via, id) AS (
-                SELECT ca.container_id, h.via, h.id
-                FROM hits h JOIN shared_container_affected ca ON ca.affectedproduct_id = h.affected
+            WITH found(container, via, id) AS (
+                SELECT ca.container_id, 'a', ca.affectedproduct_id
+                FROM shared_container_affected ca WHERE ca.affectedproduct_id = ANY(%s)
                 UNION ALL
                 SELECT c, 'c', c FROM unnest(%s::int[]) AS c
             )
@@ -201,8 +240,7 @@ def _open_suggestions(
             )
             """,
             [
-                sorted(names),
-                sorted(keys),
+                sorted(affected),
                 sorted(containers),
                 list(OPEN_STATUSES),
                 cutoff,
@@ -210,7 +248,7 @@ def _open_suggestions(
                 cutoff,
             ],
         )
-        sources = {"n": names, "k": keys, "c": containers}
+        sources = {"a": affected, "c": containers}
         found: dict[int, set[str]] = defaultdict(set)
         for suggestion, via, pk in cursor.fetchall():
             found[suggestion] |= sources[via][pk]
@@ -234,7 +272,10 @@ def select_suggestions(
         similar[row.match_pname].add(row.attrpath)
     selected: dict[int, set[str]] = defaultdict(
         set,
-        _open_suggestions(_names(exact, similar), _keys(rows), _applicability(rows)),
+        _open_suggestions(
+            _without_vetoes(_affected(_names(exact, similar), _keys(rows))),
+            _applicability(rows),
+        ),
     )
 
     # `known-vuln`: the attribute names the CVE itself.

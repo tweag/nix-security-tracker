@@ -132,3 +132,30 @@ def test_new_attribute_rematches_only_suggestions_not_already_matching_it(
 
     outcome = evaluate({"foo": ("foo", "1.0"), "foo-utils": ("foo-utils", "1.0")})
     assert outcome.rematched == [first.pk]
+
+
+def test_generic_terms_select_only_what_forward_matching_would_add(
+    evaluate: Callable[[Packages], EvaluationOutcome],
+    suggest: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    sync_rule_file(KERNEL_RULES)
+    evaluate({"linuxKernel.kernels.linux_6_6": ("linux", "6.6.1")})
+    suggest("CVE-2025-1001", vendor="Linux", product="Linux")
+    # A one-letter product: no prefix or trigram matcher looks it up.
+    suggest("CVE-2025-1002", product="R")
+
+    outcome = evaluate(
+        {
+            "linuxKernel.kernels.linux_6_6": ("linux", "6.6.1"),
+            # By name `Linux` is the prefix of these; the kernel rule vetoes them.
+            "linux-firmware": ("linux-firmware", "1"),
+            "linux-pam": ("linux-pam", "1"),
+            "r-ggplot": ("r-ggplot", "1"),
+        }
+    )
+    assert sorted(outcome.reverse_candidates) == [
+        "linux-firmware",
+        "linux-pam",
+        "r-ggplot",
+    ]
+    assert outcome.rematched == []
