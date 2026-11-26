@@ -1,6 +1,7 @@
 import re
 import uuid
 from collections.abc import Callable
+from typing import Any
 
 import pytest
 from django.contrib.auth.models import User
@@ -66,6 +67,17 @@ def refresh_stored_states() -> None:
     flush_derived_states()
 
 
+def answered(page: Page, path: str) -> Any:
+    """
+    Waits for the server's answer to a write, not for the page: the page removes or changes
+    things optimistically, before the request has committed, so a test that reads the
+    database after the page changed can be early (it was, in the CI VM).
+    """
+    return page.expect_response(
+        lambda r: r.request.method in ("POST", "PATCH", "DELETE") and path in r.url
+    )
+
+
 def open_panel(page: Page, url: str, suggestion: CVEDerivationClusterProposal) -> None:
     page.goto(url + SUGGESTION_DETAIL + f"/{suggestion.pk}")
     page.get_by_test_id(f"suggestion-{suggestion.pk}-matching-toggle").click()
@@ -105,7 +117,9 @@ def test_committer_sets_and_clears_a_verdict(
 ) -> None:
     open_panel(as_committer, live_server.url, matched)
     as_committer.get_by_test_id("verdict-menu-foo-master").click()
-    as_committer.get_by_role("menuitem", name="not affected").click()
+    with answered(as_committer, "/verdicts") as response:
+        as_committer.get_by_role("menuitem", name="not affected").click()
+    assert response.value.status == 204
     status = as_committer.get_by_test_id("status-foo-master")
     expect(status).to_have_text(re.compile("not affected"))
     expect(status).to_have_attribute("aria-label", re.compile(r"\(verdict\)"))
@@ -120,9 +134,10 @@ def test_committer_sets_and_clears_a_verdict(
     )
 
     as_committer.get_by_test_id("verdict-menu-foo-master").click()
-    as_committer.get_by_role("menuitem", name="Clear verdict on master").click()
+    with answered(as_committer, "/verdicts") as response:
+        as_committer.get_by_role("menuitem", name="Clear verdict on master").click()
+    assert response.value.status == 204
     expect(status).to_have_attribute("aria-label", re.compile(r"\(observed\)"))
-    as_committer.wait_for_load_state("networkidle")
     assert not Verdict.objects.exists()
 
 
@@ -200,12 +215,14 @@ def test_possibly_fixed_actions_remove_the_row(
     as_committer.goto(live_server.url + POSSIBLY_FIXED)
     row = as_committer.get_by_test_id(f"possibly-fixed-{possibly_fixed.pk}")
     expect(row).to_be_visible()
-    if action == "still_affected":
-        row.get_by_role("button", name="Still affected").click()
-    else:
-        row.get_by_role("button", name="Confirm fixed").click()
-        as_committer.get_by_label("Fix commit (optional)").fill("a" * 40)
-        as_committer.get_by_role("button", name="Confirm", exact=True).click()
+    with answered(as_committer, f"/{action}") as response:
+        if action == "still_affected":
+            row.get_by_role("button", name="Still affected").click()
+        else:
+            row.get_by_role("button", name="Confirm fixed").click()
+            as_committer.get_by_label("Fix commit (optional)").fill("a" * 40)
+            as_committer.get_by_role("button", name="Confirm", exact=True).click()
+    assert response.value.status == 204
     expect(row).to_be_hidden()
     expect(as_committer.get_by_text("Nothing to confirm.")).to_be_visible()
     verdict = Verdict.objects.get()
@@ -275,7 +292,9 @@ def test_possibly_fixed_answer_to_a_stale_row(
         staff,
         branch=possibly_fixed.branch,
     )
-    row.get_by_role("button", name="Still affected").click()
+    with answered(as_committer, "/still_affected") as response:
+        row.get_by_role("button", name="Still affected").click()
+    assert response.value.status == 409
     expect(as_committer.get_by_text("Already answered")).to_be_visible()
     expect(row).to_be_hidden()
     assert Verdict.objects.get().author == staff
