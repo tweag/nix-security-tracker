@@ -261,8 +261,8 @@ export function MatchingInNixpkgs({ suggestion, editable, userCanEdit }: Props) 
             )}
             {data?.status === "published" && (
               <p className="text-gray" data-testid={`${testId}-published-note`}>
-                Versions and statuses as the tracker sees them now; the published issue lists the
-                packages as they were at publication.
+                Versions and statuses as the tracker sees them now; the GitHub issue lists the
+                packages as they were when it was filed.
               </p>
             )}
             {shownRows.length > 0 ? (
