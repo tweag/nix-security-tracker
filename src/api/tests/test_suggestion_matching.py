@@ -119,7 +119,7 @@ def test_shape(
     product = AffectedProduct.objects.create(vendor="acme", product="foo")
     make_match("foo", "name-exact", 1.0, evidence=evidence(product, other_hits=2))
     make_match("foo", "name-trigram", 0.8, evidence=evidence(similarity=0.8))
-    make_match("bar", "name-trigram", 0.8, evidence=evidence())
+    make_match("bar", "name-substring", 0.5, evidence=evidence())
     make_exposure(
         "foo",
         detail={"detail": "1.0 in [1.0, 2.0)", "inferred": False, "secret": 1},
@@ -213,7 +213,8 @@ def test_shape(
 
     assert data["derived"]["state"] == "needs_triage"
     assert {"attrpath": "foo", "branch": "master"} in data["derived"]["needs_triage"]
-    assert {"attrpath": "bar", "branch": None} in data["derived"]["needs_triage"]
+    # `bar` is a hidden low-confidence match: listed, but nothing to triage (review finding 6).
+    assert {"attrpath": "bar", "branch": None} not in data["derived"]["needs_triage"]
 
 
 def test_acceptance_is_a_verdict(
@@ -318,7 +319,7 @@ def test_query_count_and_size(
         anonymous_client.get(url(small.pk))
     with django_assert_num_queries(len(ctx.captured_queries)):
         response = anonymous_client.get(url(large.pk))
-    assert len(ctx.captured_queries) <= 21
+    assert len(ctx.captured_queries) <= 22
     data = response.json()
     assert len(data["attributes"]) == 50
     assert all(len(a["branches"]) == 3 for a in data["attributes"])

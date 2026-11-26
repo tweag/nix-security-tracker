@@ -85,7 +85,7 @@ def test_pagination(
         world.apply(world.package("2.0", attrpath=f"foo{i}"))
     assert len(possibly_fixed_queue()) == 12
     # The queue query, then the facts of its suggestions: constant in the row count.
-    with django_assert_max_num_queries(11):
+    with django_assert_max_num_queries(12):
         first = anonymous_client.get(list_url()).json()
     assert (first["count"], len(first["results"])) == (12, 10)
     second = anonymous_client.get(list_url(), {"page": 2}).json()

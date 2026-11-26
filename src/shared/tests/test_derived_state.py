@@ -68,6 +68,7 @@ def facts(
         status=status,
         rejection_reason=reason,
         matched=set(matched),
+        shown=set(matched),
         verdicts=list(verdicts),
         exposures=list(exposures),
         **fields,
@@ -461,6 +462,6 @@ def test_derive_states_query_count(
         make_match(suggestion=s)
         make_exposure(suggestion=s)
         ids.append(s.pk)
-    with django_assert_max_num_queries(10):
+    with django_assert_max_num_queries(11):
         states = derive_states(ids)
     assert {d.state for d in states.values()} == {DerivedState.NEEDS_TRIAGE}

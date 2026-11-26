@@ -37,6 +37,7 @@ from shared.exposure import (
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.matching import (
     Exposure,
+    Match,
     SuggestionDerivedState,
     TrackerEvent,
     Verdict,
@@ -315,6 +316,8 @@ class SuggestionFacts:
     became_unaffected: dict[tuple[str, str], datetime] = field(default_factory=dict)
     # Attributes with exposures only on branches no longer tracked.
     untracked_only: set[str] = field(default_factory=set)
+    # Candidates as `shared.candidates` defines them: shown matches and decided attributes.
+    shown: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -349,7 +352,7 @@ def derive_state(facts: SuggestionFacts) -> Derived:
     """
     if is_dismissed(facts.status, facts.rejection_reason):
         return Derived(DerivedState.DISMISSED)
-    candidates = candidates_of(facts)
+    candidates = triage_candidates(facts)
     if not candidates:
         return Derived(DerivedState.NO_CANDIDATES)
     verdicts = facts.verdicts
@@ -407,8 +410,20 @@ def derive_state(facts: SuggestionFacts) -> Derived:
     return result
 
 
+def triage_candidates(facts: SuggestionFacts) -> set[str]:
+    """
+    What the derived state and the possibly-fixed queue count: the attributes the suggestion
+    shows or a human decided on (`shared.candidates`), not hidden low-confidence matches.
+    """
+    return set(facts.shown) | {v.attrpath for v in facts.verdicts}
+
+
 def candidates_of(facts: SuggestionFacts) -> set[str]:
-    """Attributes with an active match or an explicit verdict."""
+    """
+    Attributes with an active match or an explicit verdict: everything a matching panel can
+    list, hidden low-confidence matches included. For what needs triage use
+    `triage_candidates`.
+    """
     return set(facts.matched) | {v.attrpath for v in facts.verdicts}
 
 
@@ -453,9 +468,16 @@ def load_facts(
         ).values_list("pk", "status", "rejection_reason")
     }
     ids = list(facts)
-    # Candidates only (`shared.candidates`): shown matches and decided attributes.
+    for sid, attr in (
+        Match.objects.active()
+        .filter(suggestion_id__in=ids)
+        .values_list("suggestion_id", "attrpath")
+        .distinct()
+    ):
+        facts[sid].matched.add(attr)
+    # What the suggestion shows (`shared.candidates`): the only attributes that can need triage.
     for sid, found in candidates(ids).items():
-        facts[sid].matched = found.attributes
+        facts[sid].shown = found.attributes
     tracked = [b.name for b in tracked_branches()]
     for sid, attr, branch_id, verdict, updated_at in Verdict.objects.filter(
         suggestion_id__in=ids
@@ -590,7 +612,7 @@ def possibly_fixed_keys(
     keys = []
     for pk, sid, attr, branch_id in candidates:
         f = facts[sid]
-        if attr not in candidates_of(f):
+        if attr not in triage_candidates(f):
             continue
         v = pick_verdict(f.verdicts, attr, branch_id)
         if fix_settled(v, f.became_unaffected.get((attr, branch_id))):
