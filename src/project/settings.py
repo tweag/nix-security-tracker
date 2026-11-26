@@ -219,6 +219,16 @@ class Settings(BaseSettings):
             """,
             default=0.2,
         )
+        MATCHING_STORE_UNSHOWABLE: bool = Field(
+            description="""
+            Store `Match` rows (with their events and exposures) also for attributes whose
+            noisy-OR score over every matcher's candidates is at most
+            `MATCHING_SCORE_THRESHOLD`, which no suggestion can show. False stores only
+            attributes that could be shown; a substring hit on an attribute another matcher
+            also finds still counts.
+            """,
+            default=True,
+        )
         MATCHING_REOPEN_WINDOW_DAYS: int = Field(
             description="""
             Suggestions the matcher rejected (no matches, too many matches) whose CVE was

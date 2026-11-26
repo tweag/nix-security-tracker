@@ -10,12 +10,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.utils import timezone
 
 from shared.matching.base import Candidate, MatcherResult, Universe
 from shared.matching.matchers import collect_candidates, matchers_for
+from shared.matching.selection import showable_attributes
 from shared.matching.view import CveView, build_cve_view
 from shared.models.linkage import CVEDerivationClusterProposal
 from shared.models.matching import Match, TrackerEvent
@@ -77,6 +79,29 @@ def _differs(match: Match, candidate: Candidate, version: int) -> bool:
         or match.evidence != candidate.evidence
         or match.matcher_version != version
     )
+
+
+def _storable(
+    suggestion: CVEDerivationClusterProposal, results: dict[str, MatcherResult]
+) -> set[str] | None:
+    """
+    With `MATCHING_STORE_UNSHOWABLE` off, the attributes worth a `Match` row: those this run's
+    candidates and the other matchers' active matches could show. None: store everything.
+    """
+    if settings.MATCHING_STORE_UNSHOWABLE:
+        return None
+    contributions = [
+        (c.attrpath, slug, c.score)
+        for slug, result in results.items()
+        for c in result.candidates
+    ]
+    contributions += list(
+        Match.objects.active()
+        .filter(suggestion=suggestion)
+        .exclude(matcher__in=results)
+        .values_list("attrpath", "matcher", "score")
+    )
+    return showable_attributes(contributions)
 
 
 def reconcile_matches(
@@ -144,6 +169,7 @@ def reconcile_matches(
             (m.matcher, m.attrpath): m
             for m in Match.objects.filter(suggestion=suggestion, matcher__in=results)
         }
+        storable = _storable(suggestion, results)
 
         to_create: list[Match] = []
         to_update: list[Match] = []
@@ -152,7 +178,11 @@ def reconcile_matches(
 
         for slug, result in results.items():
             version = versions[slug]
-            produced = {c.attrpath: c for c in result.candidates}
+            produced = {
+                c.attrpath: c
+                for c in result.candidates
+                if storable is None or c.attrpath in storable
+            }
             for attrpath, candidate in produced.items():
                 match = existing.get((slug, attrpath))
                 if match is None:

@@ -113,3 +113,19 @@ def reopenable_q(prefix: str = "", cutoff: datetime | None = None) -> Q:
             f"{prefix}cve__date_published__gte": cutoff,
         }
     )
+
+
+def showable_attributes(
+    contributions: Iterable[tuple[str, str, float]], threshold: float | None = None
+) -> set[str]:
+    """
+    Attributes whose noisy-OR over these (attribute, matcher, score) contributions of the
+    counted matchers is above the display threshold: those a suggestion could show.
+    """
+    floor: float = settings.MATCHING_SCORE_THRESHOLD if threshold is None else threshold
+    counted = set(counted_matchers())
+    by_attr: dict[str, list[tuple[str, float]]] = {}
+    for attr, matcher, score in contributions:
+        if matcher in counted:
+            by_attr.setdefault(attr, []).append((matcher, score))
+    return {attr for attr, c in by_attr.items() if noisy_or(c) > floor}
