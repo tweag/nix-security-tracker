@@ -521,6 +521,28 @@ def _redundant_additions(branch: NixpkgsBranch, added: set[str]) -> set[str]:
     return {row[0] for row in elsewhere if here.get(row[0]) == row[1:]}
 
 
+def _matching_modifications(
+    branch: NixpkgsBranch, changes: Iterable[tuple[str, list[str]]]
+) -> set[str]:
+    """
+    Changed attributes whose change a matcher can see. A CPE product without a vendor, before
+    and after, matches nothing (`nixpkgs-cpe` needs both parts; nixpkgs defaults the product to
+    the pname), so a change of only that is none.
+    """
+    modified: set[str] = set()
+    cpe_only: set[str] = set()
+    for attrpath, fields in changes:
+        relevant = set(fields) & set(MATCHING_FIELDS)
+        (cpe_only if relevant == {"cpe_product"} else modified).add(attrpath)
+    if cpe_only:
+        modified |= set(
+            BranchPackage.objects.filter(branch=branch, attrpath__in=cpe_only)
+            .exclude(Q(cpe_vendor__isnull=True) | Q(cpe_vendor=""))
+            .values_list("attrpath", flat=True)
+        )
+    return modified
+
+
 def rematch_selection(
     evaluation: NixEvaluation, branch: NixpkgsBranch
 ) -> RematchSelection:
@@ -536,11 +558,12 @@ def rematch_selection(
     )
     added = set(changes.filter(kind=Change.ADDED).values_list("attrpath", flat=True))
     added -= _redundant_additions(branch, added)
-    modified = set(
+    modified = _matching_modifications(
+        branch,
         changes.filter(
             kind__in=[Change.META_CHANGED, Change.VERSION_CHANGED],
             changed_fields__overlap=list(MATCHING_FIELDS),
-        ).values_list("attrpath", flat=True)
+        ).values_list("attrpath", "changed_fields"),
     )
     changed = sorted(added | modified)
     selected = reverse_match_attributes(changed, evaluation, branch) if changed else {}

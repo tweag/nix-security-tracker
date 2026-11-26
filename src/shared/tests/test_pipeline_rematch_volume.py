@@ -159,3 +159,18 @@ def test_generic_terms_select_only_what_forward_matching_would_add(
         "r-ggplot",
     ]
     assert outcome.rematched == []
+
+
+def test_cpe_product_without_vendor_is_no_matching_change(
+    evaluate: Callable[[Packages], EvaluationOutcome],
+    suggest: Callable[..., CVEDerivationClusterProposal],
+) -> None:
+    evaluate({"foo": ("foo", "1.0", {"cpe_product": "foo"})})
+    suggest("CVE-2025-1001", package_name="foo")
+    # `nixpkgs-cpe` needs both parts: a product default without a vendor matches nothing.
+    outcome = evaluate({"foo": ("foo", "1.0", {"cpe_product": "foo2"})})
+    assert outcome.rematched == []
+    outcome = evaluate(
+        {"foo": ("foo", "1.0", {"cpe_vendor": "acme", "cpe_product": "foo2"})}
+    )
+    assert outcome.reverse_candidates == ["foo"]
